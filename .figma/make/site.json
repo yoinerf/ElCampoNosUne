@@ -1,0 +1,10 @@
+{
+  "description": "Connects rural producers and community tourism services with customers through an intuitive platform that supports small and medium enterprises.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

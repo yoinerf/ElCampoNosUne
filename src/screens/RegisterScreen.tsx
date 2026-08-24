@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 
 interface Props {
   onComplete: () => void
@@ -31,10 +32,38 @@ const userTypes = [
   },
 ]
 
-const departments = [
-  'Antioquia', 'Boyacá', 'Caldas', 'Cauca', 'Cundinamarca',
-  'Huila', 'Nariño', 'Putumayo', 'Quindío', 'Risaralda',
-  'Santander', 'Tolima', 'Valle del Cauca', 'Otro',
+const fallbackDepartments = [
+  'Antioquia',
+  'Atlántico',
+  'Bogotá D.C.',
+  'Bolívar',
+  'Boyacá',
+  'Caldas',
+  'Caquetá',
+  'Casanare',
+  'Cauca',
+  'Cesar',
+  'Chocó',
+  'Córdoba',
+  'Cundinamarca',
+  'Guainía',
+  'Guaviare',
+  'Huila',
+  'La Guajira',
+  'Magdalena',
+  'Meta',
+  'Nariño',
+  'Norte de Santander',
+  'Putumayo',
+  'Quindío',
+  'Risaralda',
+  'San Andrés y Providencia',
+  'Santander',
+  'Sucre',
+  'Tolima',
+  'Valle del Cauca',
+  'Vaupés',
+  'Vichada',
 ]
 
 const productCategories = [
@@ -66,13 +95,40 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [showPassword, setShowPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [submitError, setSubmitError] = useState('')
+  const [departments, setDepartments] = useState<string[]>(fallbackDepartments)
 
   const TOTAL_STEPS = 4
 
-  const setField = (key: keyof typeof form, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-    if (errors[key]) setErrors((prev) => { const n = { ...prev }; delete n[key]; return n })
-  }
+  useEffect(() => {
+    let active = true
+
+    const loadDepartments = async () => {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('name')
+        .order('name', { ascending: true })
+
+      if (error) {
+        if (active) setDepartments(fallbackDepartments)
+        return
+      }
+
+      const rows = Array.isArray(data) ? data : []
+      const values = rows
+        .map((row) => (typeof row?.name === 'string' ? row.name.trim() : ''))
+        .filter(Boolean)
+
+      if (active) setDepartments(values.length > 0 ? values : fallbackDepartments)
+    }
+
+    loadDepartments()
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   const toggleCategory = (cat: string) => {
     setSelectedCategories((prev) =>
@@ -112,6 +168,58 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
   }
 
   const back = () => setStep((s) => Math.max(0, s - 1))
+
+  const setField = (key: keyof typeof form, value: string | boolean) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+    if (errors[key]) {
+      setErrors((prev) => {
+        const nextErrors = { ...prev }
+        delete nextErrors[key]
+        return nextErrors
+      })
+    }
+  }
+
+  const handleSubmit = async () => {
+  if (!validateStep()) return
+  setLoading(true)
+  setSubmitError('')
+
+  const { data, error } = await supabase.auth.signUp({
+    email: form.email,
+    password: form.password,
+  })
+
+  if (error) {
+    setSubmitError(error.message)
+    setLoading(false)
+    return
+  }
+
+  if (data.user) {
+    const { error: profileError } = await supabase.from('profiles').insert({
+      id: data.user.id,
+      first_name: form.firstName,
+      last_name: form.lastName,
+      phone: form.phone,
+      email: form.email,
+      user_type: userType,
+      org_name: form.orgName,
+      department: form.department,
+      municipality: form.municipality,
+      categories: selectedCategories,
+    })
+
+    if (profileError) {
+      setSubmitError(profileError.message)
+      setLoading(false)
+      return
+    }
+  }
+
+  setLoading(false)
+  setStep(4)
+}
 
   // Step 0: Splash / welcome
   if (step === 0) {
@@ -717,7 +825,8 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
           </button>
         ) : (
           <button
-            onClick={step === 3 ? () => { if (validateStep()) setStep(4) } : next}
+            onClick={step === 3 ? handleSubmit : next}
+            disabled={loading}
             style={{
               width: '100%',
               padding: '15px',
@@ -743,10 +852,16 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
             </span>
           </p>
         )}
+        {submitError && (
+          <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: 'Nunito, sans-serif', fontWeight: 600, marginTop: 12 }}>
+            ⚠️ {submitError}
+          </div>
+        )}
       </div>
     </div>
   )
 }
+
 
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (

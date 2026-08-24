@@ -1,13 +1,6 @@
-import { useState } from 'react'
-
-const menuItems = [
-  { icon: '📦', label: 'Mis Productos', sublabel: '12 publicados', color: '#2A5C1A' },
-  { icon: '🏞️', label: 'Mis Experiencias', sublabel: '3 activas', color: '#D4870A' },
-  { icon: '📊', label: 'Estadísticas', sublabel: 'Ver ventas e ingresos', color: '#C4622D' },
-  { icon: '💬', label: 'Mensajes', sublabel: '2 sin leer', color: '#7FB069' },
-  { icon: '⭐', label: 'Reseñas', sublabel: '4.8 promedio', color: '#6B4C2A' },
-  { icon: '📋', label: 'Mis Pedidos', sublabel: '4 activos', color: '#3D7A28' },
-]
+import { useState, useEffect } from 'react'
+import ScreenShell from '../components/ScreenShell'
+import { supabase } from '../lib/supabase'
 
 const certifications = [
   { label: 'Productor Orgánico', icon: '🌱', active: true },
@@ -15,46 +8,207 @@ const certifications = [
   { label: 'Artesano Certificado', icon: '🎨', active: false },
 ]
 
+type UserRole = 'asociacion' | 'turismo' | 'comprador'
+
 export default function ProfileScreen() {
   const [editing, setEditing] = useState(false)
-  const [name, setName] = useState('María Fernanda Ospina')
-  const [org, setOrg] = useState('Cooperativa Agrícola del Sur')
+  const [name, setName] = useState('')
+  const [org, setOrg] = useState('')
+  const [location, setLocation] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [productCount, setProductCount] = useState(0)
+  const [experienceCount, setExperienceCount] = useState(0)
+  const [orderCount, setOrderCount] = useState(0)
+  const [recentOrders, setRecentOrders] = useState<Array<{ id: string; description: string; title: string; created_at: string }>>([])
+  const [stats, setStats] = useState({ sales: 0, income: 0, active: 0 })
+  const [activeSection, setActiveSection] = useState<'overview' | 'orders' | 'messages' | 'stats'>('overview')
+  const [showAllOrders, setShowAllOrders] = useState(false)
+  const [showAllMessages, setShowAllMessages] = useState(false)
+  const isBuyer = userRole === 'comprador'
+
+  const messageThreads = [
+    { id: 'm1', sender: 'Coop. La Esperanza', preview: 'Gracias por tu compra, el envío se programó para mañana.', time: 'Hace 2h' },
+    { id: 'm2', sender: 'Finca El Roble', preview: 'Tu pedido está listo para recoger en la cooperativa.', time: 'Hoy' },
+    { id: 'm3', sender: 'Ruta de Turismo', preview: 'Confirmamos tu reserva para sábado en la mañana.', time: 'Ayer' },
+    { id: 'm4', sender: 'Mercado Campesino', preview: 'Te enviamos la factura y la guía de entrega.', time: 'Hace 3 días' },
+    { id: 'm5', sender: 'Asociación Agricultores', preview: 'Hemos actualizado la disponibilidad del producto.', time: 'Hace 5 días' },
+    { id: 'm6', sender: 'Comunidad del Valle', preview: 'Ya se confirmó la visita guiada y el punto de encuentro.', time: 'Hace 6 días' },
+  ]
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      setUserId(user.id)
+
+      const [{ count: productsCount }, { count: experiencesCount }, { count: activityOrdersCount }, { data: recentActivities }] = await Promise.all([
+        supabase
+          .from('products')
+          .select('*', { count: 'exact', head: true })
+          .eq('producer_id', user.id),
+        supabase
+          .from('experiences')
+          .select('*', { count: 'exact', head: true })
+          .eq('host_id', user.id),
+        supabase
+          .from('activities')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .in('type', ['purchase', 'reservation']),
+        supabase
+          .from('activities')
+          .select('id, title, description, created_at')
+          .eq('user_id', user.id)
+          .in('type', ['purchase', 'reservation'])
+          .order('created_at', { ascending: false }),
+      ])
+
+      setProductCount(productsCount ?? 0)
+      setExperienceCount(experiencesCount ?? 0)
+      setOrderCount(activityOrdersCount ?? 0)
+      setRecentOrders((recentActivities ?? []).map((item) => ({
+        id: item.id,
+        description: item.description || item.title,
+        title: item.title,
+        created_at: item.created_at,
+      })))
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, org_name, department, municipality, user_type')
+        .eq('id', user.id)
+        .single()
+
+      if (data) {
+        const role = (data.user_type as UserRole) ?? null
+        setUserRole(role)
+        setName(`${data.first_name} ${data.last_name}`)
+        setOrg(data.org_name || 'Sin organización')
+        setLocation(`${data.municipality}, ${data.department}`)
+
+        if (role === 'asociacion') {
+          const { data: productsData } = await supabase
+            .from('products')
+            .select('id, price')
+            .eq('producer_id', user.id)
+
+          const productLookup = new Map((productsData ?? []).map((item) => [item.id, Number(item.price ?? 0)]))
+          const ownedProductIds = (productsData ?? []).map((item) => item.id)
+          let salesCount = 0
+          let incomeAmount = 0
+
+          if (ownedProductIds.length > 0) {
+            const { data: reservationsData } = await supabase
+              .from('reservations')
+              .select('product_id, quantity, total')
+              .in('product_id', ownedProductIds)
+
+            salesCount = reservationsData?.length ?? 0
+            incomeAmount = (reservationsData ?? []).reduce((sum, item) => {
+              const quantity = Number(item.quantity ?? 1)
+              const priceFromProduct = productLookup.get(item.product_id) ?? 0
+              const total = Number(item.total ?? 0)
+              const fallbackValue = Number.isFinite(priceFromProduct) ? priceFromProduct * quantity : 0
+              return sum + (Number.isFinite(total) && total > 0 ? total : fallbackValue)
+            }, 0)
+          }
+
+          setStats({ sales: salesCount, income: incomeAmount, active: productsData?.length ?? 0 })
+        }
+
+        if (role === 'turismo') {
+          const { data: experiencesData } = await supabase
+            .from('experiences')
+            .select('id, price')
+            .eq('host_id', user.id)
+
+          const experienceLookup = new Map((experiencesData ?? []).map((item) => [item.id, Number(item.price ?? 0)]))
+          const ownedExperienceIds = (experiencesData ?? []).map((item) => item.id)
+          let salesCount = 0
+          let incomeAmount = 0
+
+          if (ownedExperienceIds.length > 0) {
+            const { data: reservationsData } = await supabase
+              .from('reservations')
+              .select('experience_id, quantity, total')
+              .in('experience_id', ownedExperienceIds)
+
+            salesCount = reservationsData?.length ?? 0
+            incomeAmount = (reservationsData ?? []).reduce((sum, item) => {
+              const quantity = Number(item.quantity ?? 1)
+              const priceFromExperience = experienceLookup.get(item.experience_id) ?? 0
+              const total = Number(item.total ?? 0)
+              const fallbackValue = Number.isFinite(priceFromExperience) ? priceFromExperience * quantity : 0
+              return sum + (Number.isFinite(total) && total > 0 ? total : fallbackValue)
+            }, 0)
+          }
+
+          setStats({ sales: salesCount, income: incomeAmount, active: experiencesData?.length ?? 0 })
+        }
+      }
+      setLoading(false)
+    }
+
+    loadProfile()
+  }, [])
+
+  const menuItems = [
+    {
+      icon: '📦',
+      label: 'Mis Productos',
+      sublabel: `${productCount} ${productCount === 1 ? 'publicado' : 'publicados'}`,
+      color: '#2A5C1A',
+      allowedFor: ['asociacion'] as UserRole[],
+    },
+    {
+      icon: '🏞️',
+      label: 'Mis Experiencias',
+      sublabel: `${experienceCount} ${experienceCount === 1 ? 'activa' : 'activas'}`,
+      color: '#D4870A',
+      allowedFor: ['turismo'] as UserRole[],
+    },
+    { icon: '💬', label: 'Mensajes', sublabel: 'Próximamente', color: '#7FB069', allowedFor: ['asociacion', 'turismo', 'comprador'] as UserRole[] },
+    { icon: '📊', label: 'Estadísticas', sublabel: 'Ver ventas e ingresos', color: '#C4622D', allowedFor: ['asociacion', 'turismo'] as UserRole[] },
+    { icon: '⭐', label: 'Reseñas', sublabel: '4.8 promedio', color: '#6B4C2A', allowedFor: ['asociacion', 'turismo'] as UserRole[] },
+    { icon: '📋', label: 'Mis Pedidos', sublabel: `${orderCount} ${orderCount === 1 ? 'activo' : 'activos'}`, color: '#3D7A28', allowedFor: ['comprador'] as UserRole[] },
+  ]
+
+  const visibleMenuItems = userRole
+    ? menuItems.filter((item) => item.allowedFor.includes(userRole))
+    : menuItems.filter((item) => item.allowedFor.includes('comprador'))
 
   return (
-    <div className="h-full overflow-y-auto" style={{ background: '#FAF7EF' }}>
-      {/* Header */}
-      <div
-        style={{
-          background: 'linear-gradient(160deg, #1C3F10 0%, #2A5C1A 60%, #3D7A28 100%)',
-          padding: '20px 20px 60px',
-          position: 'relative',
-        }}
-      >
-        <div className="flex items-center justify-between mb-1">
-          <h2 style={{ fontFamily: 'Fraunces, serif', fontSize: 22, color: '#FAF7EF', margin: 0, fontWeight: 700 }}>
-            Mi Perfil
-          </h2>
-          <button
-            onClick={() => setEditing(!editing)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 20,
-              border: '1.5px solid rgba(255,255,255,0.4)',
-              background: 'transparent',
-              color: '#FAF7EF',
-              fontSize: 12,
-              fontWeight: 700,
-              fontFamily: 'Nunito, sans-serif',
-              cursor: 'pointer',
-            }}
-          >
-            {editing ? '✓ Guardar' : '✏️ Editar'}
-          </button>
-        </div>
-      </div>
-
-      <div style={{ padding: '0 20px', marginTop: -44 }}>
-        {/* Profile card */}
+    <ScreenShell
+      title="Mi Perfil"
+      action={
+        <button
+          onClick={async () => {
+            if (editing && userId) {
+              await supabase.from('profiles').update({ org_name: org }).eq('id', userId)
+            }
+            setEditing(!editing)
+          }}
+          style={{
+            padding: '7px 14px',
+            borderRadius: 20,
+            border: '1.5px solid rgba(255,255,255,0.4)',
+            background: 'rgba(255,255,255,0.08)',
+            color: '#FAF7EF',
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: 'Nunito, sans-serif',
+            cursor: 'pointer',
+          }}
+        >
+          {editing ? '✓ Guardar' : '✏️ Editar'}
+        </button>
+      }
+      contentStyle={{ paddingBottom: 20 }}
+    >
+      {loading ? (
         <div
           style={{
             background: '#fff',
@@ -65,158 +219,163 @@ export default function ProfileScreen() {
             border: '1px solid #E8E0CF',
           }}
         >
-          <div className="flex items-center gap-4 mb-4">
-            <div
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: '50%',
-                overflow: 'hidden',
-                border: '3px solid #2A5C1A',
-                flexShrink: 0,
-              }}
-            >
-              <img
-                src="https://images.unsplash.com/photo-1509099381441-ea3c0cf98b94?w=120&h=120&fit=crop&auto=format"
-                alt="Perfil"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              {editing ? (
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 700,
-                    fontFamily: 'Fraunces, serif',
-                    color: '#1C3F10',
-                    border: '1.5px solid #2A5C1A',
-                    borderRadius: 8,
-                    padding: '4px 8px',
-                    width: '100%',
-                    outline: 'none',
-                    marginBottom: 4,
-                  }}
-                />
-              ) : (
-                <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'Fraunces, serif', color: '#1C3F10', marginBottom: 3 }}>
-                  {name}
-                </div>
-              )}
-              {editing ? (
-                <input
-                  value={org}
-                  onChange={(e) => setOrg(e.target.value)}
-                  style={{
-                    fontSize: 12,
-                    fontFamily: 'Nunito, sans-serif',
-                    color: '#8A8070',
-                    border: '1.5px solid #E8E0CF',
-                    borderRadius: 8,
-                    padding: '4px 8px',
-                    width: '100%',
-                    outline: 'none',
-                  }}
-                />
-              ) : (
-                <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
-                  🏢 {org}
-                </div>
-              )}
-              <div style={{ fontSize: 12, color: '#7FB069', fontFamily: 'Nunito, sans-serif', marginTop: 3, fontWeight: 600 }}>
-                📍 Huila, Colombia
+            <div className="flex items-center gap-4 mb-4">
+              <div className="animate-pulse" style={{ width: 72, height: 72, borderRadius: '50%', background: '#E9E2D9' }} />
+              <div style={{ flex: 1, display: 'grid', gap: 8 }}>
+                <div className="animate-pulse" style={{ height: 18, borderRadius: 8, background: '#E9E2D9' }} />
+                <div className="animate-pulse" style={{ height: 12, width: '70%', borderRadius: 8, background: '#E9E2D9' }} />
+                <div className="animate-pulse" style={{ height: 12, width: '55%', borderRadius: 8, background: '#E9E2D9' }} />
               </div>
             </div>
+            <div className="animate-pulse" style={{ height: 50, borderRadius: 14, background: '#F1EAE0' }} />
           </div>
-
-          {/* Stats row */}
+        ) : (
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gap: 0,
-              background: '#F5F2EA',
-              borderRadius: 14,
-              overflow: 'hidden',
+              background: '#fff',
+              borderRadius: 24,
+              padding: '20px',
+              marginBottom: 20,
+              boxShadow: '0 4px 24px rgba(42,92,26,0.12)',
+              border: '1px solid #E8E0CF',
             }}
           >
-            {[
-              { value: '12', label: 'Productos', icon: '📦' },
-              { value: '4.8⭐', label: 'Calificación', icon: '' },
-              { value: '$2.4M', label: 'Ventas', icon: '💰' },
-            ].map((s, i) => (
+            <div className="flex items-center gap-4 mb-4">
               <div
-                key={s.label}
                 style={{
-                  padding: '12px 8px',
-                  textAlign: 'center',
-                  borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
+                  width: 72,
+                  height: 72,
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  border: '3px solid #2A5C1A',
+                  flexShrink: 0,
                 }}
               >
-                <div
-                  style={{
-                    fontSize: 16,
-                    fontWeight: 700,
-                    color: '#2A5C1A',
-                    fontFamily: 'Fraunces, serif',
-                  }}
-                >
-                  {s.value}
-                </div>
-                <div style={{ fontSize: 10, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
-                  {s.label}
+                <img
+                  src="https://images.unsplash.com/photo-1509099381441-ea3c0cf98b94?w=120&h=120&fit=crop&auto=format"
+                  alt="Perfil"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                {editing ? (
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    style={{
+                      fontSize: 16,
+                      fontWeight: 700,
+                      fontFamily: 'Fraunces, serif',
+                      color: '#1C3F10',
+                      border: '1.5px solid #2A5C1A',
+                      borderRadius: 8,
+                      padding: '4px 8px',
+                      width: '100%',
+                      outline: 'none',
+                      marginBottom: 4,
+                    }}
+                  />
+                ) : (
+                  <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'Fraunces, serif', color: '#1C3F10', marginBottom: 3 }}>
+                    {name}
+                  </div>
+                )}
+                {editing ? (
+                  <input
+                    value={org}
+                    onChange={(e) => setOrg(e.target.value)}
+                    style={{
+                      fontSize: 12,
+                      fontFamily: 'Nunito, sans-serif',
+                      color: '#8A8070',
+                      border: '1.5px solid #E8E0CF',
+                      borderRadius: 8,
+                      padding: '4px 8px',
+                      width: '100%',
+                      outline: 'none',
+                    }}
+                  />
+                ) : (
+                  <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                    🏢 {org}
+                  </div>
+                )}
+                <div style={{ fontSize: 12, color: '#7FB069', fontFamily: 'Nunito, sans-serif', marginTop: 3, fontWeight: 600 }}>
+                  📍 {location}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            </div>
 
-        {/* Certifications */}
-        <div style={{ marginBottom: 20 }}>
-          <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
-            Certificaciones
-          </h3>
-          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            {certifications.map((cert) => (
+            {!isBuyer && (
               <div
-                key={cert.label}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  padding: '8px 14px',
-                  borderRadius: 20,
-                  background: cert.active ? '#2A5C1A' : '#F5F2EA',
-                  border: cert.active ? 'none' : '1.5px dashed #C8BFA8',
-                  opacity: cert.active ? 1 : 0.6,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr',
+                  gap: 0,
+                  background: '#F5F2EA',
+                  borderRadius: 14,
+                  overflow: 'hidden',
                 }}
               >
-                <span style={{ fontSize: 16 }}>{cert.icon}</span>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 700,
-                    color: cert.active ? '#FAF7EF' : '#8A8070',
-                    fontFamily: 'Nunito, sans-serif',
-                  }}
-                >
-                  {cert.label}
-                </span>
+                {[
+                  { value: String(productCount), label: productCount === 1 ? 'Producto' : 'Productos', icon: '📦' },
+                  { value: String(experienceCount), label: experienceCount === 1 ? 'Experiencia' : 'Experiencias', icon: '🏞️' },
+                  { value: '4.8⭐', label: 'Calificación', icon: '' },
+                ].map((s, i) => (
+                  <div
+                    key={s.label}
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'center',
+                      borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 16,
+                        fontWeight: 700,
+                        color: '#2A5C1A',
+                        fontFamily: 'Fraunces, serif',
+                      }}
+                    >
+                      {s.value}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                      {s.label}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        </div>
+        )}
 
         {/* Menu items */}
         <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
           Mi cuenta
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-          {menuItems.map((item) => (
+          {visibleMenuItems.map((item) => (
             <div
               key={item.label}
+              onClick={() => {
+                if (item.label === 'Mis Pedidos' && isBuyer) {
+                  setActiveSection('orders')
+                  setShowAllOrders(false)
+                  return
+                }
+
+                if (item.label === 'Mensajes') {
+                  return
+                }
+
+                if (item.label === 'Estadísticas') {
+                  setActiveSection('stats')
+                  return
+                }
+
+                setActiveSection('overview')
+              }}
               style={{
                 background: '#fff',
                 borderRadius: 16,
@@ -256,6 +415,262 @@ export default function ProfileScreen() {
           ))}
         </div>
 
+        {isBuyer && activeSection === 'orders' && (
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 18,
+              padding: '16px',
+              marginBottom: 20,
+              border: '1px solid #E8E0CF',
+              boxShadow: '0 4px 18px rgba(42,92,26,0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10' }}>
+                Mis pedidos
+              </h3>
+              <button
+                onClick={() => setActiveSection('overview')}
+                style={{
+                  border: 'none',
+                  background: '#F5F2EA',
+                  color: '#2A5C1A',
+                  borderRadius: 999,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'Nunito, sans-serif',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+            {recentOrders.length === 0 ? (
+              <div style={{ fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                Todavía no has comprado ni reservado nada.
+              </div>
+            ) : (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {(showAllOrders ? recentOrders : recentOrders.slice(0, 5)).map((item) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        border: '1px solid #E8E0CF',
+                        borderRadius: 12,
+                        padding: '10px 12px',
+                        background: '#FAF7EF',
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
+                        {item.title}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#6B5F50', fontFamily: 'Nunito, sans-serif', marginTop: 4 }}>
+                        {item.description}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {recentOrders.length > 5 && (
+                  <button
+                    onClick={() => setShowAllOrders((prev) => !prev)}
+                    style={{
+                      marginTop: 12,
+                      width: '100%',
+                      border: '1px solid #D8E7D4',
+                      borderRadius: 12,
+                      background: '#F5FAF2',
+                      color: '#2A5C1A',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: 'Nunito, sans-serif',
+                      padding: '10px 12px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {showAllOrders ? 'Ver menos' : 'Ver más'}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {activeSection === 'messages' && (
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 18,
+              padding: '16px',
+              marginBottom: 20,
+              border: '1px solid #E8E0CF',
+              boxShadow: '0 4px 18px rgba(42,92,26,0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10' }}>
+                Mensajes
+              </h3>
+              <button
+                onClick={() => setActiveSection('overview')}
+                style={{
+                  border: 'none',
+                  background: '#F5F2EA',
+                  color: '#2A5C1A',
+                  borderRadius: 999,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'Nunito, sans-serif',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {(showAllMessages ? messageThreads : messageThreads.slice(0, 5)).map((message) => (
+                <div
+                  key={message.id}
+                  style={{
+                    border: '1px solid #E8E0CF',
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                    background: '#FAF7EF',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
+                      {message.sender}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                      {message.time}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#6B5F50', fontFamily: 'Nunito, sans-serif', marginTop: 4 }}>
+                    {message.preview}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {messageThreads.length > 5 && (
+              <button
+                onClick={() => setShowAllMessages((prev) => !prev)}
+                style={{
+                  marginTop: 12,
+                  width: '100%',
+                  border: '1px solid #D8E7D4',
+                  borderRadius: 12,
+                  background: '#F5FAF2',
+                  color: '#2A5C1A',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: 'Nunito, sans-serif',
+                  padding: '10px 12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {showAllMessages ? 'Ver menos' : 'Ver más'}
+              </button>
+            )}
+          </div>
+        )}
+
+        {(userRole === 'asociacion' || userRole === 'turismo') && activeSection === 'stats' && (
+          <div
+            style={{
+              background: '#fff',
+              borderRadius: 18,
+              padding: '16px',
+              marginBottom: 20,
+              border: '1px solid #E8E0CF',
+              boxShadow: '0 4px 18px rgba(42,92,26,0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10' }}>
+                Estadísticas
+              </h3>
+              <button
+                onClick={() => setActiveSection('overview')}
+                style={{
+                  border: 'none',
+                  background: '#F5F2EA',
+                  color: '#2A5C1A',
+                  borderRadius: 999,
+                  padding: '6px 10px',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  fontFamily: 'Nunito, sans-serif',
+                  cursor: 'pointer',
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ background: '#F5F2EA', borderRadius: 14, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 4 }}>Ventas</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#1C3F10', fontFamily: 'Fraunces, serif' }}>{stats.sales}</div>
+              </div>
+              <div style={{ background: '#F5F2EA', borderRadius: 14, padding: '12px 14px' }}>
+                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 4 }}>Ingresos</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#1C3F10', fontFamily: 'Fraunces, serif' }}>${stats.income.toLocaleString('es-CO')}</div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 14, background: '#F5FAF2', borderRadius: 14, padding: '12px 14px', border: '1px solid #D8E7D4' }}>
+              <div style={{ fontSize: 12, color: '#5F6F57', fontFamily: 'Nunito, sans-serif' }}>
+                {userRole === 'asociacion' ? 'Productos activos' : 'Experiencias activas'}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#2A5C1A', fontFamily: 'Fraunces, serif', marginTop: 4 }}>{stats.active}</div>
+            </div>
+          </div>
+        )}
+
+        {!isBuyer && (
+          <div style={{ marginBottom: 20 }}>
+            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
+              Certificaciones
+            </h3>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {certifications.map((cert) => (
+                <div
+                  key={cert.label}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 14px',
+                    borderRadius: 20,
+                    background: cert.active ? '#2A5C1A' : '#F5F2EA',
+                    border: cert.active ? 'none' : '1.5px dashed #C8BFA8',
+                    opacity: cert.active ? 1 : 0.6,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{cert.icon}</span>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: cert.active ? '#FAF7EF' : '#8A8070',
+                      fontFamily: 'Nunito, sans-serif',
+                    }}
+                  >
+                    {cert.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Help section */}
         <div
           style={{
@@ -282,6 +697,7 @@ export default function ProfileScreen() {
 
         {/* Logout */}
         <button
+          onClick={() => supabase.auth.signOut()}
           style={{
             width: '100%',
             padding: '13px',
@@ -298,7 +714,6 @@ export default function ProfileScreen() {
         >
           Cerrar sesión
         </button>
-      </div>
-    </div>
+    </ScreenShell>
   )
 }

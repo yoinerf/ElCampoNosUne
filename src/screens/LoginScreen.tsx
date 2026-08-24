@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { supabase } from '../lib/supabase'
 
 interface Props {
   onLogin: () => void
@@ -12,15 +13,28 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const handleLogin = () => {
-    if (!email || !password) {
-      setError('Ingresa tu correo y contraseña')
-      return
-    }
-    setError('')
-    setLoading(true)
-    setTimeout(() => { setLoading(false); onLogin() }, 900)
+  const handleLogin = async () => {
+  if (!email || !password) {
+    setError('Ingresa tu correo y contraseña')
+    return
   }
+  setError('')
+  setLoading(true)
+
+  const { error: loginError } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  setLoading(false)
+
+  if (loginError) {
+    setError('Correo o contraseña incorrectos')
+    return
+  }
+
+  onLogin()
+}
 
   return (
     <div className="h-full flex flex-col overflow-hidden" style={{ background: '#FAF7EF' }}>

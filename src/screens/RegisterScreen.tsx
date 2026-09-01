@@ -1,9 +1,12 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import logoSrc from '../assets/logo-nofond.png'
 
 interface Props {
   onComplete: () => void
   onLogin: () => void
+  onBackToStore?: () => void
+  onBackToHome?: () => void
 }
 
 type UserType = 'asociacion' | 'turismo' | 'comprador' | null
@@ -77,9 +80,11 @@ const productCategories = [
   { icon: '🐟', label: 'Pesca' },
 ]
 
-export default function RegisterScreen({ onComplete, onLogin }: Props) {
+export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome }: Props) {
   const [step, setStep] = useState(0)
   const [userType, setUserType] = useState<UserType>(null)
+
+  const handleBack = onBackToHome || onBackToStore
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -99,12 +104,23 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
   const [submitError, setSubmitError] = useState('')
   const [departments, setDepartments] = useState<string[]>(fallbackDepartments)
 
+  const [producerCount, setProducerCount] = useState<number | null>(null)
+
   const TOTAL_STEPS = 4
 
   useEffect(() => {
     let active = true
 
-    const loadDepartments = async () => {
+    const loadData = async () => {
+      const { count, error: countErr } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .in('user_type', ['asociacion', 'turismo'])
+
+      if (!countErr && typeof count === 'number' && active) {
+        setProducerCount(count)
+      }
+
       const { data, error } = await supabase
         .from('departments')
         .select('name')
@@ -123,7 +139,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
       if (active) setDepartments(values.length > 0 ? values : fallbackDepartments)
     }
 
-    loadDepartments()
+    loadData()
 
     return () => {
       active = false
@@ -265,27 +281,51 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                 overflow: 'hidden',
               }}
             >
+              {/* Botón Volver al inicio */}
+              {handleBack && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  style={{
+                    position: 'relative',
+                    zIndex: 10,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'rgba(255,255,255,0.14)',
+                    border: '1px solid rgba(255,255,255,0.22)',
+                    borderRadius: 12,
+                    padding: '6px 14px',
+                    color: '#F5EEE6',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    cursor: 'pointer',
+                    marginBottom: 16,
+                    backdropFilter: 'blur(8px)',
+                    transition: 'background 180ms ease',
+                  }}
+                >
+                  ← Volver al inicio
+                </button>
+              )}
+
               <div style={{ position: 'absolute', top: 18, right: 18, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(5px)' }} />
               <div style={{ position: 'absolute', bottom: -12, left: 20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(240,168,48,0.10)', filter: 'blur(4px)' }} />
 
-              <div
-                style={{
-                  position: 'relative',
-                  zIndex: 1,
-                  width: 78,
-                  height: 78,
-                  borderRadius: 22,
-                  background: 'rgba(255,255,255,0.12)',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 36,
-                  margin: '0 auto 18px',
-                  boxShadow: '0 14px 28px rgba(10, 40, 15, 0.25)',
-                }}
-              >
-                🌿
+              {/* Logo grande directo sin contenedor */}
+              <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 16 }}>
+                <img
+                  src={logoSrc}
+                  alt="El Campo Nos Une"
+                  style={{
+                    height: 86,
+                    width: 'auto',
+                    display: 'block',
+                    margin: '0 auto',
+                    filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))',
+                  }}
+                />
               </div>
 
               <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
@@ -367,7 +407,13 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                   letterSpacing: 0.08,
                 }}
               >
-                +2.400 productores y comunidades ya están conectados
+                {producerCount === null
+                  ? 'Cargando comunidades...'
+                  : producerCount === 0
+                  ? 'Sé el primero en conectar tu comunidad o emprendimiento'
+                  : producerCount === 1
+                  ? '1 productor o comunidad ya está conectado'
+                  : `+${producerCount.toLocaleString('es-CO')} productores y comunidades ya están conectados`}
               </p>
             </div>
           </div>
@@ -546,10 +592,10 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                   <div
                     style={{
                       height: '100%',
+                      width: `${(step / (TOTAL_STEPS - 1)) * 100}%`,
+                      background: 'linear-gradient(90deg, #E5AE30 0%, #6BAA3D 100%)',
                       borderRadius: 2,
-                      background: 'linear-gradient(90deg, #E5AE30, #D4870A)',
-                      width: `${((step) / (TOTAL_STEPS - 1)) * 100}%`,
-                      transition: 'width 0.3s ease',
+                      transition: 'width 300ms ease',
                     }}
                   />
                 </div>

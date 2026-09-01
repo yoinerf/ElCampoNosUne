@@ -30,10 +30,12 @@ interface Experience {
 
 interface TourismScreenProps {
   onRequireAuth?: (mode: 'login' | 'auth') => void
-  onNavigate?: (tab: 'market' | 'tourism') => void
+  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onProfileClick?: () => void
 }
 
-export default function TourismScreen({ onRequireAuth, onNavigate }: TourismScreenProps) {
+export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick }: TourismScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [searchVal, setSearchVal] = useState('')
   const [experiences, setExperiences] = useState<Experience[]>([])
@@ -431,19 +433,27 @@ export default function TourismScreen({ onRequireAuth, onNavigate }: TourismScre
         </div>
       ) : (
         <ScreenShell
-          title="Turismo Comunitario"
-          subtitle="Experiencias auténticas con comunidades rurales"
-          searchPlaceholder="Buscar experiencias..."
-          searchValue={searchVal}
-          onSearchChange={setSearchVal}
+          activeNav={activeNav ?? 'tourism'}
+          onNavigate={onNavigate}
+          onProfileClick={onProfileClick}
           contentStyle={{ paddingBottom: 20 }}
-          topNavigation={
-            <div className="shell-navigation">
-              <button type="button" onClick={() => onNavigate?.('market')} className="shell-navigation-button">Mercados</button>
-              <button type="button" onClick={() => onNavigate?.('tourism')} className="shell-navigation-button active">Turismo</button>
-            </div>
-          }
         >
+          {/* ══ BANNER TURISMO ══ */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, #9B4728 0%, #BA5A30 100%)',
+              borderRadius: '0 0 28px 28px',
+              padding: '22px 20px 28px',
+              margin: '0 -18px 20px',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(229,174,48,0.15)', pointerEvents: 'none' }} />
+            <p style={{ margin: 0, color: '#E5AE30', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>🌍 TURISMO COMUNITARIO</p>
+            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#F5EEE6', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Experiencias del campo</h1>
+            <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Vive el territorio con comunidades rurales colombianas</p>
+          </div>
           
 
           <div style={{ flex: 1, overflowY: 'auto' }}>

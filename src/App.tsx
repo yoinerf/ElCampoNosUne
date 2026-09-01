@@ -74,20 +74,40 @@ export default function App() {
     }
   }, [flow, visibleTabs, activeTab])
 
-  const statusBg = flow === 'app' ? '#205134' : '#205134'
+  /** Verifica si el usuario está autenticado antes de mostrar el perfil */
+  const handleProfileClick = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setFlow('auth')
+    } else {
+      setActiveTab('profile')
+    }
+  }
+
+  const returnToStore = () => {
+    setFlow('app')
+    setActiveTab('market')
+  }
+
+  const returnToHome = () => {
+    setFlow('app')
+    setActiveTab('home')
+  }
 
   const mainScreens: Record<Tab, JSX.Element> = {
-    home: <HomeScreen onNavigate={setActiveTab} />,
+    home: <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />,
     market: (
-        <MarketplaceScreen
-          onNavigate={setActiveTab}
+      <MarketplaceScreen
+        onNavigate={setActiveTab}
+        activeNav={activeTab}
+        onProfileClick={handleProfileClick}
         onOpenCheckout={(products, onConfirm) => {
           setCheckoutItems(products)
           setCheckoutConfirm(() => onConfirm)
         }}
       />
     ),
-    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} />,
+    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />,
     profile: <ProfileScreen />,
   }
 
@@ -95,41 +115,49 @@ export default function App() {
     return (
       <div
         className="flex items-center justify-center min-h-screen"
-        style={{ background: '#205134', color: '#F5EEE6', fontFamily: "'Nunito Sans', sans-serif" }}
+        style={{ background: '#F5EEE6', color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}
       >
-        Cargando...
+        <div style={{ textAlign: 'center' }}>
+          <img
+            src="/src/assets/logo-nofond.png"
+            alt="El Campo Nos Une"
+            style={{ height: 60, margin: '0 auto 16px', display: 'block' }}
+          />
+          <p style={{ fontSize: 15, fontWeight: 600 }}>Cargando...</p>
+        </div>
       </div>
     )
-}
+  }
 
   return (
     <div className="min-h-screen w-full" style={{ background: '#F5EEE6' }}>
-      <div className="min-h-screen w-full" style={{ background: statusBg }}>
-        <div className="min-h-screen w-full flex flex-col" style={{ background: '#F5EEE6' }}>
-          <div className="flex-1 overflow-y-auto">
-            {flow === 'auth' && (
-              <RegisterScreen
-                onComplete={() => setFlow('app')}
-                onLogin={() => setFlow('login')}
-              />
-            )}
-            {flow === 'login' && (
-              <LoginScreen
-                onLogin={() => setFlow('app')}
-                onRegister={() => setFlow('auth')}
-              />
-            )}
-            {flow === 'app' && (checkoutConfirm ? (
-              <CheckoutScreen
-                items={checkoutItems}
-                onItemsChange={setCheckoutItems}
-                onBack={() => setCheckoutConfirm(null)}
-                onConfirm={checkoutConfirm}
-                onRequireAuth={(mode) => setFlow(mode)}
-              />
-            ) : mainScreens[activeTab])}
-          </div>
-
+      <div className="min-h-screen w-full flex flex-col">
+        <div className="flex-1 overflow-y-auto">
+          {flow === 'auth' && (
+            <RegisterScreen
+              onComplete={() => setFlow('app')}
+              onLogin={() => setFlow('login')}
+              onBackToStore={returnToStore}
+              onBackToHome={returnToHome}
+            />
+          )}
+          {flow === 'login' && (
+            <LoginScreen
+              onLogin={() => setFlow('app')}
+              onRegister={() => setFlow('auth')}
+              onBackToStore={returnToStore}
+              onBackToHome={returnToHome}
+            />
+          )}
+          {flow === 'app' && (checkoutConfirm ? (
+            <CheckoutScreen
+              items={checkoutItems}
+              onItemsChange={setCheckoutItems}
+              onBack={() => setCheckoutConfirm(null)}
+              onConfirm={checkoutConfirm}
+              onRequireAuth={(mode) => setFlow(mode)}
+            />
+          ) : mainScreens[activeTab])}
         </div>
       </div>
     </div>

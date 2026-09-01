@@ -1,40 +1,45 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import logoSrc from '../assets/logo-nofond.png'
 
 interface Props {
   onLogin: () => void
   onRegister: () => void
+  onBackToStore?: () => void
+  onBackToHome?: () => void
 }
 
-export default function LoginScreen({ onLogin, onRegister }: Props) {
+export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBackToHome }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  const handleBack = onBackToHome || onBackToStore
+
   const handleLogin = async () => {
-  if (!email || !password) {
-    setError('Ingresa tu correo y contraseña')
-    return
+    if (!email || !password) {
+      setError('Ingresa tu correo y contraseña')
+      return
+    }
+    setError('')
+    setLoading(true)
+
+    const { error: loginError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    setLoading(false)
+
+    if (loginError) {
+      setError('Correo o contraseña incorrectos')
+      return
+    }
+
+    onLogin()
   }
-  setError('')
-  setLoading(true)
-
-  const { error: loginError } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  })
-
-  setLoading(false)
-
-  if (loginError) {
-    setError('Correo o contraseña incorrectos')
-    return
-  }
-
-  onLogin()
-}
 
   return (
     <div
@@ -75,27 +80,51 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
               overflow: 'hidden',
             }}
           >
+            {/* Botón Volver al inicio */}
+            {handleBack && (
+              <button
+                type="button"
+                onClick={handleBack}
+                style={{
+                  position: 'relative',
+                  zIndex: 10,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'rgba(255,255,255,0.14)',
+                  border: '1px solid rgba(255,255,255,0.22)',
+                  borderRadius: 12,
+                  padding: '6px 14px',
+                  color: '#F5EEE6',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  cursor: 'pointer',
+                  marginBottom: 16,
+                  backdropFilter: 'blur(8px)',
+                  transition: 'background 180ms ease',
+                }}
+              >
+                ← Volver al inicio
+              </button>
+            )}
+
             <div style={{ position: 'absolute', top: 18, right: 18, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(5px)' }} />
             <div style={{ position: 'absolute', bottom: -12, left: 20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(229,174,48,0.10)', filter: 'blur(4px)' }} />
 
-            <div
-              style={{
-                position: 'relative',
-                zIndex: 1,
-                width: 78,
-                height: 78,
-                borderRadius: 22,
-                background: 'rgba(255,255,255,0.12)',
-                border: '1px solid rgba(255,255,255,0.18)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 36,
-                margin: '0 auto 18px',
-                boxShadow: '0 14px 28px rgba(10, 40, 15, 0.25)',
-              }}
-            >
-              🌿
+            {/* Logo grande directo sin contenedor */}
+            <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 16 }}>
+              <img
+                src={logoSrc}
+                alt="El Campo Nos Une"
+                style={{
+                  height: 86,
+                  width: 'auto',
+                  display: 'block',
+                  margin: '0 auto',
+                  filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))',
+                }}
+              />
             </div>
 
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>

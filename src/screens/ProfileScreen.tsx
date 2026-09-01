@@ -160,20 +160,20 @@ export default function ProfileScreen() {
       icon: '📦',
       label: 'Mis Productos',
       sublabel: `${productCount} ${productCount === 1 ? 'publicado' : 'publicados'}`,
-      color: '#2A5C1A',
+      color: '#205134',
       allowedFor: ['asociacion'] as UserRole[],
     },
     {
       icon: '🏞️',
       label: 'Mis Experiencias',
       sublabel: `${experienceCount} ${experienceCount === 1 ? 'activa' : 'activas'}`,
-      color: '#D4870A',
+      color: '#E5AE30',
       allowedFor: ['turismo'] as UserRole[],
     },
-    { icon: '💬', label: 'Mensajes', sublabel: 'Próximamente', color: '#7FB069', allowedFor: ['asociacion', 'turismo', 'comprador'] as UserRole[] },
-    { icon: '📊', label: 'Estadísticas', sublabel: 'Ver ventas e ingresos', color: '#C4622D', allowedFor: ['asociacion', 'turismo'] as UserRole[] },
-    { icon: '⭐', label: 'Reseñas', sublabel: '4.8 promedio', color: '#6B4C2A', allowedFor: ['asociacion', 'turismo'] as UserRole[] },
-    { icon: '📋', label: 'Mis Pedidos', sublabel: `${orderCount} ${orderCount === 1 ? 'activo' : 'activos'}`, color: '#3D7A28', allowedFor: ['comprador'] as UserRole[] },
+    { icon: '💬', label: 'Mensajes', sublabel: 'Próximamente', color: '#6BAA3D', allowedFor: ['asociacion', 'turismo', 'comprador'] as UserRole[] },
+    { icon: '📊', label: 'Estadísticas', sublabel: 'Ver ventas e ingresos', color: '#9B4728', allowedFor: ['asociacion', 'turismo'] as UserRole[] },
+    { icon: '⭐', label: 'Reseñas', sublabel: '4.8 promedio', color: '#9B4728', allowedFor: ['asociacion', 'turismo'] as UserRole[] },
+    { icon: '📋', label: 'Mis Pedidos', sublabel: `${orderCount} ${orderCount === 1 ? 'activo' : 'activos'}`, color: '#2A6340', allowedFor: ['comprador'] as UserRole[] },
   ]
 
   const visibleMenuItems = userRole
@@ -196,10 +196,10 @@ export default function ProfileScreen() {
             borderRadius: 20,
             border: '1.5px solid rgba(255,255,255,0.4)',
             background: 'rgba(255,255,255,0.08)',
-            color: '#FAF7EF',
+            color: '#F5EEE6',
             fontSize: 12,
             fontWeight: 700,
-            fontFamily: 'Nunito, sans-serif',
+            fontFamily: "'Nunito Sans', sans-serif",
             cursor: 'pointer',
           }}
         >
@@ -216,7 +216,7 @@ export default function ProfileScreen() {
             padding: '20px',
             marginBottom: 20,
             boxShadow: '0 4px 24px rgba(42,92,26,0.12)',
-            border: '1px solid #E8E0CF',
+            border: '1px solid #E8DED0',
           }}
         >
             <div className="flex items-center gap-4 mb-4">
@@ -237,7 +237,7 @@ export default function ProfileScreen() {
               padding: '20px',
               marginBottom: 20,
               boxShadow: '0 4px 24px rgba(42,92,26,0.12)',
-              border: '1px solid #E8E0CF',
+              border: '1px solid #E8DED0',
             }}
           >
             <div className="flex items-center gap-4 mb-4">
@@ -247,7 +247,7 @@ export default function ProfileScreen() {
                   height: 72,
                   borderRadius: '50%',
                   overflow: 'hidden',
-                  border: '3px solid #2A5C1A',
+                  border: '3px solid #205134',
                   flexShrink: 0,
                 }}
               >
@@ -265,9 +265,9 @@ export default function ProfileScreen() {
                     style={{
                       fontSize: 16,
                       fontWeight: 700,
-                      fontFamily: 'Fraunces, serif',
+                      fontFamily: "'Poppins', sans-serif",
                       color: '#1C3F10',
-                      border: '1.5px solid #2A5C1A',
+                      border: '1.5px solid #205134',
                       borderRadius: 8,
                       padding: '4px 8px',
                       width: '100%',
@@ -276,7 +276,7 @@ export default function ProfileScreen() {
                     }}
                   />
                 ) : (
-                  <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'Fraunces, serif', color: '#1C3F10', marginBottom: 3 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700, fontFamily: "'Poppins', sans-serif", color: '#1C3F10', marginBottom: 3 }}>
                     {name}
                   </div>
                 )}
@@ -286,9 +286,9 @@ export default function ProfileScreen() {
                     onChange={(e) => setOrg(e.target.value)}
                     style={{
                       fontSize: 12,
-                      fontFamily: 'Nunito, sans-serif',
-                      color: '#8A8070',
-                      border: '1.5px solid #E8E0CF',
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#666666',
+                      border: '1.5px solid #E8DED0',
                       borderRadius: 8,
                       padding: '4px 8px',
                       width: '100%',
@@ -296,11 +296,11 @@ export default function ProfileScreen() {
                     }}
                   />
                 ) : (
-                  <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                  <div style={{ fontSize: 12, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
                     🏢 {org}
                   </div>
                 )}
-                <div style={{ fontSize: 12, color: '#7FB069', fontFamily: 'Nunito, sans-serif', marginTop: 3, fontWeight: 600 }}>
+                <div style={{ fontSize: 12, color: '#6BAA3D', fontFamily: "'Nunito Sans', sans-serif", marginTop: 3, fontWeight: 600 }}>
                   📍 {location}
                 </div>
               </div>
@@ -327,20 +327,20 @@ export default function ProfileScreen() {
                     style={{
                       padding: '12px 8px',
                       textAlign: 'center',
-                      borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
+                      borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
                     }}
                   >
                     <div
                       style={{
                         fontSize: 16,
                         fontWeight: 700,
-                        color: '#2A5C1A',
-                        fontFamily: 'Fraunces, serif',
+                        color: '#205134',
+                        fontFamily: "'Poppins', sans-serif",
                       }}
                     >
                       {s.value}
                     </div>
-                    <div style={{ fontSize: 10, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                    <div style={{ fontSize: 10, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {s.label}
                     </div>
                   </div>
@@ -351,7 +351,7 @@ export default function ProfileScreen() {
         )}
 
         {/* Menu items */}
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
+        <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
           Mi cuenta
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
@@ -383,7 +383,7 @@ export default function ProfileScreen() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 14,
-                border: '1px solid #E8E0CF',
+                border: '1px solid #E8DED0',
                 cursor: 'pointer',
               }}
             >
@@ -403,10 +403,10 @@ export default function ProfileScreen() {
                 {item.icon}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif" }}>
                   {item.label}
                 </div>
-                <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                <div style={{ fontSize: 12, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
                   {item.sublabel}
                 </div>
               </div>
@@ -422,12 +422,12 @@ export default function ProfileScreen() {
               borderRadius: 18,
               padding: '16px',
               marginBottom: 20,
-              border: '1px solid #E8E0CF',
+              border: '1px solid #E8DED0',
               boxShadow: '0 4px 18px rgba(42,92,26,0.08)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10' }}>
+              <h3 style={{ margin: 0, fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#1C3F10' }}>
                 Mis pedidos
               </h3>
               <button
@@ -435,12 +435,12 @@ export default function ProfileScreen() {
                 style={{
                   border: 'none',
                   background: '#F5F2EA',
-                  color: '#2A5C1A',
+                  color: '#205134',
                   borderRadius: 999,
                   padding: '6px 10px',
                   fontSize: 11,
                   fontWeight: 700,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   cursor: 'pointer',
                 }}
               >
@@ -448,7 +448,7 @@ export default function ProfileScreen() {
               </button>
             </div>
             {recentOrders.length === 0 ? (
-              <div style={{ fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+              <div style={{ fontSize: 13, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
                 Todavía no has comprado ni reservado nada.
               </div>
             ) : (
@@ -458,16 +458,16 @@ export default function ProfileScreen() {
                     <div
                       key={item.id}
                       style={{
-                        border: '1px solid #E8E0CF',
+                        border: '1px solid #E8DED0',
                         borderRadius: 12,
                         padding: '10px 12px',
-                        background: '#FAF7EF',
+                        background: '#F5EEE6',
                       }}
                     >
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif" }}>
                         {item.title}
                       </div>
-                      <div style={{ fontSize: 12, color: '#6B5F50', fontFamily: 'Nunito, sans-serif', marginTop: 4 }}>
+                      <div style={{ fontSize: 12, color: '#6B5F50', fontFamily: "'Nunito Sans', sans-serif", marginTop: 4 }}>
                         {item.description}
                       </div>
                     </div>
@@ -483,10 +483,10 @@ export default function ProfileScreen() {
                       border: '1px solid #D8E7D4',
                       borderRadius: 12,
                       background: '#F5FAF2',
-                      color: '#2A5C1A',
+                      color: '#205134',
                       fontSize: 13,
                       fontWeight: 700,
-                      fontFamily: 'Nunito, sans-serif',
+                      fontFamily: "'Nunito Sans', sans-serif",
                       padding: '10px 12px',
                       cursor: 'pointer',
                     }}
@@ -506,12 +506,12 @@ export default function ProfileScreen() {
               borderRadius: 18,
               padding: '16px',
               marginBottom: 20,
-              border: '1px solid #E8E0CF',
+              border: '1px solid #E8DED0',
               boxShadow: '0 4px 18px rgba(42,92,26,0.08)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10' }}>
+              <h3 style={{ margin: 0, fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#1C3F10' }}>
                 Mensajes
               </h3>
               <button
@@ -519,12 +519,12 @@ export default function ProfileScreen() {
                 style={{
                   border: 'none',
                   background: '#F5F2EA',
-                  color: '#2A5C1A',
+                  color: '#205134',
                   borderRadius: 999,
                   padding: '6px 10px',
                   fontSize: 11,
                   fontWeight: 700,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   cursor: 'pointer',
                 }}
               >
@@ -537,21 +537,21 @@ export default function ProfileScreen() {
                 <div
                   key={message.id}
                   style={{
-                    border: '1px solid #E8E0CF',
+                    border: '1px solid #E8DED0',
                     borderRadius: 12,
                     padding: '10px 12px',
-                    background: '#FAF7EF',
+                    background: '#F5EEE6',
                   }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {message.sender}
                     </div>
-                    <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                    <div style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {message.time}
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: '#6B5F50', fontFamily: 'Nunito, sans-serif', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: '#6B5F50', fontFamily: "'Nunito Sans', sans-serif", marginTop: 4 }}>
                     {message.preview}
                   </div>
                 </div>
@@ -567,10 +567,10 @@ export default function ProfileScreen() {
                   border: '1px solid #D8E7D4',
                   borderRadius: 12,
                   background: '#F5FAF2',
-                  color: '#2A5C1A',
+                  color: '#205134',
                   fontSize: 13,
                   fontWeight: 700,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   padding: '10px 12px',
                   cursor: 'pointer',
                 }}
@@ -588,12 +588,12 @@ export default function ProfileScreen() {
               borderRadius: 18,
               padding: '16px',
               marginBottom: 20,
-              border: '1px solid #E8E0CF',
+              border: '1px solid #E8DED0',
               boxShadow: '0 4px 18px rgba(42,92,26,0.08)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10' }}>
+              <h3 style={{ margin: 0, fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#1C3F10' }}>
                 Estadísticas
               </h3>
               <button
@@ -601,12 +601,12 @@ export default function ProfileScreen() {
                 style={{
                   border: 'none',
                   background: '#F5F2EA',
-                  color: '#2A5C1A',
+                  color: '#205134',
                   borderRadius: 999,
                   padding: '6px 10px',
                   fontSize: 11,
                   fontWeight: 700,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   cursor: 'pointer',
                 }}
               >
@@ -616,27 +616,27 @@ export default function ProfileScreen() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div style={{ background: '#F5F2EA', borderRadius: 14, padding: '12px 14px' }}>
-                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 4 }}>Ventas</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#1C3F10', fontFamily: 'Fraunces, serif' }}>{stats.sales}</div>
+                <div style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 4 }}>Ventas</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#1C3F10', fontFamily: "'Poppins', sans-serif" }}>{stats.sales}</div>
               </div>
               <div style={{ background: '#F5F2EA', borderRadius: 14, padding: '12px 14px' }}>
-                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 4 }}>Ingresos</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#1C3F10', fontFamily: 'Fraunces, serif' }}>${stats.income.toLocaleString('es-CO')}</div>
+                <div style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 4 }}>Ingresos</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#1C3F10', fontFamily: "'Poppins', sans-serif" }}>${stats.income.toLocaleString('es-CO')}</div>
               </div>
             </div>
 
             <div style={{ marginTop: 14, background: '#F5FAF2', borderRadius: 14, padding: '12px 14px', border: '1px solid #D8E7D4' }}>
-              <div style={{ fontSize: 12, color: '#5F6F57', fontFamily: 'Nunito, sans-serif' }}>
+              <div style={{ fontSize: 12, color: '#5F6F57', fontFamily: "'Nunito Sans', sans-serif" }}>
                 {userRole === 'asociacion' ? 'Productos activos' : 'Experiencias activas'}
               </div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#2A5C1A', fontFamily: 'Fraunces, serif', marginTop: 4 }}>{stats.active}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#205134', fontFamily: "'Poppins', sans-serif", marginTop: 4 }}>{stats.active}</div>
             </div>
           </div>
         )}
 
         {!isBuyer && (
           <div style={{ marginBottom: 20 }}>
-            <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
+            <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
               Certificaciones
             </h3>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
@@ -649,7 +649,7 @@ export default function ProfileScreen() {
                     gap: 6,
                     padding: '8px 14px',
                     borderRadius: 20,
-                    background: cert.active ? '#2A5C1A' : '#F5F2EA',
+                    background: cert.active ? '#205134' : '#F5F2EA',
                     border: cert.active ? 'none' : '1.5px dashed #C8BFA8',
                     opacity: cert.active ? 1 : 0.6,
                   }}
@@ -659,8 +659,8 @@ export default function ProfileScreen() {
                     style={{
                       fontSize: 12,
                       fontWeight: 700,
-                      color: cert.active ? '#FAF7EF' : '#8A8070',
-                      fontFamily: 'Nunito, sans-serif',
+                      color: cert.active ? '#F5EEE6' : '#666666',
+                      fontFamily: "'Nunito Sans', sans-serif",
                     }}
                   >
                     {cert.label}
@@ -674,11 +674,11 @@ export default function ProfileScreen() {
         {/* Help section */}
         <div
           style={{
-            background: 'linear-gradient(135deg, #EEE9DC, #FAF7EF)',
+            background: 'linear-gradient(135deg, #EEE9DC, #F5EEE6)',
             borderRadius: 20,
             padding: '18px 20px',
             marginBottom: 20,
-            border: '1px solid #E8E0CF',
+            border: '1px solid #E8DED0',
             display: 'flex',
             gap: 14,
             alignItems: 'center',
@@ -686,10 +686,10 @@ export default function ProfileScreen() {
         >
           <div style={{ fontSize: 32 }}>🤝</div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#1C3F10', fontFamily: 'Fraunces, serif', marginBottom: 4 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: '#1C3F10', fontFamily: "'Poppins', sans-serif", marginBottom: 4 }}>
               ¿Necesitas ayuda?
             </div>
-            <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+            <div style={{ fontSize: 12, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
               Nuestro equipo de soporte está disponible de lunes a sábado
             </div>
           </div>
@@ -702,12 +702,12 @@ export default function ProfileScreen() {
             width: '100%',
             padding: '13px',
             borderRadius: 14,
-            border: '1.5px solid #E8E0CF',
+            border: '1.5px solid #E8DED0',
             background: 'transparent',
-            color: '#C4622D',
+            color: '#9B4728',
             fontSize: 14,
             fontWeight: 700,
-            fontFamily: 'Nunito, sans-serif',
+            fontFamily: "'Nunito Sans', sans-serif",
             cursor: 'pointer',
             marginBottom: 16,
           }}
@@ -717,3 +717,5 @@ export default function ProfileScreen() {
     </ScreenShell>
   )
 }
+
+

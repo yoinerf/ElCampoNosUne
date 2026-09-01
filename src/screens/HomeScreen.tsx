@@ -28,23 +28,23 @@ interface ActivityItem {
 const getActivityTypeMeta = (type: string) => {
   switch (type) {
     case 'product_created':
-      return { icon: '📦', color: '#D4870A', label: 'Producto publicado' }
+      return { icon: '📦', color: '#E5AE30', label: 'Producto publicado' }
     case 'experience_created':
-      return { icon: '🏞️', color: '#2A5C1A', label: 'Experiencia publicada' }
+      return { icon: '🏞️', color: '#205134', label: 'Experiencia publicada' }
     case 'purchase':
-      return { icon: '🛒', color: '#C4622D', label: 'Compra registrada' }
+      return { icon: '🛒', color: '#9B4728', label: 'Compra registrada' }
     case 'reservation':
-      return { icon: '✅', color: '#3D7A28', label: 'Reserva creada' }
+      return { icon: '✅', color: '#6BAA3D', label: 'Reserva creada' }
     case 'message':
       return { icon: '💬', color: '#5A7BCA', label: 'Mensaje nuevo' }
     default:
-      return { icon: '✨', color: '#7FB069', label: 'Actividad' }
+      return { icon: '✨', color: '#6BAA3D', label: 'Actividad' }
   }
 }
 
 const categories = [
-  { icon: '🌽', label: 'Mercados\nCampesinos', color: '#D4870A', tab: 'market' as Tab },
-  { icon: '🏞️', label: 'Turismo\nComunitario', color: '#2A5C1A', tab: 'tourism' as Tab },
+  { icon: '🌽', label: 'Mercados\nCampesinos', color: '#E5AE30', tab: 'market' as Tab },
+  { icon: '🏞️', label: 'Turismo\nComunitario', color: '#205134', tab: 'tourism' as Tab },
 ]
 
 function timeAgo(dateStr: string): string {
@@ -201,9 +201,9 @@ export default function HomeScreen({ onNavigate }: Props) {
               width: 44,
               height: 44,
               borderRadius: '50%',
-              background: '#FAF7EF',
+              background: '#F5EEE6',
               overflow: 'hidden',
-              border: '2px solid #A8D48A',
+              border: '2px solid #6BAA3D',
             }}
           >
             <img
@@ -220,8 +220,8 @@ export default function HomeScreen({ onNavigate }: Props) {
               width: 12,
               height: 12,
               borderRadius: '50%',
-              background: '#F0A830',
-              border: '2px solid #2A5C1A',
+              background: '#E5AE30',
+              border: '2px solid #205134',
             }}
           />
         </div>
@@ -234,9 +234,9 @@ export default function HomeScreen({ onNavigate }: Props) {
         {!isBuyer && (
           <div
             style={{
-              background: '#FAF7EF',
+              background: '#F5EEE6',
               borderRadius: 20,
-              boxShadow: '0 4px 24px rgba(42,92,26,0.12)',
+              boxShadow: '0 4px 24px rgba(32,81,52,0.12)',
               padding: '12px 16px',
               display: 'flex',
               gap: 0,
@@ -251,7 +251,7 @@ export default function HomeScreen({ onNavigate }: Props) {
                     style={{
                       flex: 1,
                       textAlign: 'center',
-                      borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
+                      borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
                       padding: '10px 8px 6px',
                     }}
                   >
@@ -278,7 +278,7 @@ export default function HomeScreen({ onNavigate }: Props) {
                     style={{
                       flex: 1,
                       textAlign: 'center',
-                      borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
+                      borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
                     }}
                   >
                     <div style={{ fontSize: 20 }}>{s.icon}</div>
@@ -286,14 +286,14 @@ export default function HomeScreen({ onNavigate }: Props) {
                       style={{
                         fontSize: 18,
                         fontWeight: 700,
-                        color: '#2A5C1A',
-                        fontFamily: 'Fraunces, serif',
+                        color: '#205134',
+                        fontFamily: "'Poppins', sans-serif",
                         lineHeight: 1.2,
                       }}
                     >
                       {s.value}
                     </div>
-                    <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+                    <div style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {s.label}
                     </div>
                   </div>
@@ -302,7 +302,7 @@ export default function HomeScreen({ onNavigate }: Props) {
         )}
 
         {/* Categories */}
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '20px 0 12px', fontWeight: 700 }}>
+        <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#205134', margin: '20px 0 12px', fontWeight: 700 }}>
           Explora
         </h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
@@ -341,7 +341,7 @@ export default function HomeScreen({ onNavigate }: Props) {
                 style={{
                   fontSize: 13,
                   color: cat.color,
-                  fontFamily: 'Fraunces, serif',
+                  fontFamily: "'Poppins', sans-serif",
                   fontWeight: 700,
                   textAlign: 'center',
                   lineHeight: 1.3,
@@ -356,11 +356,11 @@ export default function HomeScreen({ onNavigate }: Props) {
 
         {/* Featured products */}
         <div className="flex items-center justify-between mb-3">
-          <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: 0, fontWeight: 700 }}>
+          <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#205134', margin: 0, fontWeight: 700 }}>
             {normalizedQuery ? 'Resultados en mercados' : 'Mercados Campesinos'}
           </h3>
           <span
-            style={{ fontSize: 12, color: '#D4870A', fontWeight: 600, fontFamily: 'Nunito, sans-serif', cursor: 'pointer' }}
+            style={{ fontSize: 12, color: '#E5AE30', fontWeight: 600, fontFamily: "'Nunito Sans', sans-serif", cursor: 'pointer' }}
             onClick={() => onNavigate('market')}
           >
             Ver más
@@ -392,7 +392,7 @@ export default function HomeScreen({ onNavigate }: Props) {
               </div>
             ))
           ) : filteredFeatured.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif', gridColumn: '1 / -1' }}>
+            <p style={{ fontSize: 13, color: '#666666', fontFamily: "'Nunito Sans', sans-serif", gridColumn: '1 / -1' }}>
               {normalizedQuery ? 'No encontramos productos con esa búsqueda.' : 'Aún no hay productos destacados.'}
             </p>
           ) : (
@@ -419,10 +419,10 @@ export default function HomeScreen({ onNavigate }: Props) {
                       top: 8,
                       left: 8,
                       background: '#D4870A',
-                      color: '#FAF7EF',
+                      color: '#F5EEE6',
                       fontSize: 10,
                       fontWeight: 700,
-                      fontFamily: 'Nunito, sans-serif',
+                      fontFamily: "'Nunito Sans', sans-serif",
                       padding: '2px 8px',
                       borderRadius: 20,
                     }}
@@ -435,22 +435,22 @@ export default function HomeScreen({ onNavigate }: Props) {
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: '#1C3F10',
-                      fontFamily: 'Fraunces, serif',
+                      color: '#205134',
+                      fontFamily: "'Poppins', sans-serif",
                       lineHeight: 1.3,
                       marginBottom: 4,
                     }}
                   >
                     {item.title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
                     {item.producer}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#D4870A', fontFamily: 'Nunito, sans-serif' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {formatPrice(item.price)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: 'Nunito, sans-serif' }}>
+                    <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: "'Nunito Sans', sans-serif" }}>
                       ⭐ {item.rating}
                     </span>
                   </div>
@@ -487,17 +487,17 @@ export default function HomeScreen({ onNavigate }: Props) {
               justifyContent: 'center',
             }}
           >
-            <p style={{ color: '#A8D48A', fontSize: 11, margin: 0, fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+            <p style={{ color: '#6BAA3D', fontSize: 11, margin: 0, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>
               TURISMO COMUNITARIO
             </p>
-            <h4 style={{ color: '#FAF7EF', fontSize: 17, margin: '4px 0 0', fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
+            <h4 style={{ color: '#F5EEE6', fontSize: 17, margin: '4px 0 0', fontFamily: "'Poppins', sans-serif", fontWeight: 700 }}>
               Descubre experiencias únicas en el campo →
             </h4>
           </div>
         </div>
 
         {/* Notifications */}
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
+        <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 17, color: '#205134', margin: '0 0 12px', fontWeight: 700 }}>
           Actividad reciente
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -525,7 +525,7 @@ export default function HomeScreen({ onNavigate }: Props) {
               </div>
             ))
           ) : notifications.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
               No tienes actividad reciente.
             </p>
           ) : (
@@ -558,10 +558,10 @@ export default function HomeScreen({ onNavigate }: Props) {
                 {a.icon}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
                   {a.text}
                 </div>
-                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginTop: 2 }}>
+                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
                   {timeAgo(a.created_at)}
                 </div>
               </div>
@@ -572,3 +572,4 @@ export default function HomeScreen({ onNavigate }: Props) {
     </ScreenShell>
   )
 }
+

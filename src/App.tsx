@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import MarketplaceScreen from './screens/MarketplaceScreen'
+import CheckoutScreen from './screens/CheckoutScreen'
+import type { CartItem } from './screens/MarketplaceScreen'
 import TourismScreen from './screens/TourismScreen'
 import ProfileScreen from './screens/ProfileScreen'
 import RegisterScreen from './screens/RegisterScreen'
@@ -10,13 +12,6 @@ import { supabase } from './lib/supabase'
 type Tab = 'home' | 'market' | 'tourism' | 'profile'
 type UserRole = 'asociacion' | 'turismo' | 'comprador'
 type AppFlow = 'auth' | 'login' | 'app'
-
-const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: 'home', label: 'Inicio', icon: '🌿' },
-  { id: 'market', label: 'Mercados', icon: '🌽' },
-  { id: 'tourism', label: 'Turismo', icon: '🏞️' },
-  { id: 'profile', label: 'Mi Perfil', icon: '👤' },
-]
 
 const getVisibleTabs = (role?: UserRole) => {
   switch (role) {
@@ -32,10 +27,12 @@ const getVisibleTabs = (role?: UserRole) => {
 }
 
 export default function App() {
-  const [flow, setFlow] = useState<AppFlow>('auth')
+  const [flow, setFlow] = useState<AppFlow>('app')
   const [activeTab, setActiveTab] = useState<Tab>('home')
   const [checkingSession, setCheckingSession] = useState(true)
   const [userRole, setUserRole] = useState<UserRole | undefined>()
+  const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([])
+  const [checkoutConfirm, setCheckoutConfirm] = useState<((items: CartItem[]) => Promise<boolean>) | null>(null)
 
   useEffect(() => {
     const loadRole = async (session: { user: { id: string } } | null) => {
@@ -55,13 +52,13 @@ export default function App() {
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setFlow(session ? 'app' : 'auth')
+      setFlow('app')
       loadRole(session)
       setCheckingSession(false)
     })
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setFlow(session ? 'app' : 'auth')
+      setFlow('app')
       loadRole(session)
     })
 
@@ -77,12 +74,20 @@ export default function App() {
     }
   }, [flow, visibleTabs, activeTab])
 
-  const statusBg = flow === 'app' ? '#2A5C1A' : '#1C3F10'
+  const statusBg = flow === 'app' ? '#205134' : '#205134'
 
   const mainScreens: Record<Tab, JSX.Element> = {
     home: <HomeScreen onNavigate={setActiveTab} />,
-    market: <MarketplaceScreen />,
-    tourism: <TourismScreen />,
+    market: (
+        <MarketplaceScreen
+          onNavigate={setActiveTab}
+        onOpenCheckout={(products, onConfirm) => {
+          setCheckoutItems(products)
+          setCheckoutConfirm(() => onConfirm)
+        }}
+      />
+    ),
+    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} />,
     profile: <ProfileScreen />,
   }
 
@@ -90,7 +95,7 @@ export default function App() {
     return (
       <div
         className="flex items-center justify-center min-h-screen"
-        style={{ background: '#1C3F10', color: '#FAF7EF', fontFamily: 'Nunito, sans-serif' }}
+        style={{ background: '#205134', color: '#F5EEE6', fontFamily: "'Nunito Sans', sans-serif" }}
       >
         Cargando...
       </div>
@@ -98,9 +103,9 @@ export default function App() {
 }
 
   return (
-    <div className="min-h-screen w-full" style={{ background: '#FAF7EF' }}>
+    <div className="min-h-screen w-full" style={{ background: '#F5EEE6' }}>
       <div className="min-h-screen w-full" style={{ background: statusBg }}>
-        <div className="min-h-screen w-full flex flex-col" style={{ background: '#FAF7EF' }}>
+        <div className="min-h-screen w-full flex flex-col" style={{ background: '#F5EEE6' }}>
           <div className="flex-1 overflow-y-auto">
             {flow === 'auth' && (
               <RegisterScreen
@@ -114,47 +119,17 @@ export default function App() {
                 onRegister={() => setFlow('auth')}
               />
             )}
-            {flow === 'app' && mainScreens[activeTab]}
+            {flow === 'app' && (checkoutConfirm ? (
+              <CheckoutScreen
+                items={checkoutItems}
+                onItemsChange={setCheckoutItems}
+                onBack={() => setCheckoutConfirm(null)}
+                onConfirm={checkoutConfirm}
+                onRequireAuth={(mode) => setFlow(mode)}
+              />
+            ) : mainScreens[activeTab])}
           </div>
 
-          {flow === 'app' && (
-            <div
-              className="w-full sticky bottom-0"
-              style={{
-                background: '#FAF7EF',
-                borderTop: '1px solid #E8E0CF',
-                boxShadow: '0 -4px 20px rgba(42,92,26,0.08)',
-                zIndex: 10,
-              }}
-            >
-              <div className="flex w-full">
-                {tabs.filter((tab) => visibleTabs.includes(tab.id)).map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className="flex-1 flex flex-col items-center pt-3 pb-2 gap-1"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-                  >
-                    <span style={{ fontSize: 22 }}>{tab.icon}</span>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: activeTab === tab.id ? 700 : 500,
-                        color: activeTab === tab.id ? '#2A5C1A' : '#8A8070',
-                        fontFamily: 'Nunito, sans-serif',
-                        letterSpacing: 0.2,
-                      }}
-                    >
-                      {tab.label}
-                    </span>
-                    {activeTab === tab.id && (
-                      <div style={{ width: 20, height: 3, borderRadius: 2, background: '#2A5C1A', marginTop: 1 }} />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </div>

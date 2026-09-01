@@ -11,6 +11,7 @@ interface ScreenShellProps {
   searchPlaceholder?: string
   searchValue?: string
   onSearchChange?: (value: string) => void
+  topNavigation?: ReactNode
 }
 
 export default function ScreenShell({
@@ -24,19 +25,20 @@ export default function ScreenShell({
   searchPlaceholder,
   searchValue,
   onSearchChange,
+  topNavigation,
 }: ScreenShellProps) {
   const showSearch = !!searchPlaceholder || !!onSearchChange
 
   return (
-    <div className="h-full overflow-y-auto" style={{ background: '#F6F2EA' }}>
+    <div className="h-full overflow-y-auto" style={{ background: '#F5EEE6' }}>
       <div style={{ width: '100%', minHeight: '100vh' }}>
         <div
           style={{
-            background: 'linear-gradient(180deg, #1E4F1A 0%, #2A5C1A 100%)',
+            background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)',
             padding: '20px 18px 28px',
             borderRadius: '0 0 30px 30px',
             position: 'relative',
-            boxShadow: '0 18px 30px rgba(28,63,16,0.18)',
+            boxShadow: '0 18px 30px rgba(32,81,52,0.18)',
           }}
         >
           {headerContent ?? (
@@ -47,9 +49,9 @@ export default function ScreenShell({
                     <p
                       style={{
                         margin: 0,
-                        color: '#A8D48A',
+                        color: '#6BAA3D',
                         fontSize: 13,
-                        fontFamily: 'Nunito, sans-serif',
+                        fontFamily: "'Nunito Sans', sans-serif",
                         fontWeight: 600,
                         lineHeight: 1.2,
                       }}
@@ -60,9 +62,9 @@ export default function ScreenShell({
                   {title && (
                     <h2
                       style={{
-                        fontFamily: 'Fraunces, serif',
+                        fontFamily: "'Poppins', sans-serif",
                         fontSize: 22,
-                        color: '#FAF7EF',
+                        color: '#F5EEE6',
                         margin: '2px 0 0',
                         fontWeight: 700,
                         lineHeight: 1.2,
@@ -75,34 +77,29 @@ export default function ScreenShell({
                 {action}
               </div>
 
-              {showSearch && (
-                <div
-                  style={{
-                    marginTop: 16,
-                    background: 'rgba(255,255,255,0.15)',
-                    borderRadius: 16,
-                    border: '1px solid rgba(255,255,255,0.2)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    padding: '11px 14px',
-                    gap: 8,
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>🔍</span>
-                  <input
-                    value={searchValue ?? ''}
-                    onChange={(e) => onSearchChange?.(e.target.value)}
-                    placeholder={searchPlaceholder}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      outline: 'none',
-                      color: '#FAF7EF',
-                      fontSize: 14,
-                      fontFamily: 'Nunito, sans-serif',
-                      width: '100%',
-                    }}
-                  />
+              {(showSearch || topNavigation) && (
+                <div className="shell-toolbar">
+                  {showSearch && (
+                    <div
+                      className="shell-search"
+                      style={{
+                        flex: '0 0 70%',
+                        minWidth: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontSize: 16 }}>🔍</span>
+                      <input
+                        value={searchValue ?? ''}
+                        onChange={(e) => onSearchChange?.(e.target.value)}
+                        placeholder={searchPlaceholder}
+                        style={{ background: 'none', border: 'none', outline: 'none', color: '#FAF7EF', fontSize: 14, fontFamily: 'Nunito, sans-serif', width: '100%', minWidth: 0 }}
+                      />
+                    </div>
+                  )}
+                  {topNavigation}
                 </div>
               )}
             </>
@@ -125,3 +122,4 @@ export default function ScreenShell({
     </div>
   )
 }
+

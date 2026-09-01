@@ -40,7 +40,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
     <div
       className="h-full flex flex-col overflow-hidden"
       style={{
-        background: 'linear-gradient(180deg, #123d12 0%, #0d2d12 100%)',
+        background: 'linear-gradient(180deg, #1A3F28 0%, #0F2B1A 100%)',
         minHeight: '100vh',
       }}
     >
@@ -60,7 +60,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
         <div
           style={{
             width: '100%',
-            background: '#f4efe6',
+            background: '#F5EEE6',
             borderRadius: 26,
             overflow: 'hidden',
             boxShadow: '0 28px 60px rgba(0, 0, 0, 0.24)',
@@ -69,14 +69,14 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
         >
           <div
             style={{
-              background: 'linear-gradient(180deg, #1b4f18 0%, #1f5d1d 100%)',
+              background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)',
               padding: '28px 26px 22px',
               position: 'relative',
               overflow: 'hidden',
             }}
           >
             <div style={{ position: 'absolute', top: 18, right: 18, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(5px)' }} />
-            <div style={{ position: 'absolute', bottom: -12, left: 20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(240,168,48,0.10)', filter: 'blur(4px)' }} />
+            <div style={{ position: 'absolute', bottom: -12, left: 20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(229,174,48,0.10)', filter: 'blur(4px)' }} />
 
             <div
               style={{
@@ -101,22 +101,22 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
             <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
               <h1
                 style={{
-                  fontFamily: 'Fraunces, serif',
+                  fontFamily: "'Poppins', sans-serif",
                   fontSize: 42,
-                  color: '#FAF7EF',
+                  color: '#F5EEE6',
                   margin: 0,
                   fontWeight: 700,
                   lineHeight: 1.05,
                   letterSpacing: '-0.04em',
                 }}
               >
-                Campo<span style={{ color: '#F0A830' }}>Conecta</span>
+                Campo<span style={{ color: '#E5AE30' }}>Conecta</span>
               </h1>
               <p
                 style={{
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   fontSize: 15,
-                  color: '#E5F4D7',
+                  color: '#C1E5A8',
                   margin: '10px 0 0',
                   lineHeight: 1.5,
                 }}
@@ -126,16 +126,16 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
             </div>
           </div>
 
-          <div style={{ padding: '26px 28px 24px', background: '#f5efe7' }}>
+          <div style={{ padding: '26px 28px 24px', background: '#F5EEE6' }}>
             {error && (
               <div
                 style={{
                   background: '#FEE9E1',
                   borderRadius: 12,
                   padding: '12px 14px',
-                  color: '#C4622D',
+                  color: '#9B4728',
                   fontSize: 13,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   fontWeight: 600,
                   marginBottom: 18,
                 }}
@@ -145,7 +145,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
             )}
 
             <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
                 Correo electrónico
               </div>
               <input
@@ -160,7 +160,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
                   border: '1.5px solid rgba(28,63,16,0.12)',
                   background: '#fff',
                   fontSize: 14,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   color: '#1C3F10',
                   outline: 'none',
                   boxSizing: 'border-box',
@@ -170,7 +170,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
             </div>
 
             <div style={{ marginBottom: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif', marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
                 Contraseña
               </div>
               <div style={{ position: 'relative' }}>
@@ -186,7 +186,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
                     border: '1.5px solid rgba(28,63,16,0.12)',
                     background: '#fff',
                     fontSize: 14,
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     color: '#1C3F10',
                     outline: 'none',
                     boxSizing: 'border-box',
@@ -213,7 +213,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
             </div>
 
             <div style={{ textAlign: 'right', marginBottom: 22 }}>
-              <span style={{ fontSize: 13, color: '#D4870A', fontWeight: 700, fontFamily: 'Nunito, sans-serif', cursor: 'pointer' }}>
+              <span style={{ fontSize: 13, color: '#D4870A', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif", cursor: 'pointer' }}>
                 ¿Olvidaste tu contraseña?
               </span>
             </div>
@@ -230,7 +230,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
                 color: '#FAF7EF',
                 fontSize: 16,
                 fontWeight: 800,
-                fontFamily: 'Nunito, sans-serif',
+                fontFamily: "'Nunito Sans', sans-serif",
                 cursor: loading ? 'wait' : 'pointer',
                 boxShadow: '0 16px 26px rgba(42,92,26,0.22)',
                 transition: 'all 0.2s',
@@ -242,7 +242,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
               <div style={{ flex: 1, height: 1, background: '#E7DFD2' }} />
-              <span style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>o continúa con</span>
+              <span style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>o continúa con</span>
               <div style={{ flex: 1, height: 1, background: '#E7DFD2' }} />
             </div>
 
@@ -260,7 +260,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
                     background: '#fff',
                     fontSize: 13,
                     fontWeight: 700,
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     color: '#3D2B1A',
                     cursor: 'pointer',
                     display: 'flex',
@@ -276,7 +276,7 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
               ))}
             </div>
 
-            <p style={{ textAlign: 'center', fontSize: 14, color: '#8A8070', fontFamily: 'Nunito, sans-serif', margin: 0 }}>
+            <p style={{ textAlign: 'center', fontSize: 14, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", margin: 0 }}>
               ¿No tienes cuenta?{' '}
               <span
                 style={{ color: '#2A5C1A', fontWeight: 800, cursor: 'pointer' }}
@@ -291,3 +291,5 @@ export default function LoginScreen({ onLogin, onRegister }: Props) {
     </div>
   )
 }
+
+

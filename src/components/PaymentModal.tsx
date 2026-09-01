@@ -129,9 +129,9 @@ export default function PaymentModal({
     const showError = touched[field] && Boolean(error)
 
     return {
-      border: showError ? '1.5px solid #DC2626' : '1px solid #E8E0CF',
+      border: showError ? '1.5px solid #D32F2F' : '1px solid #E8DED0',
       background: showError ? '#FFF5F5' : '#fff',
-      boxShadow: showError ? '0 0 0 3px rgba(220,38,38,0.08)' : 'none',
+      boxShadow: showError ? '0 0 0 3px rgba(211,47,47,0.08)' : 'none',
     }
   }
 
@@ -177,8 +177,8 @@ export default function PaymentModal({
         >
           <div
             style={{
-              background: 'linear-gradient(135deg, #2A5C1A 0%, #3D7A28 100%)',
-              color: '#FAF7EF',
+              background: 'linear-gradient(135deg, #205134 0%, #2A6340 100%)',
+              color: '#F5EEE6',
               padding: '18px 20px 16px',
               position: 'relative',
             }}
@@ -205,18 +205,18 @@ export default function PaymentModal({
             >
               ×
             </button>
-            <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.8, fontWeight: 700, fontFamily: 'Nunito, sans-serif', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: 11, letterSpacing: 1, opacity: 0.8, fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif", textTransform: 'uppercase' }}>
               Pago seguro
             </div>
-            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: 'Fraunces, serif', marginTop: 6 }}>{title}</div>
-            <div style={{ fontSize: 13, opacity: 0.9, marginTop: 3, fontFamily: 'Nunito, sans-serif' }}>{subtitle}</div>
-            <div style={{ marginTop: 14, fontSize: 12, opacity: 0.9, fontFamily: 'Nunito, sans-serif' }}>Total</div>
-            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 0.2, fontFamily: 'Nunito, sans-serif' }}>{amountLabel}</div>
+            <div style={{ fontSize: 24, fontWeight: 700, fontFamily: "'Poppins', sans-serif", marginTop: 6 }}>{title}</div>
+            <div style={{ fontSize: 13, opacity: 0.9, marginTop: 3, fontFamily: "'Nunito Sans', sans-serif" }}>{subtitle}</div>
+            <div style={{ marginTop: 14, fontSize: 12, opacity: 0.9, fontFamily: "'Nunito Sans', sans-serif" }}>Total</div>
+            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: 0.2, fontFamily: "'Nunito Sans', sans-serif" }}>{amountLabel}</div>
           </div>
 
           <form noValidate onSubmit={handleSubmit} style={{ padding: 20, display: 'grid', gap: 12 }}>
             <div style={{ display: 'grid', gap: 8 }}>
-              <label style={{ fontSize: 12, color: '#3D2B1A', fontWeight: 700, fontFamily: 'Nunito, sans-serif' }}>Nombre del titular</label>
+                <label style={{ fontSize: 12, color: '#205134', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>Nombre del titular</label>
               <input
                 value={form.name}
                 onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
@@ -230,17 +230,17 @@ export default function PaymentModal({
                   borderRadius: 12,
                   padding: '11px 12px',
                   fontSize: 14,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   outline: 'none',
                 }}
               />
               {touched.name && getValidationErrors().name && (
-                <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>{getValidationErrors().name}</span>
+                <span style={{ fontSize: 11, color: '#D32F2F', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>{getValidationErrors().name}</span>
               )}
             </div>
 
             <div style={{ display: 'grid', gap: 8 }}>
-              <label style={{ fontSize: 12, color: '#3D2B1A', fontWeight: 700, fontFamily: 'Nunito, sans-serif' }}>Número de tarjeta</label>
+              <label style={{ fontSize: 12, color: '#205134', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>Número de tarjeta</label>
               <input
                 value={form.card}
                 onBlur={() => setTouched((prev) => ({ ...prev, card: true }))}
@@ -256,18 +256,18 @@ export default function PaymentModal({
                   borderRadius: 12,
                   padding: '11px 12px',
                   fontSize: 14,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   outline: 'none',
                 }}
               />
               {touched.card && getValidationErrors().card && (
-                <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>{getValidationErrors().card}</span>
+                <span style={{ fontSize: 11, color: '#D32F2F', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>{getValidationErrors().card}</span>
               )}
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div style={{ display: 'grid', gap: 8 }}>
-                <label style={{ fontSize: 12, color: '#3D2B1A', fontWeight: 700, fontFamily: 'Nunito, sans-serif' }}>Vencimiento</label>
+                <label style={{ fontSize: 12, color: '#205134', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>Vencimiento</label>
                 <input
                   value={form.expiry}
                   onBlur={() => setTouched((prev) => ({ ...prev, expiry: true }))}
@@ -283,16 +283,16 @@ export default function PaymentModal({
                     borderRadius: 12,
                     padding: '11px 12px',
                     fontSize: 14,
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     outline: 'none',
                   }}
                 />
                 {touched.expiry && getValidationErrors().expiry && (
-                  <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>{getValidationErrors().expiry}</span>
+                  <span style={{ fontSize: 11, color: '#D32F2F', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>{getValidationErrors().expiry}</span>
                 )}
               </div>
               <div style={{ display: 'grid', gap: 8 }}>
-                <label style={{ fontSize: 12, color: '#3D2B1A', fontWeight: 700, fontFamily: 'Nunito, sans-serif' }}>CVV</label>
+                <label style={{ fontSize: 12, color: '#205134', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>CVV</label>
                 <input
                   value={form.cvv}
                   onBlur={() => setTouched((prev) => ({ ...prev, cvv: true }))}
@@ -308,18 +308,18 @@ export default function PaymentModal({
                     borderRadius: 12,
                     padding: '11px 12px',
                     fontSize: 14,
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     outline: 'none',
                   }}
                 />
                 {touched.cvv && getValidationErrors().cvv && (
-                  <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>{getValidationErrors().cvv}</span>
+                  <span style={{ fontSize: 11, color: '#D32F2F', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>{getValidationErrors().cvv}</span>
                 )}
               </div>
             </div>
 
             <div style={{ display: 'grid', gap: 8 }}>
-              <label style={{ fontSize: 12, color: '#3D2B1A', fontWeight: 700, fontFamily: 'Nunito, sans-serif' }}>Dirección de entrega</label>
+              <label style={{ fontSize: 12, color: '#205134', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>Dirección de entrega</label>
               <input
                 value={form.address}
                 onBlur={() => setTouched((prev) => ({ ...prev, address: true }))}
@@ -333,12 +333,12 @@ export default function PaymentModal({
                   borderRadius: 12,
                   padding: '11px 12px',
                   fontSize: 14,
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   outline: 'none',
                 }}
               />
               {touched.address && getValidationErrors().address && (
-                <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>{getValidationErrors().address}</span>
+                <span style={{ fontSize: 11, color: '#D32F2F', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>{getValidationErrors().address}</span>
               )}
             </div>
 
@@ -349,11 +349,11 @@ export default function PaymentModal({
                 marginTop: 6,
                 border: 'none',
                 borderRadius: 14,
-                background: phase === 'success' ? '#2A5C1A' : phase === 'processing' ? '#7FB069' : 'linear-gradient(135deg, #D4870A 0%, #C4622D 100%)',
+                background: phase === 'success' ? '#205134' : phase === 'processing' ? '#6BAA3D' : 'linear-gradient(135deg, #E5AE30 0%, #9B4728 100%)',
                 color: '#fff',
                 fontSize: 15,
                 fontWeight: 800,
-                fontFamily: 'Nunito, sans-serif',
+                fontFamily: "'Nunito Sans', sans-serif",
                 cursor: phase !== 'idle' ? 'default' : 'pointer',
                 padding: '14px 18px',
                 display: 'flex',
@@ -409,7 +409,7 @@ export default function PaymentModal({
             style={{
               width: '100%',
               maxWidth: 320,
-              background: result === 'success' ? 'linear-gradient(135deg, #2A5C1A 0%, #3D7A28 100%)' : 'linear-gradient(135deg, #B91C1C 0%, #DC2626 100%)',
+              background: result === 'success' ? 'linear-gradient(135deg, #205134 0%, #2A6340 100%)' : 'linear-gradient(135deg, #B91C1C 0%, #D32F2F 100%)',
               border: 'none',
               borderRadius: 24,
               boxShadow: '0 28px 50px rgba(31, 54, 39, 0.22)',
@@ -428,7 +428,7 @@ export default function PaymentModal({
                 width: 72,
                 height: 72,
                 borderRadius: '50%',
-                background: result === 'success' ? '#2A5C1A' : '#C62828',
+                background: result === 'success' ? '#205134' : '#C62828',
                 color: '#fff',
                 display: 'flex',
                 alignItems: 'center',
@@ -442,7 +442,7 @@ export default function PaymentModal({
             </div>
             <div
               style={{
-                fontFamily: 'Fraunces, serif',
+                fontFamily: "'Poppins', sans-serif",
                 fontSize: 22,
                 color: '#fff',
                 fontWeight: 700,
@@ -452,7 +452,7 @@ export default function PaymentModal({
             </div>
             <div
               style={{
-                fontFamily: 'Nunito, sans-serif',
+                fontFamily: "'Nunito Sans', sans-serif",
                 fontSize: 14,
                 color: '#F5F7F1',
                 lineHeight: 1.5,
@@ -470,10 +470,10 @@ export default function PaymentModal({
                 border: 'none',
                 borderRadius: 12,
                 background: '#fff',
-                color: result === 'success' ? '#2A5C1A' : '#B91C1C',
+                color: result === 'success' ? '#205134' : '#B91C1C',
                 fontSize: 14,
                 fontWeight: 800,
-                fontFamily: 'Nunito, sans-serif',
+                fontFamily: "'Nunito Sans', sans-serif",
                 padding: '10px 16px',
                 cursor: 'pointer',
                 width: '100%',
@@ -487,3 +487,5 @@ export default function PaymentModal({
     </>
   )
 }
+
+

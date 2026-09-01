@@ -21,12 +21,12 @@ export default function SuccessToast({ message, visible, kind = 'success' }: Suc
   const palette =
     kind === 'success'
       ? {
-          bg: 'linear-gradient(135deg, #2A5C1A 0%, #3D7A28 100%)',
+          bg: 'linear-gradient(135deg, #205134 0%, #2A6340 100%)',
           glow: 'rgba(42, 92, 26, 0.22)',
           icon: '✓',
         }
       : {
-          bg: 'linear-gradient(135deg, #1C3F10 0%, #2A5C1A 100%)',
+          bg: 'linear-gradient(135deg, #1C3F10 0%, #205134 100%)',
           glow: 'rgba(28, 63, 16, 0.18)',
           icon: 'i',
         }
@@ -46,7 +46,7 @@ export default function SuccessToast({ message, visible, kind = 'success' }: Suc
           minWidth: 260,
           maxWidth: 'min(88vw, 420px)',
           background: palette.bg,
-          color: '#FAF7EF',
+          color: '#F5EEE6',
           borderRadius: 18,
           padding: '14px 16px 14px 14px',
           boxShadow: `0 18px 38px ${palette.glow}`,
@@ -78,7 +78,7 @@ export default function SuccessToast({ message, visible, kind = 'success' }: Suc
 
         <div
           style={{
-            fontFamily: 'Nunito, sans-serif',
+            fontFamily: "'Nunito Sans', sans-serif",
             fontSize: 14,
             fontWeight: 700,
             lineHeight: 1.4,
@@ -90,3 +90,5 @@ export default function SuccessToast({ message, visible, kind = 'success' }: Suc
     </div>
   )
 }
+
+

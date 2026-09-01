@@ -1,9 +1,12 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import logoSrc from '../assets/logo-nofond.png'
 
 interface Props {
   onComplete: () => void
   onLogin: () => void
+  onBackToStore?: () => void
+  onBackToHome?: () => void
 }
 
 type UserType = 'asociacion' | 'turismo' | 'comprador' | null
@@ -77,9 +80,11 @@ const productCategories = [
   { icon: '🐟', label: 'Pesca' },
 ]
 
-export default function RegisterScreen({ onComplete, onLogin }: Props) {
+export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome }: Props) {
   const [step, setStep] = useState(0)
   const [userType, setUserType] = useState<UserType>(null)
+
+  const handleBack = onBackToHome || onBackToStore
   const [form, setForm] = useState({
     firstName: '',
     lastName: '',
@@ -99,12 +104,23 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
   const [submitError, setSubmitError] = useState('')
   const [departments, setDepartments] = useState<string[]>(fallbackDepartments)
 
+  const [producerCount, setProducerCount] = useState<number | null>(null)
+
   const TOTAL_STEPS = 4
 
   useEffect(() => {
     let active = true
 
-    const loadDepartments = async () => {
+    const loadData = async () => {
+      const { count, error: countErr } = await supabase
+        .from('profiles')
+        .select('*', { count: 'exact', head: true })
+        .in('user_type', ['asociacion', 'turismo'])
+
+      if (!countErr && typeof count === 'number' && active) {
+        setProducerCount(count)
+      }
+
       const { data, error } = await supabase
         .from('departments')
         .select('name')
@@ -123,7 +139,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
       if (active) setDepartments(values.length > 0 ? values : fallbackDepartments)
     }
 
-    loadDepartments()
+    loadData()
 
     return () => {
       active = false
@@ -230,7 +246,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
       <div
         className="h-full flex flex-col overflow-hidden"
         style={{
-          background: 'linear-gradient(180deg, #123d12 0%, #0d2d12 100%)',
+          background: 'linear-gradient(180deg, #1A3F28 0%, #0F2B1A 100%)',
           minHeight: '100vh',
         }}
       >
@@ -250,7 +266,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
           <div
             style={{
               width: '100%',
-              background: '#f4efe6',
+              background: '#F5EEE6',
               borderRadius: 26,
               overflow: 'hidden',
               boxShadow: '0 28px 60px rgba(0, 0, 0, 0.24)',
@@ -259,52 +275,76 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
           >
             <div
               style={{
-                background: 'linear-gradient(180deg, #1b4f18 0%, #1f5d1d 100%)',
+                background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)',
                 padding: '28px 26px 22px',
                 position: 'relative',
                 overflow: 'hidden',
               }}
             >
+              {/* Botón Volver al inicio */}
+              {handleBack && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  style={{
+                    position: 'relative',
+                    zIndex: 10,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: 'rgba(255,255,255,0.14)',
+                    border: '1px solid rgba(255,255,255,0.22)',
+                    borderRadius: 12,
+                    padding: '6px 14px',
+                    color: '#F5EEE6',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    cursor: 'pointer',
+                    marginBottom: 16,
+                    backdropFilter: 'blur(8px)',
+                    transition: 'background 180ms ease',
+                  }}
+                >
+                  ← Volver al inicio
+                </button>
+              )}
+
               <div style={{ position: 'absolute', top: 18, right: 18, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(5px)' }} />
               <div style={{ position: 'absolute', bottom: -12, left: 20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(240,168,48,0.10)', filter: 'blur(4px)' }} />
 
-              <div
-                style={{
-                  position: 'relative',
-                  zIndex: 1,
-                  width: 78,
-                  height: 78,
-                  borderRadius: 22,
-                  background: 'rgba(255,255,255,0.12)',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 36,
-                  margin: '0 auto 18px',
-                  boxShadow: '0 14px 28px rgba(10, 40, 15, 0.25)',
-                }}
-              >
-                🌿
+              {/* Logo grande directo sin contenedor */}
+              <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 16 }}>
+                <img
+                  src={logoSrc}
+                  alt="El Campo Nos Une"
+                  style={{
+                    height: 86,
+                    width: 'auto',
+                    display: 'block',
+                    margin: '0 auto',
+                    filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))',
+                  }}
+                />
               </div>
 
               <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
                 <h1
                   style={{
-                    fontFamily: 'Fraunces, serif',
+                    fontFamily: "'Poppins', sans-serif",
                     fontSize: 42,
-                    color: '#FAF7EF',
+                    color: '#F5EEE6',
                     margin: 0,
                     fontWeight: 700,
                     lineHeight: 1.05,
                     letterSpacing: '-0.04em',
                   }}
                 >
-                  Campo<span style={{ color: '#F0A830' }}>Conecta</span>
+                  Campo<span style={{ color: '#E5AE30' }}>Conecta</span>
                 </h1>
                 <p
                   style={{
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     fontSize: 15,
                     color: '#E5F4D7',
                     margin: '10px 0 0',
@@ -326,10 +366,10 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                     borderRadius: 16,
                     border: 'none',
                     background: 'linear-gradient(135deg, #2b6e1f 0%, #3a8c2d 100%)',
-                    color: '#FAF7EF',
+                    color: '#F5EEE6',
                     fontSize: 16,
                     fontWeight: 800,
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     cursor: 'pointer',
                     boxShadow: '0 16px 26px rgba(42,92,26,0.22)',
                   }}
@@ -348,7 +388,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                     color: '#1C3F10',
                     fontSize: 16,
                     fontWeight: 700,
-                    fontFamily: 'Nunito, sans-serif',
+                    fontFamily: "'Nunito Sans', sans-serif",
                     cursor: 'pointer',
                     boxShadow: '0 10px 18px rgba(28,63,16,0.04)',
                   }}
@@ -359,7 +399,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 
               <p
                 style={{
-                  fontFamily: 'Nunito, sans-serif',
+                  fontFamily: "'Nunito Sans', sans-serif",
                   fontSize: 12,
                   color: '#6C5F4F',
                   textAlign: 'center',
@@ -367,7 +407,13 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                   letterSpacing: 0.08,
                 }}
               >
-                +2.400 productores y comunidades ya están conectados
+                {producerCount === null
+                  ? 'Cargando comunidades...'
+                  : producerCount === 0
+                  ? 'Sé el primero en conectar tu comunidad o emprendimiento'
+                  : producerCount === 1
+                  ? '1 productor o comunidad ya está conectado'
+                  : `+${producerCount.toLocaleString('es-CO')} productores y comunidades ya están conectados`}
               </p>
             </div>
           </div>
@@ -378,7 +424,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 
   if (step === 4) {
     return (
-      <div className="h-full flex flex-col items-center justify-center" style={{ background: '#FAF7EF', padding: '32px 28px', textAlign: 'center' }}>
+      <div className="h-full flex flex-col items-center justify-center" style={{ background: '#F5EEE6', padding: '32px 28px', textAlign: 'center' }}>
         <div
           style={{
             width: 100,
@@ -397,7 +443,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
         </div>
         <h2
           style={{
-            fontFamily: 'Fraunces, serif',
+            fontFamily: "'Poppins', sans-serif",
             fontSize: 28,
             color: '#1C3F10',
             margin: '0 0 10px',
@@ -408,7 +454,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
         </h2>
         <p
           style={{
-            fontFamily: 'Nunito, sans-serif',
+            fontFamily: "'Nunito Sans', sans-serif",
             fontSize: 15,
             color: '#6B4C2A',
             lineHeight: 1.6,
@@ -430,7 +476,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
             textAlign: 'left',
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#2A5C1A', fontFamily: 'Fraunces, serif', marginBottom: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#2A5C1A', fontFamily: "'Poppins', sans-serif", marginBottom: 12 }}>
             Resumen de tu perfil
           </div>
           {[
@@ -440,8 +486,8 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
             { label: 'Rubros', val: selectedCategories.join(', ') || 'Ninguno seleccionado' },
           ].map((row) => (
             <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #F0EBE0' }}>
-              <span style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>{row.label}</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#1C3F10', fontFamily: 'Nunito, sans-serif', maxWidth: 180, textAlign: 'right' }}>{row.val}</span>
+              <span style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>{row.label}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", maxWidth: 180, textAlign: 'right' }}>{row.val}</span>
             </div>
           ))}
         </div>
@@ -454,10 +500,10 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
             borderRadius: 16,
             border: 'none',
             background: 'linear-gradient(135deg, #2A5C1A, #3D7A28)',
-            color: '#FAF7EF',
+            color: '#F5EEE6',
             fontSize: 16,
             fontWeight: 800,
-            fontFamily: 'Nunito, sans-serif',
+            fontFamily: "'Nunito Sans', sans-serif",
             cursor: 'pointer',
             boxShadow: '0 6px 20px rgba(42,92,26,0.3)',
           }}
@@ -472,7 +518,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
     <div
       className="h-full flex flex-col overflow-hidden"
       style={{
-        background: 'linear-gradient(180deg, #123d12 0%, #0d2d12 100%)',
+        background: 'linear-gradient(180deg, #1A3F28 0%, #0F2B1A 100%)',
         minHeight: '100vh',
       }}
     >
@@ -492,7 +538,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
         <div
           style={{
             width: '100%',
-            background: '#f4efe6',
+            background: '#F5EEE6',
             borderRadius: 26,
             overflow: 'hidden',
             boxShadow: '0 28px 60px rgba(0, 0, 0, 0.24)',
@@ -501,7 +547,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
         >
           <div
             style={{
-              background: 'linear-gradient(180deg, #1b4f18 0%, #1f5d1d 100%)',
+              background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)',
               padding: '18px 20px 14px',
               position: 'relative',
               overflow: 'hidden',
@@ -519,7 +565,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                   borderRadius: 10,
                   border: 'none',
                   background: 'rgba(255,255,255,0.15)',
-                  color: '#FAF7EF',
+                  color: '#F5EEE6',
                   fontSize: 18,
                   cursor: 'pointer',
                   display: 'flex',
@@ -533,12 +579,12 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 
               <div style={{ flex: 1 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: '#A8D48A', fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
+                  <span style={{ fontSize: 12, color: '#A8D48A', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>
                     {step === 1 && 'Tipo de usuario'}
                     {step === 2 && 'Información personal'}
                     {step === 3 && 'Ubicación y rubros'}
                   </span>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: 'Nunito, sans-serif' }}>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: "'Nunito Sans', sans-serif" }}>
                     {step} / {TOTAL_STEPS - 1}
                   </span>
                 </div>
@@ -546,10 +592,10 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                   <div
                     style={{
                       height: '100%',
+                      width: `${(step / (TOTAL_STEPS - 1)) * 100}%`,
+                      background: 'linear-gradient(90deg, #E5AE30 0%, #6BAA3D 100%)',
                       borderRadius: 2,
-                      background: 'linear-gradient(90deg, #F0A830, #D4870A)',
-                      width: `${((step) / (TOTAL_STEPS - 1)) * 100}%`,
-                      transition: 'width 0.3s ease',
+                      transition: 'width 300ms ease',
                     }}
                   />
                 </div>
@@ -560,9 +606,9 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
               style={{
                 position: 'relative',
                 zIndex: 1,
-                fontFamily: 'Fraunces, serif',
+                fontFamily: "'Poppins', sans-serif",
                 fontSize: 28,
-                color: '#FAF7EF',
+                color: '#F5EEE6',
                 margin: '14px 0 0',
                 fontWeight: 700,
                 textAlign: 'center',
@@ -578,7 +624,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
             {step === 1 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {errors.userType && (
-                  <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: 'Nunito, sans-serif', fontWeight: 600 }}>
+                  <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600 }}>
                     ⚠️ {errors.userType}
                   </div>
                 )}
@@ -606,10 +652,10 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                       {type.icon}
                     </div>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: userType === type.id ? type.color : '#1C3F10', fontFamily: 'Fraunces, serif', marginBottom: 3 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: userType === type.id ? type.color : '#1C3F10', fontFamily: "'Poppins', sans-serif", marginBottom: 3 }}>
                         {type.label}
                       </div>
-                      <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif', lineHeight: 1.4 }}>
+                      <div style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", lineHeight: 1.4 }}>
                         {type.desc}
                       </div>
                     </div>
@@ -640,10 +686,10 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 
                 <Field label="Celular *" error={errors.phone}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: `1.5px solid ${errors.phone ? '#C4622D' : '#E8E0CF'}`, borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-                    <div style={{ padding: '12px 12px', background: '#F5F2EA', borderRight: '1px solid #E8E0CF', fontSize: 13, fontFamily: 'Nunito, sans-serif', color: '#3D2B1A', fontWeight: 600, flexShrink: 0 }}>
+                    <div style={{ padding: '12px 12px', background: '#F5F2EA', borderRight: '1px solid #E8E0CF', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", color: '#3D2B1A', fontWeight: 600, flexShrink: 0 }}>
                       🇨🇴 +57
                     </div>
-                    <input placeholder="300 123 4567" value={form.phone} onChange={(e) => setField('phone', e.target.value)} type="tel" style={{ flex: 1, border: 'none', outline: 'none', padding: '12px', fontSize: 14, fontFamily: 'Nunito, sans-serif', color: '#1C3F10', background: 'transparent' }} />
+                    <input placeholder="300 123 4567" value={form.phone} onChange={(e) => setField('phone', e.target.value)} type="tel" style={{ flex: 1, border: 'none', outline: 'none', padding: '12px', fontSize: 14, fontFamily: "'Nunito Sans', sans-serif", color: '#1C3F10', background: 'transparent' }} />
                   </div>
                 </Field>
 
@@ -671,7 +717,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                         <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: getStrengthColor(form.password, i) }} />
                       ))}
                     </div>
-                    <p style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', margin: 0 }}>
+                    <p style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", margin: 0 }}>
                       Seguridad: <strong>{getStrengthLabel(form.password)}</strong>
                     </p>
                   </div>
@@ -696,14 +742,14 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 
                 {userType === 'asociacion' && (
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif', marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 4 }}>
                       Productos que comercializas *
                     </div>
-                    <div style={{ fontSize: 12, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 10 }}>
+                    <div style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 10 }}>
                       Selecciona los rubros de tu Mercado Campesino
                     </div>
                     {errors.categories && (
-                      <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '8px 12px', color: '#C4622D', fontSize: 12, fontFamily: 'Nunito, sans-serif', fontWeight: 600, marginBottom: 10 }}>
+                      <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '8px 12px', color: '#C4622D', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600, marginBottom: 10 }}>
                         ⚠️ {errors.categories}
                       </div>
                     )}
@@ -717,7 +763,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, border: active ? '2px solid #2A5C1A' : '1.5px solid #E8E0CF', background: active ? '#2A5C1A10' : '#fff', cursor: 'pointer' }}
                           >
                             <span style={{ fontSize: 20 }}>{cat.icon}</span>
-                            <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? '#2A5C1A' : '#3D2B1A', fontFamily: 'Nunito, sans-serif' }}>{cat.label}</span>
+                            <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? '#2A5C1A' : '#3D2B1A', fontFamily: "'Nunito Sans', sans-serif" }}>{cat.label}</span>
                           </button>
                         )
                       })}
@@ -732,7 +778,7 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
                   <div style={{ width: 22, height: 22, borderRadius: 6, border: form.acceptTerms ? 'none' : '1.5px solid #E8E0CF', background: form.acceptTerms ? '#2A5C1A' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
                     {form.acceptTerms && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
                   </div>
-                  <span style={{ fontSize: 13, color: '#3D2B1A', fontFamily: 'Nunito, sans-serif', lineHeight: 1.5 }}>
+                  <span style={{ fontSize: 13, color: '#3D2B1A', fontFamily: "'Nunito Sans', sans-serif", lineHeight: 1.5 }}>
                     Acepto los <span style={{ color: '#2A5C1A', fontWeight: 700 }}>Términos y Condiciones</span> y la <span style={{ color: '#2A5C1A', fontWeight: 700 }}>Política de Privacidad</span> de CampoConecta
                   </span>
                 </button>
@@ -742,23 +788,23 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 
           <div style={{ padding: '12px 20px 20px', background: '#f5efe6', borderTop: '1px solid rgba(39,74,35,0.08)' }}>
             {step === 3 && !form.acceptTerms ? (
-              <button disabled style={{ width: '100%', padding: '15px', borderRadius: 16, border: 'none', background: '#E8E0CF', color: '#8A8070', fontSize: 16, fontWeight: 700, fontFamily: 'Nunito, sans-serif', cursor: 'not-allowed' }}>
+              <button disabled style={{ width: '100%', padding: '15px', borderRadius: 16, border: 'none', background: '#E8E0CF', color: '#8A8070', fontSize: 16, fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif", cursor: 'not-allowed' }}>
                 Acepta los términos para continuar
               </button>
             ) : (
-              <button onClick={step === 3 ? handleSubmit : next} disabled={loading} style={{ width: '100%', padding: '15px', borderRadius: 16, border: 'none', background: 'linear-gradient(135deg, #2A5C1A, #3D7A28)', color: '#FAF7EF', fontSize: 16, fontWeight: 800, fontFamily: 'Nunito, sans-serif', cursor: 'pointer', boxShadow: '0 6px 20px rgba(42,92,26,0.3)' }}>
+              <button onClick={step === 3 ? handleSubmit : next} disabled={loading} style={{ width: '100%', padding: '15px', borderRadius: 16, border: 'none', background: 'linear-gradient(135deg, #2A5C1A, #3D7A28)', color: '#F5EEE6', fontSize: 16, fontWeight: 800, fontFamily: "'Nunito Sans', sans-serif", cursor: 'pointer', boxShadow: '0 6px 20px rgba(42,92,26,0.3)' }}>
                 {step === 3 ? 'Crear mi cuenta →' : 'Continuar →'}
               </button>
             )}
 
             {step === 1 && (
-              <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+              <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
                 ¿Ya tienes cuenta? <span style={{ color: '#2A5C1A', fontWeight: 700, cursor: 'pointer' }} onClick={onLogin}>Inicia sesión</span>
               </p>
             )}
 
             {submitError && (
-              <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: 'Nunito, sans-serif', fontWeight: 600, marginTop: 12 }}>
+              <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600, marginTop: 12 }}>
                 ⚠️ {submitError}
               </div>
             )}
@@ -772,12 +818,12 @@ export default function RegisterScreen({ onComplete, onLogin }: Props) {
 function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
   return (
     <div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: 'Nunito, sans-serif', marginBottom: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 6 }}>
         {label}
       </div>
       {children}
       {error && (
-        <div style={{ fontSize: 12, color: '#C4622D', fontFamily: 'Nunito, sans-serif', marginTop: 4, fontWeight: 600 }}>
+        <div style={{ fontSize: 12, color: '#C4622D', fontFamily: "'Nunito Sans', sans-serif", marginTop: 4, fontWeight: 600 }}>
           ⚠️ {error}
         </div>
       )}
@@ -793,7 +839,7 @@ function inputStyle(hasError: boolean): CSSProperties {
     border: `1.5px solid ${hasError ? '#C4622D' : '#E8E0CF'}`,
     background: hasError ? '#FEF9F7' : '#fff',
     fontSize: 14,
-    fontFamily: 'Nunito, sans-serif',
+    fontFamily: "'Nunito Sans', sans-serif",
     color: '#1C3F10',
     outline: 'none',
     boxSizing: 'border-box',
@@ -825,4 +871,6 @@ function getStrengthLabel(pw: string): string {
   if (s <= 3) return 'Buena'
   return 'Muy segura'
 }
+
+
 

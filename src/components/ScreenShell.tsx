@@ -76,11 +76,9 @@ export default function ScreenShell({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const isProducer = userRole === 'asociacion' || userRole === 'turismo'
-  const navItems: NavItem[] = isProducer
+  const navItems: NavItem[] = (userRole === 'asociacion' || userRole === 'turismo')
     ? [
         { id: 'home', label: 'Panel de administración' },
-        { id: 'profile', label: 'Mi Perfil' },
       ]
     : NAV_ITEMS
   const handleProfileClick = () => {
@@ -217,6 +215,28 @@ export default function ScreenShell({
                 Login
               </button>
             ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {(userRole === 'asociacion' || userRole === 'turismo') && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate?.('home')}
+                    style={{
+                      background: '#1C3A14',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '8px 20px',
+                      fontSize: 14,
+                      fontWeight: 700,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      cursor: 'pointer',
+                      transition: 'background 0.2s',
+                    }}
+                    className="hover:bg-[#2A6542]"
+                  >
+                    Admin
+                  </button>
+                )}
               <div style={{ position: 'relative' }}>
                 <button
                   type="button"
@@ -316,9 +336,10 @@ export default function ScreenShell({
                   </>
                 )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* Botón Carrito - Oculto en Experiencias */}
+          {/* Botón Carrito - Oculto en Experiencias */}
             {activeNav !== 'tourism' && (
               <button
                 type="button"

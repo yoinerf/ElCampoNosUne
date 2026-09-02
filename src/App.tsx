@@ -183,7 +183,7 @@ export default function App() {
               }}
               onNavigate={setActiveTab}
               activeNav={activeTab}
-              onProfileClick={() => setActiveTab('profile')}
+              onProfileClick={handleProfileClick}
               initialSelectedProduct={initialProduct}
               onClearInitialProduct={() => setInitialProduct(null)}
             />

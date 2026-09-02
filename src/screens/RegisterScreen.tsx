@@ -35,40 +35,6 @@ const userTypes = [
   },
 ]
 
-const fallbackDepartments = [
-  'Antioquia',
-  'Atlántico',
-  'Bogotá D.C.',
-  'Bolívar',
-  'Boyacá',
-  'Caldas',
-  'Caquetá',
-  'Casanare',
-  'Cauca',
-  'Cesar',
-  'Chocó',
-  'Córdoba',
-  'Cundinamarca',
-  'Guainía',
-  'Guaviare',
-  'Huila',
-  'La Guajira',
-  'Magdalena',
-  'Meta',
-  'Nariño',
-  'Norte de Santander',
-  'Putumayo',
-  'Quindío',
-  'Risaralda',
-  'San Andrés y Providencia',
-  'Santander',
-  'Sucre',
-  'Tolima',
-  'Valle del Cauca',
-  'Vaupés',
-  'Vichada',
-]
-
 const productCategories = [
   { icon: '🌽', label: 'Cultivos' },
   { icon: '☕', label: 'Café' },
@@ -102,7 +68,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState('')
-  const [departments, setDepartments] = useState<string[]>(fallbackDepartments)
+  const [departments, setDepartments] = useState<string[]>([])
 
   const [producerCount, setProducerCount] = useState<number | null>(null)
 
@@ -126,17 +92,13 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
         .select('name')
         .order('name', { ascending: true })
 
-      if (error) {
-        if (active) setDepartments(fallbackDepartments)
+      if (error || !data || data.length === 0) {
+        if (active) setDepartments([])
         return
       }
 
-      const rows = Array.isArray(data) ? data : []
-      const values = rows
-        .map((row) => (typeof row?.name === 'string' ? row.name.trim() : ''))
-        .filter(Boolean)
-
-      if (active) setDepartments(values.length > 0 ? values : fallbackDepartments)
+      const values = data.map((d: any) => d.name)
+      if (active) setDepartments(values)
     }
 
     loadData()

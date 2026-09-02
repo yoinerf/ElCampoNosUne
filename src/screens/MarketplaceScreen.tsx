@@ -851,6 +851,7 @@ export default function MarketplaceScreen({
     }
   }, [cart])
   const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -871,7 +872,7 @@ export default function MarketplaceScreen({
     producer: '',
     price: '',
     unit: 'kg',
-    category: 'Cultivos',
+    category: '',
     img: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
     stock: 'Disponible',
     certified: true,
@@ -879,9 +880,10 @@ export default function MarketplaceScreen({
 
   const loadProducts = async () => {
     try {
-      const [{ data: productsData, error: prodErr }, { data: reviewsData }] = await Promise.all([
+      const [{ data: productsData, error: prodErr }, { data: reviewsData }, { data: categoriesData }] = await Promise.all([
         supabase.from('products').select('*').order('created_at', { ascending: false }),
         supabase.from('product_reviews').select('product_id, rating'),
+        supabase.from('categories').select('id, name')
       ])
 
       if (prodErr) {
@@ -907,12 +909,19 @@ export default function MarketplaceScreen({
           ? Number((ratings.reduce((sum, val) => sum + val, 0) / count).toFixed(1))
           : (p.rating ?? 5)
 
+        const catName = categoriesData?.find((c) => c.id === p.category_id)?.name || 'Sin categoría'
+
         return {
           ...p,
           rating: avgRating,
           reviews: count,
+          category: catName,
         }
       })
+
+      if (categoriesData && categoriesData.length > 0) {
+        setCategories(categoriesData as { id: string; name: string }[])
+      }
 
       setProducts(processed)
     } catch (e) {
@@ -1113,7 +1122,7 @@ export default function MarketplaceScreen({
       producer: form.producer.trim() || profile?.org_name || `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Productor',
       price: Number(form.price),
       unit: form.unit || 'kg',
-      category: form.category || 'Cultivos',
+      category_id: form.category || null,
       certified: form.certified,
       img: form.img || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
       stock: form.stock || 'Disponible',
@@ -1145,7 +1154,7 @@ export default function MarketplaceScreen({
       producer: '',
       price: '',
       unit: 'kg',
-      category: 'Cultivos',
+      category: '',
       img: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
       stock: 'Disponible',
       certified: true,
@@ -1415,8 +1424,9 @@ export default function MarketplaceScreen({
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }}>
-                      {filters.filter((f) => f !== 'Todos').map((f) => (
-                        <option key={f} value={f}>{f}</option>
+                      <option value="">Seleccionar categoría...</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
                     <input value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} placeholder="Stock" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />

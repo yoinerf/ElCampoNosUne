@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import PaymentModal from '../components/PaymentModal'
 import type { CartItem } from './MarketplaceScreen'
 import { supabase } from '../lib/supabase'
@@ -10,19 +10,29 @@ interface CheckoutScreenProps {
   onBack: () => void
   onConfirm: (items: CartItem[]) => Promise<boolean>
   onRequireAuth?: (mode: 'login' | 'auth') => void
+  onViewProduct?: (productId: string) => void
 }
 
-export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm, onRequireAuth }: CheckoutScreenProps) {
+export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm, onRequireAuth, onViewProduct }: CheckoutScreenProps) {
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [message, setMessage] = useState('')
+  const [isLogged, setIsLogged] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setIsLogged(!!data.user)
+    })
+  }, [])
+
   const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-  const formatPrice = (value: number) => `$${value.toLocaleString('es-CO')}`
+  const shipping = items.length > 0 ? 9000 : 0
+  const formatPrice = (value: number) => `$${value.toLocaleString('es-CO')} COP`
 
   const startPayment = async () => {
     const { data } = await supabase.auth.getUser()
     if (!data.user) {
-      setAuthOpen(true)
+      onRequireAuth?.('auth')
       return
     }
     setPaymentOpen(true)
@@ -36,6 +46,14 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     return confirmed
   }
 
+  const updateQuantity = (id: string, newQuantity: number) => {
+    if (newQuantity <= 0) {
+      onItemsChange(items.filter((item) => item.product.id !== id))
+    } else {
+      onItemsChange(items.map((item) => item.product.id === id ? { ...item, quantity: newQuantity } : item))
+    }
+  }
+
   return (
     <>
       <AuthRequiredModal open={authOpen} onClose={() => setAuthOpen(false)} onRequireAuth={(mode) => onRequireAuth?.(mode)} />
@@ -44,60 +62,186 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
         title="Finalizar pedido"
         subtitle="Completa tus datos para continuar con el pago seguro."
         confirmLabel="Pagar pedido"
-        amount={total}
+        amount={total + shipping}
         onClose={() => setPaymentOpen(false)}
         onConfirm={confirmPayment}
       />
-      <div className="h-full overflow-y-auto" style={{ background: '#F5EEE6' }}>
-        <header style={{ background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)', padding: '20px 18px 28px', borderRadius: '0 0 30px 30px', color: '#F5EEE6' }}>
-          <button type="button" onClick={onBack} style={{ background: 'rgba(255,255,255,0.14)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', borderRadius: 10, padding: '8px 12px', cursor: 'pointer', fontSize: 18 }}>←</button>
-          <p style={{ color: '#6BAA3D', fontSize: 13, fontWeight: 700, margin: '18px 0 2px' }}>MERCADOS CAMPESINOS</p>
-          <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 24, margin: 0 }}>Mi carrito</h1>
-        </header>
 
-        <main style={{ padding: '20px 18px 100px' }}>
+      <div className="h-full overflow-y-auto" style={{ background: '#F9F6F0', fontFamily: "'Nunito Sans', sans-serif" }}>
+
+        {/* Banner superior si no está logueado */}
+        {isLogged === false && items.length > 0 && (
+          <div style={{ background: '#D06050', color: '#fff', padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span>🛡️</span> Necesitas una cuenta para completar tu compra
+            </div>
+            <button type="button" onClick={() => onRequireAuth?.('auth')} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}>
+              Crear cuenta ahora
+            </button>
+          </div>
+        )}
+
+        <main className="max-w-[1300px] mx-auto px-6 md:px-12 py-8">
           {items.length === 0 ? (
-            <div style={{ background: '#fff', border: '1px solid #E8DED0', borderRadius: 18, padding: 28, textAlign: 'center' }}>
-              <div style={{ fontSize: 42, marginBottom: 10 }}>🛒</div>
-              <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 19, margin: '0 0 6px' }}>Tu carrito está vacío</h2>
-              <p style={{ color: '#666', fontSize: 14, margin: '0 0 18px' }}>Agrega productos o experiencias desde el marketplace.</p>
-              <button type="button" onClick={onBack} style={{ background: '#205134', color: '#fff', border: 'none', borderRadius: 12, padding: '11px 18px', fontWeight: 700, cursor: 'pointer' }}>Volver al marketplace</button>
+            <div style={{ background: '#fff', border: '1px solid #E8DED0', borderRadius: 18, padding: '48px 24px', textAlign: 'center', maxWidth: 480, margin: '40px auto', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
+              <div style={{ fontSize: 52, marginBottom: 16 }}>🛒</div>
+              <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 24, margin: '0 0 10px', fontWeight: 700 }}>Tu carrito está vacío</h2>
+              <p style={{ color: '#666', fontSize: 15, margin: '0 0 28px', lineHeight: 1.5 }}>Agrega productos o experiencias desde el marketplace para continuar.</p>
+              <button
+                type="button"
+                onClick={onBack}
+                style={{
+                  background: '#205134',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 12,
+                  padding: '12px 28px',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  fontSize: 15,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                ← Volver al marketplace
+              </button>
             </div>
           ) : (
             <>
-              <p style={{ color: '#666', fontSize: 13, margin: '0 0 12px' }}>{items.reduce((sum, item) => sum + item.quantity, 0)} artículos seleccionados</p>
-              <button type="button" onClick={onBack} style={{ alignSelf: 'flex-start', background: 'transparent', border: 'none', color: '#205134', padding: '0 0 12px', fontWeight: 800, cursor: 'pointer' }}>+ Seguir comprando</button>
-              <div className="checkout-layout">
-                <div style={{ display: 'grid', gap: 12 }}>
-                  {items.map((item) => (
-                  <article key={item.product.id} style={{ display: 'grid', gridTemplateColumns: '74px minmax(0, 1fr) auto', gap: 12, alignItems: 'start', background: '#fff', border: '1px solid #E8DED0', borderRadius: 16, padding: 10 }}>
-                    <img src={item.product.img} alt={item.product.title} style={{ width: 74, height: 74, objectFit: 'cover', borderRadius: 12 }} />
-                    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
-                      <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 16, lineHeight: 1.2, margin: 0 }}>{item.product.title}</h2>
-                      <span style={{ display: 'inline-block', color: item.product.type === 'experiencia' ? '#9B4728' : '#205134', background: item.product.type === 'experiencia' ? '#FFF3E8' : '#EAF3EC', borderRadius: 20, padding: '3px 8px', fontSize: 9, fontWeight: 700 }}>{item.product.type === 'experiencia' ? 'Experiencia' : 'Producto'}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <button type="button" aria-label={`Quitar una unidad de ${item.product.title}`} onClick={() => onItemsChange(item.quantity === 1 ? items.filter((current) => current.product.id !== item.product.id) : items.map((current) => current.product.id === item.product.id ? { ...current, quantity: current.quantity - 1 } : current))} style={{ width: 24, height: 24, border: 'none', borderRadius: '50%', background: '#EAF3EC', color: '#205134', cursor: 'pointer', fontWeight: 800 }}>−</button>
-                        <span style={{ minWidth: 14, textAlign: 'center', color: '#205134', fontWeight: 800 }}>{item.quantity}</span>
-                        <button type="button" aria-label={`Agregar una unidad de ${item.product.title}`} onClick={() => onItemsChange(items.map((current) => current.product.id === item.product.id ? { ...current, quantity: current.quantity + 1 } : current))} style={{ width: 24, height: 24, border: 'none', borderRadius: '50%', background: '#205134', color: '#fff', cursor: 'pointer', fontWeight: 800 }}>+</button>
-                      </div>
+              {/* Botón superior de volver */}
+              <button
+                type="button"
+                onClick={onBack}
+                className="mb-6 flex items-center gap-2 text-[#205134] font-bold text-sm bg-transparent border-none cursor-pointer hover:opacity-80 p-0 transition-opacity"
+              >
+                ← Seguir explorando el campo
+              </button>
+
+              {/* Encabezado */}
+              <div className="flex justify-between items-end mb-8">
+                <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 32, color: '#3D2B1A', margin: 0, fontWeight: 500 }}>
+                  Tu Carrito <span style={{ fontFamily: "'Nunito Sans', sans-serif", fontSize: 18, color: '#666', fontWeight: 400 }}>({items.reduce((sum, item) => sum + item.quantity, 0)} items)</span>
+                </h1>
+                <button
+                  type="button"
+                  onClick={() => onItemsChange([])}
+                  style={{ background: 'none', border: 'none', color: '#D06050', fontSize: 14, textDecoration: 'underline', cursor: 'pointer' }}
+                >
+                  Limpiar carrito
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-12 xl:gap-16">
+                {/* Columna Izquierda: Lista de productos */}
+                <div>
+                  <div className="flex flex-col gap-4">
+                    {items.map((item) => (
+                      <article key={item.product.id} className="bg-white rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 border border-[#E8DED0]">
+                        <img
+                          src={item.product.img}
+                          alt={item.product.title}
+                          className="w-20 h-20 shrink-0 object-cover rounded-xl bg-[#F5EEE6] cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => onViewProduct?.(item.product.id)}
+                        />
+
+                        <div className="flex-1 min-w-0 text-center sm:text-left w-full sm:w-auto">
+                          <div className="text-[10px] font-bold text-[#205134] uppercase tracking-wider mb-1">
+                            {item.product.producer}
+                          </div>
+                          <h3
+                            className="font-['Poppins'] font-bold text-[#1C3A14] text-base m-0 leading-tight truncate cursor-pointer hover:text-[#9B4728] transition-colors"
+                            onClick={() => onViewProduct?.(item.product.id)}
+                          >
+                            {item.product.title}
+                          </h3>
+                          <div className="text-[#888] text-xs mt-1">
+                            {formatPrice(item.product.price)}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end mt-4 sm:mt-0 shrink-0">
+                          <div className="flex items-center bg-[#F5EEE6] rounded-full h-9 px-1 w-[104px] shrink-0 justify-between">
+                            <button
+                              onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
+                            >
+                              -
+                            </button>
+                            <span className="w-8 text-center font-bold text-sm text-[#205134]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              {item.quantity}
+                            </span>
+                            <button
+                              onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                              className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          <div className="font-['Poppins'] font-bold text-[#9B4728] text-base w-[135px] shrink-0 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {formatPrice(item.product.price * item.quantity)}
+                          </div>
+
+                          <button
+                            onClick={() => updateQuantity(item.product.id, 0)}
+                            className="w-8 h-8 shrink-0 flex items-center justify-center border-none bg-transparent text-[#D06050] cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
+                            title="Eliminar"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                            </svg>
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Columna Derecha: Resumen */}
+                <div>
+                  <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0] shadow-sm sticky top-6">
+                    <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 mb-6 font-medium">Resumen del pedido</h2>
+
+                    <div className="flex justify-between text-sm text-[#555] mb-4">
+                      <span>Subtotal productos</span>
+                      <span className="font-bold text-[#1C3A14]">{formatPrice(total)}</span>
                     </div>
-                    <div style={{ color: '#9B4728', fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 700, whiteSpace: 'nowrap', paddingTop: 2 }}>{formatPrice(item.product.price * item.quantity)} <span style={{ color: '#666', fontSize: 11, fontWeight: 500 }}></span></div>
-                  </article>
-                  ))}   
+
+                    <div className="flex justify-between text-sm text-[#555] mb-6">
+                      <span>Envío estimado</span>
+                      <span className="font-bold text-[#205134]">{formatPrice(shipping)}</span>
+                    </div>
+
+                    <div className="h-px bg-[#E8DED0] w-full mb-6"></div>
+
+                    <div className="flex justify-between items-center mb-8">
+                      <span className="font-['Poppins'] text-lg font-bold text-[#1C3A14]">Total estimado</span>
+                      <span className="font-['Poppins'] text-2xl font-bold text-[#D06050]">{formatPrice(total + shipping)}</span>
+                    </div>
+
+                    <button
+                      onClick={startPayment}
+                      className="w-full bg-[#D06050] hover:bg-[#ba5546] text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
+                    >
+                      {isLogged ? 'Proceder al pago' : 'Crear cuenta para comprar'}
+                    </button>
+
+                    {isLogged === false && (
+                      <div className="text-center text-xs text-[#666] mb-8">
+                        ¿Ya tienes cuenta? <button onClick={() => onRequireAuth?.('login')} className="bg-transparent border-none font-bold text-[#1C3A14] cursor-pointer underline">Iniciar sesión</button>
+                      </div>
+                    )}
+
+                    <div className="h-px bg-[#E8DED0] w-full mb-6 mt-4"></div>
+
+                    <div className="flex gap-3 text-xs text-[#666] leading-relaxed">
+                      <span className="text-[#205134] text-lg">🔒</span>
+                      <p className="m-0">Compra respaldada por nuestra política de comercio justo y directo con el agricultor.</p>
+                    </div>
+                  </div>
                 </div>
-              <section style={{ background: '#fff', border: '1px solid #E8DED0', borderRadius: 16, padding: 20, alignSelf: 'start' }}>
-                <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 18, margin: '0 0 24px' }}>Resumen</h2>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#3D2B1A', fontSize: 14, marginBottom: 16 }}>
-                  <span>Subtotal ({items.reduce((sum, item) => sum + item.quantity, 0)} items)</span>
-                  <span>{formatPrice(total)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666', fontSize: 13, marginBottom: 8 }}><span>Envío</span><span>A calcular</span></div>
-                <div style={{ height: 1, background: '#E8DED0', margin: '22px 0' }} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#205134', fontFamily: "'Poppins', sans-serif", fontWeight: 800, fontSize: 19 }}><span>Total</span><span>{formatPrice(total)}</span></div>
-                {message && <p style={{ color: '#205134', fontWeight: 700, fontSize: 13 }}>{message}</p>}
-                <button type="button" onClick={startPayment} style={{ width: '100%', marginTop: 16, padding: 14, border: 'none', borderRadius: 14, background: '#205134', color: '#fff', fontWeight: 800, fontSize: 15, cursor: 'pointer' }}>Proceder al pago</button>
-                <p style={{ textAlign: 'center', color: '#86A493', fontSize: 12, margin: '16px 0 0' }}>Deberás iniciar sesión para pagar</p>
-              </section>
               </div>
             </>
           )}
@@ -106,3 +250,4 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     </>
   )
 }
+

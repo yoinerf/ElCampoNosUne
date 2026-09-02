@@ -28,14 +28,17 @@ interface Experience {
   featured: boolean
 }
 
+type Tab = 'home' | 'market' | 'tourism' | 'profile'
+
 interface TourismScreenProps {
-  onRequireAuth?: (mode: 'login' | 'auth') => void
-  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onRequireAuth?: (mode: 'auth' | 'login') => void
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
+  userRole?: 'asociacion' | 'turismo' | 'comprador' | null
 }
 
-export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick }: TourismScreenProps) {
+export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick, userRole: propUserRole }: TourismScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [searchVal, setSearchVal] = useState('')
   const [experiences, setExperiences] = useState<Experience[]>([])
@@ -60,9 +63,48 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   })
 
   const loadExperiences = async () => {
-    const { data } = await supabase.from('experiences').select('*').order('created_at', { ascending: false })
-    if (data) setExperiences(data as Experience[])
-    setLoading(false)
+    try {
+      const [{ data: experiencesData, error: expErr }, { data: reviewsData }] = await Promise.all([
+        supabase.from('experiences').select('*').order('created_at', { ascending: false }),
+        supabase.from('experience_reviews').select('experience_id, rating'),
+      ])
+
+      if (expErr) {
+        console.error('Error cargando experiencias:', expErr)
+        setLoading(false)
+        return
+      }
+
+      const reviewsMap: Record<string, number[]> = {}
+      if (reviewsData && Array.isArray(reviewsData)) {
+        for (const r of reviewsData) {
+          if (r.experience_id) {
+            if (!reviewsMap[r.experience_id]) reviewsMap[r.experience_id] = []
+            reviewsMap[r.experience_id].push(r.rating)
+          }
+        }
+      }
+
+      const processed: Experience[] = (experiencesData || []).map((exp) => {
+        const ratings = reviewsMap[exp.id] || []
+        const count = ratings.length
+        const avg = count > 0
+          ? Number((ratings.reduce((sum, val) => sum + val, 0) / count).toFixed(1))
+          : (exp.rating ?? 5)
+
+        return {
+          ...exp,
+          rating: avg,
+          reviews: count,
+        }
+      })
+
+      setExperiences(processed)
+    } catch (e) {
+      console.error('Error en loadExperiences:', e)
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -436,6 +478,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
           activeNav={activeNav ?? 'tourism'}
           onNavigate={onNavigate}
           onProfileClick={onProfileClick}
+          userRole={userRole || propUserRole}
           contentStyle={{ paddingBottom: 20 }}
         >
           {/* ══ BANNER TURISMO ══ */}
@@ -454,6 +497,36 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
             <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#F5EEE6', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Experiencias del campo</h1>
             <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Vive el territorio con comunidades rurales colombianas</p>
           </div>
+
+          {/* ══ BARRA DE BÚSQUEDA ══ */}
+          <div style={{ position: 'relative', marginBottom: 4 }}>
+            <svg
+              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9B4728" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', opacity: 0.6 }}
+            >
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Buscar experiencias..."
+              value={searchVal}
+              onChange={(e) => setSearchVal(e.target.value)}
+              style={{
+                width: '100%',
+                background: '#fff',
+                border: '1px solid #E8DED0',
+                borderRadius: 16,
+                padding: '12px 16px 12px 42px',
+                fontSize: 14,
+                fontFamily: "'Nunito Sans', sans-serif",
+                color: '#3D2B1A',
+                boxShadow: '0 2px 10px rgba(155,71,40,0.03)',
+                boxSizing: 'border-box',
+                outline: 'none',
+              }}
+            />
+          </div>
           
 
           <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -462,15 +535,15 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
             </p>
 
             {loading && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
-                {Array.from({ length: 3 }).map((_, index) => (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
+                {Array.from({ length: 4 }).map((_, index) => (
                   <div
                     key={index}
                     className="animate-pulse"
                     style={{
                       background: '#eee5d7',
-                      borderRadius: 20,
-                      height: 230,
+                      borderRadius: 18,
+                      height: 270,
                       border: '1px solid #E8DED0',
                     }}
                   />
@@ -515,65 +588,94 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
               {filteredExperiences.map((exp) => (
                 <div
                   key={exp.id}
-                  className="tourism-card"
+                  className="tourism-card group"
                   onClick={() => setSelected(exp.id)}
                   style={{
                     background: '#fff',
-                    borderRadius: 20,
+                    borderRadius: 18,
                     overflow: 'hidden',
                     border: '1px solid #E8DED0',
-                    boxShadow: '0 2px 16px rgba(42,92,26,0.07)',
+                    boxShadow: '0 2px 10px rgba(42,92,26,0.05)',
                     cursor: 'pointer',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    width: '100%',
                   }}
                 >
-                  <div style={{ position: 'relative', height: 140 }}>
-                    <img src={exp.img} alt={exp.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    <span style={{ position: 'absolute', top: 10, left: 10, background: '#FFF3E8', color: '#9B4728', fontSize: 10, fontWeight: 700, padding: '4px 9px', borderRadius: 20 }}>📸 Experiencia</span>
-                    <span style={{ position: 'absolute', top: 10, right: 10, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 11, fontWeight: 800, padding: '4px 8px', borderRadius: 20 }}>⭐ {exp.rating}</span>
+                  <div style={{ position: 'relative', height: 165, width: '100%', background: '#F5EEE6', overflow: 'hidden' }}>
+                    <img
+                      src={exp.img}
+                      alt={exp.title}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      className="transition-transform duration-500 ease-out group-hover:scale-105"
+                    />
+                    <span style={{ position: 'absolute', top: 8, left: 8, background: '#FFF3E8', color: '#9B4728', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
+                      📸 EXPERIENCIA
+                    </span>
+                    {(exp.reviews ?? 0) > 0 ? (
+                      <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
+                        ⭐ {exp.rating} <span style={{ fontWeight: 500, color: '#666' }}>({exp.reviews})</span>
+                      </span>
+                    ) : (
+                      <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.85)', color: '#888', fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20 }}>
+                        NUEVA
+                      </span>
+                    )}
                   </div>
-                  <div style={{ padding: '14px 16px' }}>
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
-                      {exp.tags.map((t) => (
-                        <span
-                          key={t}
-                          style={{
-                            background: (tagColors[t] || '#205134') + '18',
-                            color: tagColors[t] || '#205134',
-                            fontSize: 10,
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: 20,
-                            fontFamily: "'Nunito Sans', sans-serif",
-                          }}
-                        >
-                          {t}
-                        </span>
-                      ))}
+                  <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+                    <div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                        {exp.tags.map((t) => (
+                          <span
+                            key={t}
+                            style={{
+                              background: (tagColors[t] || '#205134') + '18',
+                              color: tagColors[t] || '#205134',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: 20,
+                              fontFamily: "'Nunito Sans', sans-serif",
+                            }}
+                          >
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                      <h4
+                        style={{
+                          fontFamily: "'Poppins', sans-serif",
+                          fontSize: 14,
+                          color: '#1C3A14',
+                          margin: '0 0 4px',
+                          fontWeight: 700,
+                          lineHeight: 1.3,
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {exp.title}
+                      </h4>
+                      <p style={{ fontSize: 12, color: '#666666', fontFamily: "'Nunito Sans', sans-serif", margin: '0 0 12px' }}>
+                        📍 {exp.host}
+                      </p>
                     </div>
-                    <h4 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, color: '#205134', margin: '0 0 4px', fontWeight: 700, lineHeight: 1.3 }}>
-                      {exp.title}
-                    </h4>
-                    <p style={{ fontSize: 12, color: '#666666', fontFamily: "'Nunito Sans', sans-serif", margin: '0 0 10px' }}>
-                      📍 {exp.host}
-                    </p>
-                    <div className="flex items-center justify-between">
+
+                    <div className="flex items-center justify-between pt-2 border-t border-[#F5EEE6]">
                       <div>
-                        <span style={{ fontSize: 16, fontWeight: 700, color: '#205134', fontFamily: "'Poppins', sans-serif" }}>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: '#9B4728', fontFamily: "'Poppins', sans-serif" }}>
                           {formatPrice(exp.price)}
                         </span>
-                        <span style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}> /persona</span>
+                        <span style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}> /pers.</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
-                          ({exp.reviews})
-                        </span>
-                        <span style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}>
-                          · {exp.duration}
-                        </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#666666', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif" }}>
+                        <span>⏱️ {exp.duration}</span>
                       </div>
                     </div>
                   </div>

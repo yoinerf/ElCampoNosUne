@@ -7,6 +7,7 @@ import TourismScreen from './screens/TourismScreen'
 import ProfileScreen from './screens/ProfileScreen'
 import RegisterScreen from './screens/RegisterScreen'
 import LoginScreen from './screens/LoginScreen'
+import AdminPanelScreen from './screens/AdminPanelScreen'
 import { supabase } from './lib/supabase'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile'
@@ -16,11 +17,9 @@ type AppFlow = 'auth' | 'login' | 'app'
 const getVisibleTabs = (role?: UserRole) => {
   switch (role) {
     case 'asociacion':
-      return ['market', 'profile'] as Tab[]
     case 'turismo':
-      return ['tourism', 'profile'] as Tab[]
+      return ['home', 'profile'] as Tab[]
     case 'comprador':
-      return ['home', 'market', 'tourism', 'profile'] as Tab[]
     default:
       return ['home', 'market', 'tourism', 'profile'] as Tab[]
   }
@@ -33,6 +32,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole | undefined>()
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([])
   const [checkoutConfirm, setCheckoutConfirm] = useState<((items: CartItem[]) => Promise<boolean>) | null>(null)
+  const [initialProduct, setInitialProduct] = useState<string | null>(null)
 
   useEffect(() => {
     const loadRole = async (session: { user: { id: string } } | null) => {
@@ -94,21 +94,28 @@ export default function App() {
     setActiveTab('home')
   }
 
+  const isProducer = userRole === 'asociacion' || userRole === 'turismo'
+
   const mainScreens: Record<Tab, JSX.Element> = {
-    home: <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />,
+    home: isProducer ? (
+      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+    ) : (
+      <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+    ),
     market: (
       <MarketplaceScreen
         onNavigate={setActiveTab}
         activeNav={activeTab}
         onProfileClick={handleProfileClick}
+        userRole={userRole}
         onOpenCheckout={(products, onConfirm) => {
           setCheckoutItems(products)
           setCheckoutConfirm(() => onConfirm)
         }}
       />
     ),
-    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />,
-    profile: <ProfileScreen />,
+    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
+    profile: <ProfileScreen userRole={userRole} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />,
   }
 
   if (checkingSession) {
@@ -132,7 +139,7 @@ export default function App() {
   return (
     <div className="min-h-screen w-full" style={{ background: '#F5EEE6' }}>
       <div className="min-h-screen w-full flex flex-col">
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1">
           {flow === 'auth' && (
             <RegisterScreen
               onComplete={() => setFlow('app')}
@@ -152,10 +159,33 @@ export default function App() {
           {flow === 'app' && (checkoutConfirm ? (
             <CheckoutScreen
               items={checkoutItems}
-              onItemsChange={setCheckoutItems}
+              onItemsChange={(newItems) => {
+                setCheckoutItems(newItems)
+                const newCart = newItems.reduce((acc, item) => {
+                  acc[item.product.id] = item.quantity
+                  return acc
+                }, {} as Record<string, number>)
+                localStorage.setItem('campoconecta_cart', JSON.stringify(newCart))
+              }}
               onBack={() => setCheckoutConfirm(null)}
               onConfirm={checkoutConfirm}
               onRequireAuth={(mode) => setFlow(mode)}
+              onViewProduct={(productId) => {
+                setInitialProduct(productId)
+                setCheckoutConfirm(null)
+              }}
+            />
+          ) : activeTab === 'market' ? (
+            <MarketplaceScreen
+              onOpenCheckout={(items, confirmFn) => {
+                setCheckoutItems(items)
+                setCheckoutConfirm(() => confirmFn)
+              }}
+              onNavigate={setActiveTab}
+              activeNav={activeTab}
+              onProfileClick={() => setActiveTab('profile')}
+              initialSelectedProduct={initialProduct}
+              onClearInitialProduct={() => setInitialProduct(null)}
             />
           ) : mainScreens[activeTab])}
         </div>

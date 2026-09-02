@@ -8,16 +8,21 @@ const certifications = [
   { label: 'Artesano Certificado', icon: '🎨', active: false },
 ]
 
-type UserRole = 'asociacion' | 'turismo' | 'comprador'
+interface ProfileScreenProps {
+  userRole?: UserRole | null
+  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onProfileClick?: () => void
+}
 
-export default function ProfileScreen() {
+export default function ProfileScreen({ userRole: propRole, onNavigate, activeNav, onProfileClick }: ProfileScreenProps) {
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState('')
   const [org, setOrg] = useState('')
   const [location, setLocation] = useState('')
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState<string | null>(null)
-  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [userRole, setUserRole] = useState<UserRole | null>(propRole ?? null)
   const [productCount, setProductCount] = useState(0)
   const [experienceCount, setExperienceCount] = useState(0)
   const [orderCount, setOrderCount] = useState(0)
@@ -182,30 +187,10 @@ export default function ProfileScreen() {
 
   return (
     <ScreenShell
-      title="Mi Perfil"
-      action={
-        <button
-          onClick={async () => {
-            if (editing && userId) {
-              await supabase.from('profiles').update({ org_name: org }).eq('id', userId)
-            }
-            setEditing(!editing)
-          }}
-          style={{
-            padding: '7px 14px',
-            borderRadius: 20,
-            border: '1.5px solid rgba(255,255,255,0.4)',
-            background: 'rgba(255,255,255,0.08)',
-            color: '#F5EEE6',
-            fontSize: 12,
-            fontWeight: 700,
-            fontFamily: "'Nunito Sans', sans-serif",
-            cursor: 'pointer',
-          }}
-        >
-          {editing ? '✓ Guardar' : '✏️ Editar'}
-        </button>
-      }
+      activeNav={activeNav ?? 'profile'}
+      onNavigate={onNavigate}
+      onProfileClick={onProfileClick}
+      userRole={userRole}
       contentStyle={{ paddingBottom: 20 }}
     >
       {loading ? (

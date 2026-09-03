@@ -8,6 +8,8 @@ const certifications = [
   { label: 'Artesano Certificado', icon: '🎨', active: false },
 ]
 
+type UserRole = 'asociacion' | 'turismo' | 'comprador'
+
 interface ProfileScreenProps {
   userRole?: UserRole | null
   onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile') => void

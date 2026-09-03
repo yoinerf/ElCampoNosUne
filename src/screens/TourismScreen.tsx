@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import PaymentModal from '../components/PaymentModal'
 import AuthRequiredModal from '../components/AuthRequiredModal'
+import ExperienceModal from '../components/ExperienceModal'
 import { supabase } from '../lib/supabase'
 
 const tagColors: Record<string, string> = {
@@ -51,16 +52,6 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingReservation, setPendingReservation] = useState<Experience | null>(null)
   const [userRole, setUserRole] = useState<'asociacion' | 'turismo' | 'comprador' | null>(null)
-  const [form, setForm] = useState({
-    title: '',
-    host: '',
-    duration: '2 horas',
-    price: '',
-    capacity: '10 personas',
-    img: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
-    tags: 'Naturaleza, Comunidad',
-    featured: true,
-  })
 
   const loadExperiences = async () => {
     try {
@@ -242,25 +233,18 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     return activitySaved
   }
 
-  const handleCreateExperience = async () => {
+  const handleCreateExperience = async (formData: any) => {
     if (!canCreateExperience) {
       setSubmitMessage('Tu perfil no permite registrar experiencias')
       return
     }
-
-    if (!form.title.trim() || !form.price) {
-      setSubmitMessage('Completa el nombre y el precio de la experiencia')
-      return
-    }
-
     setSaving(true)
     setSubmitMessage('')
 
     const { data: userData } = await supabase.auth.getUser()
     const user = userData.user
-
     if (!user) {
-      setSubmitMessage('Debes iniciar sesión para registrar tu servicio')
+      setSubmitMessage('Debes iniciar sesión para publicar una experiencia.')
       setSaving(false)
       return
     }
@@ -273,14 +257,14 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
 
     const payload = {
       host_id: user.id,
-      title: form.title.trim(),
-      host: form.host.trim() || profile?.org_name || `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Comunidad local',
-      duration: form.duration || '2 horas',
-      price: Number(form.price),
-      capacity: form.capacity || '10 personas',
-      img: form.img || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
-      tags: form.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
-      featured: form.featured,
+      title: formData.title.trim(),
+      host: profile?.org_name || `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Comunidad local',
+      duration: formData.duration || '2 horas',
+      price: Number(formData.price),
+      capacity: formData.capacity || '10 personas',
+      img: formData.img || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
+      tags: formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean),
+      featured: formData.featured,
       rating: 5,
       reviews: 0,
     }
@@ -304,20 +288,10 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       metadata: { experience_title: payload.title, price: payload.price },
     })
 
-    setForm({
-      title: '',
-      host: '',
-      duration: '2 horas',
-      price: '',
-      capacity: '10 personas',
-      img: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
-      tags: 'Naturaleza, Comunidad',
-      featured: true,
-    })
     setShowForm(false)
     setSubmitMessage(
       activitySaved
-        ? 'Experiencia registrada correctamente'
+        ? '¡Experiencia guardada con éxito!'
         : 'Experiencia guardada, pero la actividad no se pudo registrar en el feed.'
     )
     setSaving(false)
@@ -556,37 +530,11 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
               </p>
             )}
 
-            {showForm && (
-              <div style={{ background: '#fff', borderRadius: 18, border: '1px solid #E8DED0', padding: 16, marginBottom: 16 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#205134', fontFamily: "'Poppins', sans-serif", marginBottom: 12 }}>
-                  Registrar experiencia
-                </div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Título de la experiencia" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  <input value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} placeholder="Nombre de la finca / comunidad" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="Duración" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                    <input value={form.capacity} onChange={(e) => setForm({ ...form, capacity: e.target.value })} placeholder="Capacidad" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="Precio" type="number" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                    <input value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} placeholder="Etiquetas" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  </div>
-                  <input value={form.img} onChange={(e) => setForm({ ...form, img: e.target.value })} placeholder="URL de la imagen" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#3D2B1A', fontSize: 14 }}>
-                    <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} />
-                    Destacar experiencia
-                  </label>
-                  {submitMessage && <div style={{ color: '#C4622D', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600 }}>{submitMessage}</div>}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => setShowForm(false)} style={{ flex: 1, background: '#EFE8DD', color: '#3D2B1A', border: 'none', borderRadius: 12, padding: '10px 12px', fontWeight: 700 }}>Cancelar</button>
-                    <button onClick={handleCreateExperience} disabled={saving} style={{ flex: 1, background: '#205134', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 12px', fontWeight: 700, cursor: 'pointer' }}>
-                      {saving ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            <ExperienceModal
+              isOpen={showForm}
+              onClose={() => setShowForm(false)}
+              onSave={handleCreateExperience}
+            />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
               {filteredExperiences.map((exp) => (

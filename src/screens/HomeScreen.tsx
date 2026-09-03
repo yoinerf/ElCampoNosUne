@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
+import bannerImg from '../assets/BannerElCampoNosUne(2).png'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile'
 
@@ -228,81 +229,49 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       userRole={userRole || propUserRole}
       contentStyle={{ paddingBottom: 32 }}
     >
-      {/* ══════ HERO / SALUDO ══════ */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
-          borderRadius: '0 0 28px 28px',
-          padding: '28px 20px 32px',
-          margin: '0 -18px 24px',
-          position: 'relative',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Decoración orgánica */}
-        <div
-          style={{
-            position: 'absolute',
-            top: -40,
-            right: -40,
-            width: 180,
-            height: 180,
-            borderRadius: '50%',
-            background: 'rgba(107,170,61,0.15)',
-            pointerEvents: 'none',
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            bottom: -20,
-            right: 40,
-            width: 80,
-            height: 80,
-            borderRadius: '50%',
-            background: 'rgba(229,174,48,0.12)',
-            pointerEvents: 'none',
-          }}
-        />
-
-        <p
-          style={{
-            margin: 0,
-            color: '#6BAA3D',
-            fontSize: 13,
-            fontFamily: "'Nunito Sans', sans-serif",
-            fontWeight: 700,
-            letterSpacing: 0.3,
-          }}
-        >
-          {greeting.icon} {greeting.text}
-        </p>
-        <h1
-          style={{
-            fontFamily: "'Poppins', sans-serif",
-            fontSize: 26,
-            color: '#F5EEE6',
-            margin: '4px 0 6px',
-            fontWeight: 700,
-            lineHeight: 1.2,
-          }}
-        >
-          {firstName ? `Hola, ${firstName}` : 'Bienvenido al campo'}
-        </h1>
-        <p
-          style={{
-            margin: 0,
-            color: 'rgba(245,238,230,0.75)',
-            fontSize: 13,
-            fontFamily: "'Nunito Sans', sans-serif",
-          }}
-        >
-          Conecta con productos, experiencias y comunidades del territorio.
-        </p>
-      </div>
+      {/* ══════ HERO ══════ */}
+{firstName ? (
+  // Usuario logueado: saludo personalizado
+  <div
+    style={{
+      background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+      borderRadius: '0 0 28px 28px',
+      padding: '28px 20px 32px',
+      margin: '0 -18px 24px',
+      position: 'relative',
+      overflow: 'hidden',
+    }}
+  >
+    <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'rgba(107,170,61,0.15)', pointerEvents: 'none' }} />
+    <div style={{ position: 'absolute', bottom: -20, right: 40, width: 80, height: 80, borderRadius: '50%', background: 'rgba(229,174,48,0.12)', pointerEvents: 'none' }} />
+    <p style={{ margin: 0, color: '#6BAA3D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, letterSpacing: 0.3 }}>
+      {greeting.icon} {greeting.text}
+    </p>
+    <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 26, color: '#F5EEE6', margin: '4px 0 6px', fontWeight: 700, lineHeight: 1.2 }}>
+      Hola, {firstName}
+    </h1>
+    <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif" }}>
+      Conecta con productos, experiencias y comunidades del territorio.
+    </p>
+  </div>
+) : (
+  // Visitante sin cuenta: banner principal
+  <div
+  style={{
+    margin: '0 -18px 24px',
+    animation: 'fadeInBanner 0.8s ease-out',
+  }}
+>
+  <img
+    src={bannerImg}
+    alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
+    style={{ width: '100%', height: 'auto', display: 'block' }}
+  />
+</div>
+)}
 
       {/* ══════ STATS (solo productores) ══════ */}
-      {!isBuyer && (
+      {!isBuyer && firstName && (
         <div
           style={{
             background: '#FFFFFF',

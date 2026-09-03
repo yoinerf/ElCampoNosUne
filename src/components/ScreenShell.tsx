@@ -1,6 +1,6 @@
 import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
-import logoSrc from '../assets/logo-nofond.png'
+
 
 type NavTab = 'home' | 'market' | 'tourism' | 'profile'
 
@@ -115,30 +115,7 @@ export default function ScreenShell({
             boxSizing: 'border-box',
           }}
         >
-          {/* Logo */}
-          <div
-            style={{
-              flexShrink: 0,
-              cursor: onNavigate ? 'pointer' : 'default',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-            onClick={() => { onNavigate?.('home'); setIsMenuOpen(false); }}
-            role={onNavigate ? 'button' : undefined}
-            tabIndex={onNavigate ? 0 : undefined}
-            onKeyDown={(e) => e.key === 'Enter' && onNavigate?.('home')}
-            aria-label="Ir al inicio"
-          >
-            <img
-              src={logoSrc}
-              alt="El Campo Nos Une"
-              style={{
-                height: 88,
-                width: 'auto',
-                display: 'block',
-              }}
-            />
-          </div>
+          
 
           {/* Nav central (Desktop) */}
           <nav
@@ -214,7 +191,7 @@ export default function ScreenShell({
                 }}
                 className="hover:bg-[#2A6542]"
               >
-                Login
+                Ingresar
               </button>
             ) : (
               <div style={{ position: 'relative' }}>

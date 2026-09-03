@@ -1,27 +1,29 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
+import ExperienceModal from '../components/ExperienceModal'
+import ProductModal from '../components/ProductModal'
 
 type AdminSection = 'dashboard' | 'products' | 'experiences' | 'inventory' | 'reports' | 'settings'
 
 interface ProductItem {
   id: string
   title: string
-  producer: string
-  producer_id?: string
-  rating: number
-  reviews: number
+  producer: string  // products: producer, experiences: host
   price: number
+  stock: string     // products: stock, experiences: capacity (numeric part)
   unit: string
-  category_id?: string
-  category?: string
-  description?: string
-  type: 'producto' | 'experiencia'
-  certified: boolean
+  category: string
+  category_id: string
+  origin: string
+  description: string
   img: string
-  stock: string
-  origin?: string
-  created_at?: string
+  type?: string
+  // Campos extra de experiences
+  duration?: string
+  capacity?: string
+  tags?: string[]
+  certified?: boolean
 }
 
 interface ActivityItem {
@@ -30,13 +32,6 @@ interface ActivityItem {
   title: string
   description: string
   created_at: string
-}
-
-interface Props {
-  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
-  onProfileClick?: () => void
-  userRole?: 'asociacion' | 'turismo' | 'comprador' | null
 }
 
 interface ProfileData {
@@ -49,21 +44,25 @@ interface ProfileData {
   user_type: string
 }
 
-const PAGE_SIZE = 8
-
-function timeAgo(dateStr: string): string {
-  const diffMs = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diffMs / 60000)
-  if (mins < 1) return 'Ahora'
-  if (mins < 60) return `Hace ${mins}m`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `Hace ${hours}h`
-  const days = Math.floor(hours / 24)
-  return `Hace ${days}d`
+interface Props {
+  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onProfileClick?: () => void
+  userRole?: string
 }
 
+const PAGE_SIZE = 10
+
 function formatPrice(n: number) {
-  return `$${n.toLocaleString('es-CO')}`
+  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
+}
+
+function timeAgo(iso: string) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+  if (diff < 60) return 'Hace un momento'
+  if (diff < 3600) return `Hace ${Math.floor(diff / 60)} min`
+  if (diff < 86400) return `Hace ${Math.floor(diff / 3600)} h`
+  return `Hace ${Math.floor(diff / 86400)} días`
 }
 
 interface SidebarItemProps {
@@ -72,31 +71,21 @@ interface SidebarItemProps {
   active: boolean
   onClick: () => void
 }
+
 function SidebarItem({ icon, label, active, onClick }: SidebarItemProps) {
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
-        width: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '11px 16px',
-        borderRadius: 12,
-        border: 'none',
-        background: active ? '#205134' : 'transparent',
-        color: active ? '#fff' : '#5A5248',
-        fontFamily: "'Nunito Sans', sans-serif",
-        fontSize: 14,
-        fontWeight: active ? 700 : 600,
-        cursor: 'pointer',
-        textAlign: 'left',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12,
+        border: 'none', background: active ? '#EAF3EC' : 'transparent', cursor: 'pointer',
+        width: '100%', textAlign: 'left', color: active ? '#205134' : '#5A5248',
+        fontFamily: "'Nunito Sans', sans-serif", fontSize: 14, fontWeight: active ? 700 : 600,
         transition: 'all 180ms ease',
       }}
-      className={!active ? 'hover:bg-[#20513410]' : ''}
     >
-      <span style={{ flexShrink: 0, opacity: active ? 1 : 0.7 }}>{icon}</span>
+      <span style={{ opacity: active ? 1 : 0.6 }}>{icon}</span>
       {label}
     </button>
   )
@@ -124,6 +113,28 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
 
+  // Modal de edicion de stock
+  const [stockModal, setStockModal] = useState<{ product: ProductItem; newStock: string } | null>(null)
+  const [savingStock, setSavingStock] = useState(false)
+
+  const handleSaveStock = async () => {
+    if (!stockModal) return
+    setSavingStock(true)
+    const newVal = parseInt(stockModal.newStock) || 0
+    let error
+    if (isTurismo) {
+      // Para turismo actualizamos capacity como texto en experiences
+      ;({ error } = await supabase.from('experiences').update({ capacity: `${newVal} personas` }).eq('id', stockModal.product.id))
+    } else {
+      ;({ error } = await supabase.from('products').update({ stock: newVal }).eq('id', stockModal.product.id))
+    }
+    if (!error) {
+      setProducts(prev => prev.map(p => p.id === stockModal.product.id ? { ...p, stock: String(newVal) } : p))
+      setStockModal(null)
+    }
+    setSavingStock(false)
+  }
+
   // Datos dinámicos desde Supabase
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
@@ -135,9 +146,8 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    const [{ data: profileData }, { data: userProducts }, { data: actData }, { data: catsData }, { data: deptsData }] = await Promise.all([
+    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }] = await Promise.all([
       supabase.from('profiles').select('id, first_name, last_name, org_name, department, municipality, user_type').eq('id', user.id).single(),
-      supabase.from('products').select('*').eq('producer_id', user.id).order('created_at', { ascending: false }),
       supabase.from('activities').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(8),
       supabase.from('categories').select('id, name, business_type').eq('active', true).eq('business_type', userRole === 'turismo' ? 'turismo' : 'asociacion'),
       supabase.from('departments').select('id, name').order('name', { ascending: true }),
@@ -151,10 +161,36 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
     if (deptsData && deptsData.length > 0) setDepartments(deptsData as { id: string; name: string }[])
 
-    const prods = (userProducts ?? []) as ProductItem[]
-    setProducts(prods)
-    const lowStock = prods.filter((p) => { const n = parseInt(p.stock) || 0; return n < 20 }).length
-    setStats({ activeItems: prods.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: lowStock })
+    if (isTurismo) {
+      // Cargar experiencias desde tabla experiences usando host_id
+      const { data: expData } = await supabase.from('experiences').select('*').eq('host_id', user.id).order('created_at', { ascending: false })
+      const exps = (expData ?? []).map((e: any) => ({
+        id: e.id,
+        title: e.title,
+        producer: e.host || '',
+        price: e.price || 0,
+        // capacity es texto como "10 personas", extraemos el número
+        stock: String(parseInt(e.capacity) || e.capacity || '0'),
+        unit: 'pers',
+        category: e.tags?.[0] || '',
+        category_id: '',
+        origin: '',
+        description: e.description || '',
+        img: e.img || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
+        duration: e.duration,
+        capacity: e.capacity,
+        tags: e.tags,
+      })) as ProductItem[]
+      setProducts(exps)
+      setStats({ activeItems: exps.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: exps.filter(e => (parseInt(e.stock) || 0) < 5).length })
+    } else {
+      // Cargar productos desde tabla products usando producer_id
+      const { data: userProducts } = await supabase.from('products').select('*').eq('producer_id', user.id).order('created_at', { ascending: false })
+      const prods = (userProducts ?? []) as ProductItem[]
+      setProducts(prods)
+      const lowStock = prods.filter((p) => { const n = parseInt(p.stock) || 0; return n < 20 }).length
+      setStats({ activeItems: prods.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: lowStock })
+    }
 
     if (actData && actData.length > 0) setActivities(actData as ActivityItem[])
     else setActivities([
@@ -169,10 +205,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   const filtered = products.filter((p) => {
     const q = searchVal.trim().toLowerCase()
     const matchSearch = !q || p.title.toLowerCase().includes(q) || (p.producer || '').toLowerCase().includes(q)
+    if (isTurismo) return matchSearch // para turismo ya filtramos por host_id en loadData
+    // Para asociacion: filtrar por búsqueda y categoría
     const categoryName = categories.find(c => c.id === p.category_id)?.name || p.category || ''
     const matchCat = catFilter === 'Todas' || categoryName === catFilter
-    const matchSection = section === 'experiences' ? p.type === 'experiencia' : p.type !== 'experiencia'
-    return matchSearch && matchCat && matchSection
+    return matchSearch && matchCat
   })
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
@@ -191,24 +228,25 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     setShowModal(true)
   }
 
-  const handleSaveProduct = async () => {
-    if (!form.title.trim() || !form.price) return
+  const handleSaveProduct = async (formData: any) => {
+    if (!formData.title.trim() || !formData.price) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSaving(false); return }
-    const orgName = profile.org_name || `${profile.first_name} ${profile.last_name}`.trim() || 'Asociacion'
-    // Payload compartido sin producer_id (RLS lo requiere solo en insert)
+    const orgName = profile.org_name || `${profile.first_name} ${profile.last_name}`.trim() || 'Organizacion'
+
     const commonPayload = {
-      title: form.title.trim(),
+      title: formData.title.trim(),
       producer: orgName,
-      price: Number(form.price),
-      unit: form.unit || 'uds',
-      category_id: form.category_id || null,
-      certified: true,
-      img: form.img,
-      stock: `${form.stockNum || '0'}`,
-      description: form.description.trim(),
+      price: Number(formData.price),
+      unit: formData.unit || 'uds',
+      category_id: formData.category_id || null,
+      certified: formData.certified ?? true,
+      img: formData.img,
+      stock: `${formData.stockNum || '0'}`,
+      description: formData.description.trim(),
     }
+    
     if (editingId) {
       const { error } = await supabase.from('products').update(commonPayload).eq('id', editingId)
       if (error) console.error('Error al actualizar:', error.message)
@@ -216,14 +254,54 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
       const { error } = await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id, rating: 5, reviews: 0 }])
       if (error) console.error('Error al insertar:', error.message)
     }
+    
     setSaving(false)
     setShowModal(false)
     loadData()
   }
 
+  const handleSaveExperience = async (formData: any) => {
+    if (!formData.title.trim() || !formData.price) return
+    setSaving(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSaving(false); return }
+    
+    const orgName = profile.org_name || `${profile.first_name} ${profile.last_name}`.trim() || 'Comunidad local'
+    const expPayload = {
+      title: formData.title.trim(),
+      host: orgName,
+      price: Number(formData.price),
+      capacity: `${formData.capacity || '10'} personas`,
+      duration: formData.duration || '2 horas',
+      img: formData.img,
+      description: formData.description.trim(),
+      tags: formData.tags ? formData.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : (categories.find(c => c.id === formData.category_id)?.name ? [categories.find(c => c.id === formData.category_id)!.name] : ['Experiencia']),
+      featured: formData.featured ?? true,
+      rating: 5,
+      reviews: 0,
+    }
+
+    if (editingId) {
+      const { error } = await supabase.from('experiences').update(expPayload).eq('id', editingId)
+      if (error) console.error('Error al actualizar experiencia:', error.message)
+    } else {
+      const { error } = await supabase.from('experiences').insert([{ ...expPayload, host_id: user.id }])
+      if (error) console.error('Error al insertar experiencia:', error.message)
+    }
+
+    setSaving(false)
+    setShowModal(false)
+    loadData()
+  }
+
+
   const handleDelete = async (id: string) => {
     if (!confirm('Seguro que quieres eliminar este elemento?')) return
-    await supabase.from('products').delete().eq('id', id)
+    if (isTurismo) {
+      await supabase.from('experiences').delete().eq('id', id)
+    } else {
+      await supabase.from('products').delete().eq('id', id)
+    }
     setProducts((prev) => prev.filter((p) => p.id !== id))
   }
 
@@ -251,10 +329,10 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   const orgName = profile.org_name || `${profile.first_name} ${profile.last_name}`.trim() || 'Asociacion'
   const sidebarNav = [
     { id: 'dashboard' as AdminSection, label: 'Panel Principal', icon: <DashIcon /> },
-    // Productores ven Productos; turismo ve Experiencias
     ...(!isTurismo ? [{ id: 'products' as AdminSection, label: 'Productos', icon: <ProdIcon /> }] : []),
     ...(isTurismo ? [{ id: 'experiences' as AdminSection, label: 'Experiencias', icon: <ExpIcon /> }] : []),
-    { id: 'inventory' as AdminSection, label: 'Inventario', icon: <InvIcon /> },
+    // Inventario para todos los roles
+    { id: 'inventory' as AdminSection, label: isTurismo ? 'Cupos / Stock' : 'Inventario', icon: <InvIcon /> },
     { id: 'reports' as AdminSection, label: 'Reportes y Ventas', icon: <RepIcon /> },
     { id: 'settings' as AdminSection, label: 'Configuracion', icon: <CogIcon /> },
   ]
@@ -320,9 +398,9 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button type="button" onClick={() => onNavigate('market')} style={{ height: 38, padding: '0 16px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title="Ir a la tienda">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" /></svg>
-              Tienda
+            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : 'market')} style={{ height: 38, padding: '0 16px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title="Ir a la tienda">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+              {isTurismo ? 'Experiencias' : 'Tienda'}
             </button>
             <button style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5A5248' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg>
@@ -351,7 +429,10 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       { emoji: '✅', value: stats.activeItems, label: 'Items activos', bg: '#EAF3EC', color: '#205134' },
                       { emoji: '📈', value: stats.salesThisMonth, label: isTurismo ? 'Reservas este mes' : 'Ventas este mes', bg: '#EAF3EC', color: '#205134' },
                       { emoji: '💰', value: formatPrice(stats.totalIncome), label: 'Ingresos totales', bg: '#FFF7E8', color: '#9B4728' },
-                      { emoji: '⚠️', value: stats.lowStockCount, label: 'Stock bajo', bg: '#FEE9E1', color: '#C4622D' },
+                      ...(isTurismo
+                        ? [{ emoji: '🌄', value: products.length, label: 'Experiencias activas', bg: '#FEE9E1', color: '#9B4728' }]
+                        : [{ emoji: '⚠️', value: stats.lowStockCount, label: 'Stock bajo', bg: '#FEE9E1', color: '#C4622D' }]
+                      ),
                     ].map((card) => (
                       <div key={card.label} style={{ background: '#fff', borderRadius: 20, padding: '20px 22px', border: '1px solid #EDE4D8', boxShadow: '0 4px 16px rgba(32,81,52,0.05)' }}>
                         <div style={{ width: 44, height: 44, borderRadius: 14, background: card.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, marginBottom: 14 }}>{card.emoji}</div>
@@ -381,7 +462,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                         ? { section: 'experiences' as AdminSection, label: 'Gestionar Experiencias', emoji: '🌄', desc: 'Edita tus paquetes y rutas', grad: 'linear-gradient(135deg, #FFEFDB, #FDE6D1)', text: '#9B4728' }
                         : { section: 'products' as AdminSection, label: 'Gestionar Productos', emoji: '📦', desc: 'Añade y edita tus productos', grad: 'linear-gradient(135deg, #E8F5E9, #C8E6C9)', text: '#205134' },
                       { section: 'reports' as AdminSection, label: 'Reportes y Ventas', emoji: '📈', desc: 'Consulta tus ingresos', grad: 'linear-gradient(135deg, #E3F2FD, #BBDEFB)', text: '#1B4D82' },
-                      { section: 'inventory' as AdminSection, label: 'Ver Inventario', emoji: '📋', desc: 'Controla tu stock', grad: 'linear-gradient(135deg, #F1F8E9, #DCEDC8)', text: '#3D7A28' },
+                      ...(!isTurismo ? [{ section: 'inventory' as AdminSection, label: 'Ver Inventario', emoji: '📋', desc: 'Controla tu stock', grad: 'linear-gradient(135deg, #F1F8E9, #DCEDC8)', text: '#3D7A28' }] : []),
                     ].map((q) => (
                       <button key={q.section} type="button" onClick={() => setSection(q.section)} style={{ background: '#fff', border: '1px solid rgba(237,228,216,0.6)', borderRadius: 20, padding: 20, cursor: 'pointer', textAlign: 'left', transition: 'all 250ms cubic-bezier(0.4, 0, 0.2, 1)', display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 4px 16px rgba(0,0,0,0.02)' }} className="hover:shadow-lg hover:-translate-y-1 hover:border-[#D1C7B7]">
                         <div style={{ background: q.grad, width: 60, height: 60, borderRadius: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 30, flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>{q.emoji}</div>
@@ -440,19 +521,19 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                                   <div style={{ fontSize: 12, color: '#8A8070', marginTop: 2 }}>{p.producer} · Colombia</div>
                                 </td>
                                 <td style={{ padding: '12px 18px' }}>
-                                  <span style={{ background: p.type === 'experiencia' ? '#FEE9E1' : '#EAF3EC', color: p.type === 'experiencia' ? '#9B4728' : '#205134', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20 }}>
-                                    {p.type === 'experiencia' ? 'Experiencia' : (categories.find(c => c.id === p.category_id)?.name || p.category || 'Sin categoría')}
+                                  <span style={{ background: '#EAF3EC', color: '#205134', fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20 }}>
+                                    {categories.find(c => c.id === p.category_id)?.name || p.category || 'Sin categoría'}
                                   </span>
                                 </td>
                                 <td style={{ padding: '12px 18px', fontSize: 14, fontWeight: 700, color: '#9B4728', fontFamily: "'Poppins', sans-serif", whiteSpace: 'nowrap' }}>
                                   {formatPrice(p.price)}{p.unit && p.unit !== 'uds' ? ` / ${p.unit}` : ''}
                                 </td>
                                 <td style={{ padding: '12px 18px', fontSize: 13, color: '#5A5248', whiteSpace: 'nowrap' }}>
-                                  {stockNum} {p.type === 'experiencia' ? 'cupos libres' : 'unidades'}
+                                  {stockNum} {isTurismo ? 'cupos libres' : 'unidades'}
                                 </td>
                                 <td style={{ padding: '12px 18px' }}>
-                                  <span style={{ background: stockNum === 0 ? '#fac0aaff' : isLow ? '#ffcd2871' : '#EAF3EC', color: stockNum === 0 ? '#C4622D' : isLow ? '#D06050' : '#205134', fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20 }}>
-                                    {stockNum === 0 ? 'Agotado' : isLow ? 'Bajo stock' : 'Activo'}
+                                  <span style={{ background: none ? '#fac0aaff' : isLow ? '#ffcd2871' : '#EAF3EC', color: none ? '#C4622D' : isLow ? '#D06050' : '#205134', fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20 }}>
+                                    {none ? 'Agotado' : isLow ? 'Bajo stock' : 'Activo'}
                                   </span>
                                 </td>
                                 <td style={{ padding: '12px 18px' }}>
@@ -485,10 +566,10 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                 </div>
               )}
 
-              {/* INVENTARIO */}
+              {/* INVENTARIO - para todos los roles */}
               {section === 'inventory' && (
                 <div>
-                  {products.filter(p => (parseInt(p.stock) || 0) < 20).length > 0 && (
+                  {!isTurismo && products.filter(p => (parseInt(p.stock) || 0) < 20).length > 0 && (
                     <div style={{ background: '#FDF1E6', border: '1px solid #F3C38B', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24, color: '#C4622D', fontSize: 14 }}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
                       <strong>Alerta:</strong> Hay productos por debajo del nivel de stock mínimo.
@@ -513,7 +594,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                     )}
                     <div style={{ background: '#fff', borderRadius: 20, padding: 24, border: '1px solid #EDE4D8', boxShadow: '0 4px 16px rgba(32,81,52,0.03)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8070', letterSpacing: 0.5, marginBottom: 4 }}>AGOTADOS</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8070', letterSpacing: 0.5, marginBottom: 4 }}>{isTurismo ? 'SIN CUPOS' : 'AGOTADOS'}</div>
                         <div style={{ fontSize: 32, fontWeight: 800, color: '#1C3A14', lineHeight: 1 }}>{products.filter(p => (parseInt(p.stock) || 0) === 0).length}</div>
                       </div>
                       <div style={{ width: 48, height: 48, borderRadius: '50%', background: '#FEE9E1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>❌</div>
@@ -526,17 +607,27 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       const none = stockNum === 0
                       const pct = Math.min(100, Math.max(5, (stockNum / 100) * 100))
                       return (
-                        <div key={p.id} style={{ background: '#fff', borderRadius: 20, padding: 18, border: '1px solid #EDE4D8', boxShadow: '0 4px 16px rgba(32,81,52,0.05)', display: 'flex', alignItems: 'center', gap: 16 }}>
+                        <div key={p.id} style={{ background: '#fff', borderRadius: 20, padding: 18, border: `1px solid ${none ? '#FFCDD2' : isLow ? '#FFE0B2' : '#EDE4D8'}`, boxShadow: '0 4px 16px rgba(32,81,52,0.05)', display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
+                          <button
+                            type="button"
+                            onClick={() => setStockModal({ product: p, newStock: p.stock })}
+                            title={isTurismo ? 'Agregar cupos' : 'Editar stock'}
+                            style={{ position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 8, border: 'none', background: '#EAF3EC', color: '#205134', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, lineHeight: 1, zIndex: 1 }}
+                            className="hover:bg-[#C8E6C9]"
+                          >
+                            +
+                          </button>
                           <img src={p.img} alt={p.title} style={{ width: 60, height: 60, borderRadius: 14, objectFit: 'cover', flexShrink: 0 }} />
-                          <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ flex: 1, minWidth: 0, paddingRight: 28 }}>
                             <div style={{ fontSize: 14, fontWeight: 700, color: '#1C3A14', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.title}</div>
                             <div style={{ height: 6, borderRadius: 4, background: '#F3ECE2', overflow: 'hidden', marginBottom: 6 }}>
-                              <div style={{ height: '100%', width: `${pct}%`, background: none ? '#c42d2dff' : isLow ? '#fcb721ff' : '#205134', borderRadius: 4, transition: 'width 300ms' }} />
+                              <div style={{ height: '100%', width: `${pct}%`, background: none ? '#c42d2d' : isLow ? '#fcb721' : '#205134', borderRadius: 4, transition: 'width 300ms' }} />
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-                              <span style={{ color: '#8A8070' }}>{stockNum} disponibles</span>
-                              <span style={{ color: isLow ? '#f7b62cff' : none ? '#c42d2dff' : '#205134', fontWeight: 700 }}>
-                                {isLow ? 'Bajo' : none ? 'Agotado' : 'OK'}</span>
+                              <span style={{ color: '#8A8070' }}>{stockNum} {isTurismo ? 'cupos libres' : 'disponibles'}</span>
+                              <span style={{ color: none ? '#C4622D' : isLow ? '#f7b62c' : '#205134', fontWeight: 700 }}>
+                                {none ? (isTurismo ? 'Sin cupos' : 'Agotado') : isLow ? 'Bajo' : 'OK'}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -615,7 +706,13 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                     {profileMsg && (
                       <div style={{ background: profileMsg.includes('Error') ? '#FEE9E1' : '#EAF3EC', color: profileMsg.includes('Error') ? '#C4622D' : '#205134', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 700, marginBottom: 16 }}>{profileMsg}</div>
                     )}
-                    <button type="button" onClick={handleSaveProfile} disabled={savingProfile} style={{ width: '100%', padding: '13px', borderRadius: 14, border: 'none', background: '#205134', color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", opacity: savingProfile ? 0.7 : 1 }}>
+                    <button
+                      type="button"
+                      disabled={savingProfile}
+                      onClick={handleSaveProfile}
+                      style={{ background: 'linear-gradient(90deg, #205134, #2A6542)', color: '#fff', border: 'none', padding: '16px', borderRadius: 14, width: '100%', fontSize: 16, fontWeight: 700, cursor: 'pointer', opacity: savingProfile ? 0.7 : 1, transition: 'all 250ms ease', fontFamily: "'Poppins', sans-serif", marginTop: 24, boxShadow: '0 4px 12px rgba(32,81,52,0.2)' }}
+                      className="hover:shadow-lg hover:-translate-y-0.5"
+                    >
                       {savingProfile ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   </div>
@@ -626,52 +723,71 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
         </main>
       </div>
 
-      {/* MODAL CREAR / EDITAR */}
-      {showModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, boxShadow: '0 20px 50px rgba(0,0,0,0.2)', boxSizing: 'border-box', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 20, color: '#205134', margin: 0, fontWeight: 700 }}>
-                {editingId ? 'Editar item' : isTurismo ? 'Nueva experiencia' : 'Nuevo producto'}
-              </h3>
-              <button type="button" onClick={() => setShowModal(false)} style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: '#F3ECE2', cursor: 'pointer', fontSize: 18, color: '#9B4728', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+      {/* MODAL CREAR / EDITAR EXPERIENCIA (Turismo) */}
+      {isTurismo && showModal && (
+        <ExperienceModal
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          onSave={handleSaveExperience}
+          title={editingId ? 'Editar experiencia' : 'Nueva experiencia'}
+          categories={categories}
+          initialData={editingId ? {
+            title: form.title,
+            category_id: form.category_id,
+            price: form.price,
+            capacity: form.stockNum,
+            duration: products.find(p => p.id === editingId)?.duration,
+            img: form.img,
+            description: form.description,
+            tags: products.find(p => p.id === editingId)?.tags,
+          } : undefined}
+        />
+      )}
+
+      {/* MODAL CREAR / EDITAR PRODUCTO (Asociacion) */}
+      {!isTurismo && showModal && (
+        <ProductModal
+          isOpen={showModal}
+          onClose={() => setShowModal(false)}
+          onSave={handleSaveProduct}
+          title={editingId ? 'Editar producto' : 'Nuevo producto'}
+          categories={categories}
+          initialData={editingId ? {
+            title: form.title,
+            category_id: form.category_id,
+            price: form.price,
+            stockNum: form.stockNum,
+            unit: form.unit,
+            img: form.img,
+            description: form.description,
+            certified: products.find(p => p.id === editingId)?.certified ?? true,
+          } : undefined}
+        />
+      )}
+
+      {/* MODAL EDITAR STOCK */}
+      {stockModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ background: '#fff', borderRadius: 24, padding: 32, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
+              <img src={stockModal.product.img} alt={stockModal.product.title} style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flexShrink: 0 }} />
+              <div>
+                <h3 style={{ margin: 0, fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#1C3A14', fontWeight: 800 }}>{isTurismo ? 'Agregar Cupos' : 'Editar Stock'}</h3>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: '#8A8070' }}>{stockModal.product.title}</p>
+              </div>
             </div>
-            <div style={{ display: 'grid', gap: 14 }}>
-              <div>
-                <label style={labelStyle}>Nombre</label>
-                <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ej: Cafe Especial Narino" style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Categoria</label>
-                <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} style={inputStyle}>
-                  <option value="">Seleccionar...</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label style={labelStyle}>Precio ($ COP)</label>
-                  <input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="28000" style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>{isTurismo ? 'Cupos disponibles' : 'Cantidad en Stock'}</label>
-                  <input type="number" value={form.stockNum} onChange={(e) => setForm({ ...form, stockNum: e.target.value })} placeholder="45" style={inputStyle} />
-                </div>
-              </div>
-              <div>
-                <label style={labelStyle}>URL de imagen</label>
-                <input value={form.img} onChange={(e) => setForm({ ...form, img: e.target.value })} placeholder="https://..." style={inputStyle} />
-                {form.img && <img src={form.img} alt="preview" style={{ marginTop: 8, width: '100%', height: 120, objectFit: 'cover', borderRadius: 12 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
-              </div>
-              <div>
-                <label style={labelStyle}>Descripcion</label>
-                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descripcion detallada..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-              <button type="button" onClick={() => setShowModal(false)} style={{ flex: 1, padding: 12, borderRadius: 14, border: 'none', background: '#F3ECE2', color: '#205134', fontWeight: 700, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif" }}>Cancelar</button>
-              <button type="button" onClick={handleSaveProduct} disabled={saving} style={{ flex: 1, padding: 12, borderRadius: 14, border: 'none', background: '#205134', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", opacity: saving ? 0.7 : 1 }}>
-                {saving ? 'Guardando...' : 'Guardar'}
+            <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#3D5A34', marginBottom: 8, fontFamily: "'Nunito Sans', sans-serif" }}>{isTurismo ? 'Cupos disponibles' : 'Cantidad disponible'}</label>
+            <input
+              type="number"
+              min="0"
+              value={stockModal.newStock}
+              onChange={e => setStockModal(s => s ? { ...s, newStock: e.target.value } : s)}
+              style={{ width: '100%', padding: '14px 16px', borderRadius: 14, border: '1.5px solid #EDE4D8', fontSize: 28, fontWeight: 800, fontFamily: "'Poppins', sans-serif", color: '#1C3A14', textAlign: 'center', outline: 'none', boxSizing: 'border-box', marginBottom: 24 }}
+            />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="button" onClick={() => setStockModal(null)} style={{ flex: 1, padding: '13px', borderRadius: 14, border: 'none', background: '#F3ECE2', color: '#205134', fontWeight: 700, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", fontSize: 15 }}>Cancelar</button>
+              <button type="button" onClick={handleSaveStock} disabled={savingStock} style={{ flex: 1, padding: '13px', borderRadius: 14, border: 'none', background: 'linear-gradient(90deg, #205134, #2A6542)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", fontSize: 15, opacity: savingStock ? 0.7 : 1, boxShadow: '0 4px 12px rgba(32,81,52,0.25)' }}>
+                {savingStock ? 'Guardando...' : 'Guardar Stock'}
               </button>
             </div>
           </div>
@@ -680,4 +796,3 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     </div>
   )
 }
-

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import MarketplaceScreen from './screens/MarketplaceScreen'
 import CheckoutScreen from './screens/CheckoutScreen'
@@ -17,8 +17,9 @@ type AppFlow = 'auth' | 'login' | 'app'
 const getVisibleTabs = (role?: UserRole) => {
   switch (role) {
     case 'asociacion':
+      return ['home', 'market', 'profile'] as Tab[]
     case 'turismo':
-      return ['home', 'profile'] as Tab[]
+      return ['home', 'market', 'tourism', 'profile'] as Tab[]
     case 'comprador':
     default:
       return ['home', 'market', 'tourism', 'profile'] as Tab[]

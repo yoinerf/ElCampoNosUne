@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
+import ProductModal from '../components/ProductModal'
 import { supabase } from '../lib/supabase'
 
 export interface Product {
@@ -31,6 +32,7 @@ interface MarketplaceScreenProps {
   onProfileClick?: () => void
   initialSelectedProduct?: string | null
   onClearInitialProduct?: () => void
+  userRole?: string | null
 }
 
 // ─── ProductDetail Component ─────────────────────────────────────────────────
@@ -63,6 +65,7 @@ function ProductDetail({
   addingProduct,
   onReloadProducts,
 }: ProductDetailProps) {
+  const isExperience = product.type === 'experiencia' || product.unit === 'pers'
   const [activeTab, setActiveTab] = useState<'descripcion' | 'origen' | 'impacto' | 'resenas'>('descripcion')
   const [mainImg, setMainImg] = useState(product.img)
   const [reviewsList, setReviewsList] = useState<any[]>([])
@@ -292,12 +295,25 @@ function ProductDetail({
               }}
             >
               {!isNaN(Number(product.stock)) && product.stock !== ''
-                ? <><strong>{product.stock}</strong> unidades disponibles.</>
+                ? <><strong>{product.stock}</strong> {isExperience ? 'cupos disponibles.' : 'unidades disponibles.'}</>
                 : product.stock}
             </span>
 
+            {/* Personas para experiencias */}
+            {isExperience && (
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1C3A14', marginBottom: 8 }}>Número de personas</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px solid #E8E2D9', borderRadius: 14, overflow: 'hidden', height: 46, width: '60%' }}>
+                  <button type="button" onClick={() => { const cur = cart[product.id] || 1; if (cur > 1) onRemoveFromCart(product.id) }} style={{ width: 46, height: '100%', border: 'none', background: '#f5f0ea33', color: '#205134', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}>−</button>
+                  <span style={{ flex: 1, textAlign: 'center', fontWeight: 800, fontSize: 15, color: '#205134' }}>{cart[product.id] || 1}</span>
+                  <button type="button" onClick={() => onAddToCart(product.id)} style={{ width: 46, height: '100%', border: 'none', background: '#f5f0ea33', color: '#205134', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                </div>
+                <span style={{ fontSize: 12, color: '#8A8070', marginTop: 4, display: 'block' }}>Total: {formatPrice(product.price * (cart[product.id] || 1))}</span>
+              </div>
+            )}
+
             {/* Cantidad + CTA */}
-            {cart[product.id] ? (
+            {cart[product.id] && !isExperience ? (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
                 <div
                   style={{
@@ -349,7 +365,8 @@ function ProductDetail({
                   🛒 Ir al carrito
                 </button>
               </div>
-            ) : (
+            ) : !
+            isExperience ? (
               <button
                 type="button"
                 onClick={() => onAddToCart(product.id)}
@@ -372,9 +389,18 @@ function ProductDetail({
               >
                 🛒 Agregar al carrito
               </button>
-            )}
+            ) : null}
 
-            {/* Chips de info */}
+            {/* Boton reservar experiencia */}
+            {isExperience && (
+              <button
+                type="button"
+                onClick={() => { if (!cart[product.id]) { onAddToCart(product.id) } onCheckout() }}
+                style={{ width: '100%', height: 50, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #9B4728, #C4622D)', color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 14px rgba(155,71,40,0.35)', letterSpacing: 0.3 }}
+              >
+                🌄 Reservar experiencia &middot; {cart[product.id] || 1} persona{(cart[product.id] || 1) > 1 ? 's' : ''}
+              </button>
+            )}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
               {[
                 { icon: '📍', text: product.category },
@@ -867,17 +893,6 @@ export default function MarketplaceScreen({
   const [addingProduct, setAddingProduct] = useState<{ id: string; phase: 'plusOne' | 'check' } | null>(null)
   const animationTimer = useRef<number | null>(null)
   const [userRole, setUserRole] = useState<'asociacion' | 'turismo' | 'comprador' | null>(null)
-  const [form, setForm] = useState({
-    title: '',
-    producer: '',
-    price: '',
-    unit: 'kg',
-    category: '',
-    img: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
-    stock: 'Disponible',
-    certified: true,
-  })
-
   const loadProducts = async () => {
     try {
       const [{ data: productsData, error: prodErr }, { data: reviewsData }, { data: categoriesData }] = await Promise.all([
@@ -1087,14 +1102,9 @@ export default function MarketplaceScreen({
 
   const formatPrice = (n: number) => `$${n.toLocaleString('es-CO')}`
 
-  const handleCreateProduct = async () => {
+  const handleCreateProduct = async (formData: any) => {
     if (!canCreateProduct) {
       setSubmitMessage('Tu perfil no permite publicar productos')
-      return
-    }
-
-    if (!form.title.trim() || !form.price) {
-      setSubmitMessage('Completa el nombre y el precio del producto')
       return
     }
 
@@ -1118,14 +1128,14 @@ export default function MarketplaceScreen({
 
     const payload = {
       producer_id: user.id,
-      title: form.title.trim(),
-      producer: form.producer.trim() || profile?.org_name || `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Productor',
-      price: Number(form.price),
-      unit: form.unit || 'kg',
-      category_id: form.category || null,
-      certified: form.certified,
-      img: form.img || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
-      stock: form.stock || 'Disponible',
+      title: formData.title.trim(),
+      producer: profile?.org_name || `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Productor',
+      price: Number(formData.price),
+      unit: formData.unit || 'kg',
+      category_id: formData.category_id || null,
+      certified: formData.certified,
+      img: formData.img || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
+      stock: formData.stockNum ? `${formData.stockNum}` : '0',
       rating: 5,
       reviews: 0,
     }
@@ -1149,16 +1159,6 @@ export default function MarketplaceScreen({
       metadata: { product_title: payload.title, price: payload.price },
     })
 
-    setForm({
-      title: '',
-      producer: '',
-      price: '',
-      unit: 'kg',
-      category: '',
-      img: 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
-      stock: 'Disponible',
-      certified: true,
-    })
     setShowForm(false)
     setSaving(false)
     setSubmitMessage(
@@ -1411,40 +1411,12 @@ export default function MarketplaceScreen({
             )}
 
             {showForm && (
-              <div style={{ background: '#fff', borderRadius: 18, border: '1px solid #E8DED0', padding: 16, marginBottom: 16 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#205134', fontFamily: "'Poppins', sans-serif", marginBottom: 12 }}>
-                  Publicar producto
-                </div>
-                <div style={{ display: 'grid', gap: 10 }}>
-                  <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Nombre del producto" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  <input value={form.producer} onChange={(e) => setForm({ ...form, producer: e.target.value })} placeholder="Productor / asociación" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <input value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="Precio" type="number" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                    <input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="Unidad" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }}>
-                      <option value="">Seleccionar categoría...</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                    <input value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} placeholder="Stock" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  </div>
-                  <input value={form.img} onChange={(e) => setForm({ ...form, img: e.target.value })} placeholder="URL de la imagen" style={{ border: '1px solid #E8DED0', borderRadius: 10, padding: '10px 12px', fontSize: 14 }} />
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#205134', fontSize: 14 }}>
-                    <input type="checkbox" checked={form.certified} onChange={(e) => setForm({ ...form, certified: e.target.checked })} />
-                    Producto certificado
-                  </label>
-                  {submitMessage && <div style={{ color: '#9B4728', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600 }}>{submitMessage}</div>}
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => setShowForm(false)} style={{ flex: 1, background: '#EFE8DD', color: '#205134', border: 'none', borderRadius: 12, padding: '10px 12px', fontWeight: 700 }}>Cancelar</button>
-                    <button onClick={handleCreateProduct} disabled={saving} style={{ flex: 1, background: '#205134', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 12px', fontWeight: 700, cursor: 'pointer' }}>
-                      {saving ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                </div>
-              </div>
+              <ProductModal
+                isOpen={showForm}
+                onClose={() => setShowForm(false)}
+                onSave={handleCreateProduct}
+                categories={categories}
+              />
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
@@ -1453,27 +1425,32 @@ export default function MarketplaceScreen({
           </div>
 
           {canCreateProduct && (
-            <div style={{ padding: '12px 20px 16px', background: '#F5EEE6', borderTop: '1px solid #E8DED0' }}>
+            <div style={{ padding: '24px 20px', background: 'linear-gradient(180deg, #F5EEE6 0%, #E8DED0 100%)', borderTop: '1px solid #E8DED0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+              <p style={{ margin: 0, fontSize: 13, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, textAlign: 'center' }}>¿Tienes un nuevo producto del campo?</p>
               <button
                 onClick={() => setShowForm((prev) => !prev)}
+                className="hover:scale-105 transition-transform"
                 style={{
                   width: '100%',
-                  padding: '13px',
-                  borderRadius: 14,
-                  border: '2px dashed #7FB069',
-                  background: 'rgba(127,176,105,0.08)',
-                  color: '#205134',
-                  fontSize: 14,
-                  fontWeight: 700,
+                  padding: '16px',
+                  borderRadius: 16,
+                  border: 'none',
+                  background: 'linear-gradient(135deg, #205134 0%, #2A6542 100%)',
+                  color: '#fff',
+                  fontSize: 15,
+                  fontWeight: 800,
                   fontFamily: "'Nunito Sans', sans-serif",
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 8,
+                  gap: 12,
+                  boxShadow: '0 8px 24px rgba(32,81,52,0.25)',
                 }}
               >
-                <span style={{ fontSize: 18 }}>＋</span>
+                <div style={{ background: 'rgba(255,255,255,0.2)', width: 28, height: 28, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 16 }}>＋</span>
+                </div>
                 Publicar mi producto
               </button>
             </div>

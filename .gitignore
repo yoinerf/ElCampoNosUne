@@ -11,6 +11,11 @@ logs/
 *.log
 .claude-replay.*
 .tmp-*
+instructions/
+.figma
+*.md
+*.MD
+
 
 # Platform-managed agentplat state, not project source. In the
 # client-initiated single-repo workspace layout (make's `Path: "."` spec) the

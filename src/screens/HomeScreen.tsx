@@ -6,6 +6,9 @@ type Tab = 'home' | 'market' | 'tourism' | 'profile'
 
 interface Props {
   onNavigate: (tab: Tab) => void
+  activeNav?: Tab
+  onProfileClick?: () => void
+  userRole?: 'asociacion' | 'turismo' | 'comprador' | null
 }
 
 interface FeaturedProduct {
@@ -15,6 +18,15 @@ interface FeaturedProduct {
   rating: number
   price: number
   img: string
+}
+
+interface TourismPreview {
+  id: string
+  title: string
+  host: string
+  price: number
+  img: string
+  tags: string[]
 }
 
 interface ActivityItem {
@@ -28,24 +40,19 @@ interface ActivityItem {
 const getActivityTypeMeta = (type: string) => {
   switch (type) {
     case 'product_created':
-      return { icon: '📦', color: '#D4870A', label: 'Producto publicado' }
+      return { icon: '📦', color: '#E5AE30', label: 'Producto publicado' }
     case 'experience_created':
-      return { icon: '🏞️', color: '#2A5C1A', label: 'Experiencia publicada' }
+      return { icon: '🏞️', color: '#205134', label: 'Experiencia publicada' }
     case 'purchase':
-      return { icon: '🛒', color: '#C4622D', label: 'Compra registrada' }
+      return { icon: '🛒', color: '#9B4728', label: 'Compra registrada' }
     case 'reservation':
-      return { icon: '✅', color: '#3D7A28', label: 'Reserva creada' }
+      return { icon: '✅', color: '#6BAA3D', label: 'Reserva creada' }
     case 'message':
       return { icon: '💬', color: '#5A7BCA', label: 'Mensaje nuevo' }
     default:
-      return { icon: '✨', color: '#7FB069', label: 'Actividad' }
+      return { icon: '✨', color: '#6BAA3D', label: 'Actividad' }
   }
 }
-
-const categories = [
-  { icon: '🌽', label: 'Mercados\nCampesinos', color: '#D4870A', tab: 'market' as Tab },
-  { icon: '🏞️', label: 'Turismo\nComunitario', color: '#2A5C1A', tab: 'tourism' as Tab },
-]
 
 function timeAgo(dateStr: string): string {
   const diffMs = Date.now() - new Date(dateStr).getTime()
@@ -67,13 +74,12 @@ function getColombianGreeting(): { text: string; icon: string } {
     }).format(new Date())
   )
 
-  if (hour < 12) return { text: 'Buenos días', icon: '👋' }
-  if (hour < 19) return { text: 'Buenas tardes', icon: '☀️' }
+  if (hour < 12) return { text: 'Buenos días', icon: '☀️' }
+  if (hour < 19) return { text: 'Buenas tardes', icon: '🌤️' }
   return { text: 'Buenas noches', icon: '🌙' }
 }
 
-export default function HomeScreen({ onNavigate }: Props) {
-  const [searchVal, setSearchVal] = useState('')
+export default function HomeScreen({ onNavigate, activeNav, onProfileClick, userRole: propUserRole }: Props) {
   const [firstName, setFirstName] = useState('')
   const [featured, setFeatured] = useState<FeaturedProduct[]>([])
   const [tourism, setTourism] = useState<TourismPreview[]>([])
@@ -161,12 +167,43 @@ export default function HomeScreen({ onNavigate }: Props) {
         }
       }
 
-      const { data: products } = await supabase
-        .from('products')
-        .select('id, title, producer, rating, price, img')
-        .order('rating', { ascending: false })
+      try {
+        const [{ data: products }, { data: reviewsData }] = await Promise.all([
+          supabase.from('products').select('id, title, producer, rating, price, img').order('created_at', { ascending: false }).limit(10),
+          supabase.from('product_reviews').select('product_id, rating'),
+        ])
+
+        if (products) {
+          const reviewsMap: Record<string, number[]> = {}
+          if (reviewsData && Array.isArray(reviewsData)) {
+            for (const r of reviewsData) {
+              if (r.product_id) {
+                if (!reviewsMap[r.product_id]) reviewsMap[r.product_id] = []
+                reviewsMap[r.product_id].push(r.rating)
+              }
+            }
+          }
+
+          const processed = products.map((p) => {
+            const ratings = reviewsMap[p.id] || []
+            const avg = ratings.length > 0
+              ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
+              : (p.rating ?? 5)
+            return { ...p, rating: avg }
+          }).sort((a, b) => b.rating - a.rating).slice(0, 3)
+
+          setFeatured(processed)
+        }
+      } catch (e) {
+        console.error('Error cargando destacados con reseñas en HomeScreen:', e)
+      }
+
+      const { data: tourismData } = await supabase
+        .from('experiences')
+        .select('id, title, host, price, img, tags')
+        .order('created_at', { ascending: false })
         .limit(3)
-      if (products) setFeatured(products)
+      if (tourismData) setTourism(tourismData as TourismPreview[])
 
       setLoading(false)
     }
@@ -175,13 +212,6 @@ export default function HomeScreen({ onNavigate }: Props) {
   }, [])
 
   const greeting = getColombianGreeting()
-  const normalizedQuery = searchVal.trim().toLowerCase()
-  const filteredFeatured = normalizedQuery
-    ? featured.filter((item) =>
-        item.title.toLowerCase().includes(normalizedQuery) ||
-        item.producer.toLowerCase().includes(normalizedQuery)
-      )
-    : featured
 
   const formatPrice = (n: number) => `$${n.toLocaleString('es-CO')}`
   const formatCompact = (n: number) => {
@@ -192,222 +222,388 @@ export default function HomeScreen({ onNavigate }: Props) {
 
   return (
     <ScreenShell
-      subtitle={`${greeting.text} 👋 `}
-      title={firstName || 'Bienvenido'}
-      action={
-        <div className="relative">
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: '50%',
-              background: '#FAF7EF',
-              overflow: 'hidden',
-              border: '2px solid #A8D48A',
-            }}
-          >
-            <img
-              src="https://images.unsplash.com/photo-1509099381441-ea3c0cf98b94?w=80&h=80&fit=crop&auto=format"
-              alt="Perfil"
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          </div>
+      activeNav={activeNav ?? 'home'}
+      onNavigate={onNavigate}
+      onProfileClick={onProfileClick}
+      userRole={userRole || propUserRole}
+      contentStyle={{ paddingBottom: 32 }}
+    >
+      {/* ══════ HERO / SALUDO ══════ */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+          borderRadius: '0 0 28px 28px',
+          padding: '28px 20px 32px',
+          margin: '0 -18px 24px',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Decoración orgánica */}
+        <div
+          style={{
+            position: 'absolute',
+            top: -40,
+            right: -40,
+            width: 180,
+            height: 180,
+            borderRadius: '50%',
+            background: 'rgba(107,170,61,0.15)',
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: -20,
+            right: 40,
+            width: 80,
+            height: 80,
+            borderRadius: '50%',
+            background: 'rgba(229,174,48,0.12)',
+            pointerEvents: 'none',
+          }}
+        />
+
+        <p
+          style={{
+            margin: 0,
+            color: '#6BAA3D',
+            fontSize: 13,
+            fontFamily: "'Nunito Sans', sans-serif",
+            fontWeight: 700,
+            letterSpacing: 0.3,
+          }}
+        >
+          {greeting.icon} {greeting.text}
+        </p>
+        <h1
+          style={{
+            fontFamily: "'Poppins', sans-serif",
+            fontSize: 26,
+            color: '#F5EEE6',
+            margin: '4px 0 6px',
+            fontWeight: 700,
+            lineHeight: 1.2,
+          }}
+        >
+          {firstName ? `Hola, ${firstName}` : 'Bienvenido al campo'}
+        </h1>
+        <p
+          style={{
+            margin: 0,
+            color: 'rgba(245,238,230,0.75)',
+            fontSize: 13,
+            fontFamily: "'Nunito Sans', sans-serif",
+          }}
+        >
+          Conecta con productos, experiencias y comunidades del territorio.
+        </p>
+      </div>
+
+      {/* ══════ STATS (solo productores) ══════ */}
+      {!isBuyer && (
+        <div
+          style={{
+            background: '#FFFFFF',
+            borderRadius: 20,
+            boxShadow: '0 4px 24px rgba(32,81,52,0.09)',
+            padding: '14px 16px',
+            display: 'flex',
+            gap: 0,
+            marginBottom: 24,
+            border: '1px solid #EDE4D8',
+          }}
+        >
+          {loading
+            ? Array.from({ length: 3 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="animate-pulse"
+                  style={{
+                    flex: 1,
+                    textAlign: 'center',
+                    borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
+                    padding: '10px 8px 6px',
+                  }}
+                >
+                  <div style={{ width: 24, height: 24, margin: '0 auto 8px', borderRadius: 8, background: '#E9E2D9' }} />
+                  <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
+                  <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
+                </div>
+              ))
+            : [
+                { label: 'Productos', value: String(stats.productos), icon: '📦' },
+                { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
+                { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
+              ].map((s, i) => (
+                <div
+                  key={s.label}
+                  style={{
+                    flex: 1,
+                    textAlign: 'center',
+                    borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
+                    padding: '8px 6px',
+                  }}
+                >
+                  <div style={{ fontSize: 20 }}>{s.icon}</div>
+                  <div
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      color: '#205134',
+                      fontFamily: "'Poppins', sans-serif",
+                      lineHeight: 1.2,
+                    }}
+                  >
+                    {s.value}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    {s.label}
+                  </div>
+                </div>
+              ))}
+        </div>
+      )}
+
+      {/* ══════ EXPLORA — tarjetas de sección ══════ */}
+      <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+        <h2
+          style={{
+            fontFamily: "'Poppins', sans-serif",
+            fontSize: 18,
+            color: '#205134',
+            margin: 0,
+            fontWeight: 700,
+          }}
+        >
+          Explora
+        </h2>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          gap: 14,
+          marginBottom: 28,
+        }}
+      >
+        {/* Productos */}
+        <div
+          onClick={() => onNavigate('market')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('market')}
+          style={{
+            borderRadius: 20,
+            background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+            padding: '20px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: 10,
+            cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(32,81,52,0.20)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
           <div
             style={{
               position: 'absolute',
-              top: 0,
-              right: 0,
-              width: 12,
-              height: 12,
+              top: -20,
+              right: -20,
+              width: 90,
+              height: 90,
               borderRadius: '50%',
-              background: '#F0A830',
-              border: '2px solid #2A5C1A',
+              background: 'rgba(107,170,61,0.18)',
             }}
           />
-        </div>
-      }
-      searchPlaceholder="Buscar productos, servicios..."
-      searchValue={searchVal}
-      onSearchChange={(value) => setSearchVal(value)}
-      contentStyle={{ paddingBottom: 20 }}
-    >
-        {!isBuyer && (
           <div
             style={{
-              background: '#FAF7EF',
-              borderRadius: 20,
-              boxShadow: '0 4px 24px rgba(42,92,26,0.12)',
-              padding: '12px 16px',
+              width: 52,
+              height: 52,
+              borderRadius: 16,
+              background: 'rgba(255,255,255,0.15)',
               display: 'flex',
-              gap: 0,
-              marginBottom: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 26,
             }}
           >
-            {loading
-              ? Array.from({ length: 3 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="animate-pulse"
-                    style={{
-                      flex: 1,
-                      textAlign: 'center',
-                      borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
-                      padding: '10px 8px 6px',
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 24,
-                        height: 24,
-                        margin: '0 auto 8px',
-                        borderRadius: 8,
-                        background: '#E9E2D9',
-                      }}
-                    />
-                    <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
-                    <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
-                  </div>
-                ))
-              : [
-                  { label: 'Productos', value: String(stats.productos), icon: '📦' },
-                  { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
-                  { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
-                ].map((s, i) => (
-                  <div
-                    key={s.label}
-                    style={{
-                      flex: 1,
-                      textAlign: 'center',
-                      borderRight: i < 2 ? '1px solid #E8E0CF' : 'none',
-                    }}
-                  >
-                    <div style={{ fontSize: 20 }}>{s.icon}</div>
-                    <div
-                      style={{
-                        fontSize: 18,
-                        fontWeight: 700,
-                        color: '#2A5C1A',
-                        fontFamily: 'Fraunces, serif',
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {s.value}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
-                      {s.label}
-                    </div>
-                  </div>
-                ))}
+            🌽
           </div>
-        )}
-
-        {/* Categories */}
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '20px 0 12px', fontWeight: 700 }}>
-          Explora
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 18 }}>
-          {categories.map((cat) => (
+          <div>
             <div
-              key={cat.label}
-              onClick={() => onNavigate(cat.tab)}
               style={{
-                borderRadius: 20,
-                background: cat.color + '12',
-                border: `2px solid ${cat.color}30`,
-                padding: '18px 16px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 10,
-                cursor: 'pointer',
+                fontSize: 15,
+                fontWeight: 700,
+                color: '#F5EEE6',
+                fontFamily: "'Poppins', sans-serif",
+                lineHeight: 1.2,
               }}
             >
-              <div
-                style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 20,
-                  background: cat.color + '20',
-                  border: `1.5px solid ${cat.color}50`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 32,
-                }}
-              >
-                {cat.icon}
-              </div>
-              <span
-                style={{
-                  fontSize: 13,
-                  color: cat.color,
-                  fontFamily: 'Fraunces, serif',
-                  fontWeight: 700,
-                  textAlign: 'center',
-                  lineHeight: 1.3,
-                  whiteSpace: 'pre-line',
-                }}
-              >
-                {cat.label}
-              </span>
+              Productos
             </div>
-          ))}
+            <div
+              style={{
+                fontSize: 11,
+                color: 'rgba(245,238,230,0.7)',
+                fontFamily: "'Nunito Sans', sans-serif",
+                marginTop: 2,
+              }}
+            >
+              Mercados campesinos
+            </div>
+          </div>
         </div>
 
-        {/* Featured products */}
-        <div className="flex items-center justify-between mb-3">
-          <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: 0, fontWeight: 700 }}>
-            {normalizedQuery ? 'Resultados en mercados' : 'Mercados Campesinos'}
-          </h3>
-          <span
-            style={{ fontSize: 12, color: '#D4870A', fontWeight: 600, fontFamily: 'Nunito, sans-serif', cursor: 'pointer' }}
-            onClick={() => onNavigate('market')}
+        {/* Experiencias */}
+        <div
+          onClick={() => onNavigate('tourism')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('tourism')}
+          style={{
+            borderRadius: 20,
+            background: '#FFF8EE',
+            border: '2px solid #E5AE3040',
+            padding: '20px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: 10,
+            cursor: 'pointer',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: -20,
+              right: -20,
+              width: 90,
+              height: 90,
+              borderRadius: '50%',
+              background: 'rgba(229,174,48,0.12)',
+            }}
+          />
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 16,
+              background: '#E5AE3018',
+              border: '1.5px solid #E5AE3030',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 26,
+            }}
           >
-            Ver más
-          </span>
+            🏞️
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: '#205134',
+                fontFamily: "'Poppins', sans-serif",
+                lineHeight: 1.2,
+              }}
+            >
+              Experiencias
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: '#8A8070',
+                fontFamily: "'Nunito Sans', sans-serif",
+                marginTop: 2,
+              }}
+            >
+              Turismo comunitario
+            </div>
+          </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, paddingBottom: 4, marginBottom: 18 }}>
-          {loading ? (
-            Array.from({ length: 3 }).map((_, index) => (
+      </div>
+
+      {/* ══════ PRODUCTOS DESTACADOS ══════ */}
+      <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+        <h2
+          style={{
+            fontFamily: "'Poppins', sans-serif",
+            fontSize: 18,
+            color: '#205134',
+            margin: 0,
+            fontWeight: 700,
+          }}
+        >
+          Productos destacados
+        </h2>
+        <span
+          style={{
+            fontSize: 12,
+            color: '#9B4728',
+            fontWeight: 700,
+            fontFamily: "'Nunito Sans', sans-serif",
+            cursor: 'pointer',
+          }}
+          onClick={() => onNavigate('market')}
+        >
+          Ver todos →
+        </span>
+      </div>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+          gap: 14,
+          marginBottom: 28,
+        }}
+      >
+        {loading
+          ? Array.from({ length: 3 }).map((_, index) => (
               <div
                 key={index}
                 className="animate-pulse"
                 style={{
                   background: '#f2eae0',
                   borderRadius: 18,
-                  height: 190,
+                  height: 200,
                   border: '1px solid #E8E0CF',
                   overflow: 'hidden',
                 }}
               >
-                <div style={{ height: 110, background: '#E9E2D9' }} />
+                <div style={{ height: 120, background: '#E9E2D9' }} />
                 <div style={{ padding: '10px 12px 12px' }}>
                   <div style={{ height: 13, width: '75%', borderRadius: 8, background: '#E9E2D9', marginBottom: 8 }} />
-                  <div style={{ height: 10, width: '55%', borderRadius: 8, background: '#F0E9E0', marginBottom: 12 }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <div style={{ height: 12, width: '30%', borderRadius: 8, background: '#E9E2D9' }} />
-                    <div style={{ height: 12, width: '22%', borderRadius: 8, background: '#F0E9E0' }} />
-                  </div>
+                  <div style={{ height: 10, width: '55%', borderRadius: 8, background: '#F0E9E0' }} />
                 </div>
               </div>
             ))
-          ) : filteredFeatured.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif', gridColumn: '1 / -1' }}>
-              {normalizedQuery ? 'No encontramos productos con esa búsqueda.' : 'Aún no hay productos destacados.'}
+          : featured.length === 0
+          ? (
+            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", gridColumn: '1 / -1' }}>
+              Aún no hay productos destacados.
             </p>
-          ) : (
-            filteredFeatured.map((item) => (
+          )
+          : featured.map((item) => (
               <div
                 key={item.id}
+                onClick={() => onNavigate('market')}
                 style={{
                   background: '#fff',
                   borderRadius: 18,
                   overflow: 'hidden',
                   boxShadow: '0 2px 16px rgba(42,92,26,0.08)',
                   border: '1px solid #E8E0CF',
+                  cursor: 'pointer',
                 }}
               >
-                <div style={{ position: 'relative', height: 110 }}>
+                <div style={{ position: 'relative', height: 120 }}>
                   <img
                     src={item.img}
                     alt={item.title}
@@ -419,10 +615,10 @@ export default function HomeScreen({ onNavigate }: Props) {
                       top: 8,
                       left: 8,
                       background: '#D4870A',
-                      color: '#FAF7EF',
+                      color: '#F5EEE6',
                       fontSize: 10,
                       fontWeight: 700,
-                      fontFamily: 'Nunito, sans-serif',
+                      fontFamily: "'Nunito Sans', sans-serif",
                       padding: '2px 8px',
                       borderRadius: 20,
                     }}
@@ -435,79 +631,178 @@ export default function HomeScreen({ onNavigate }: Props) {
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: '#1C3F10',
-                      fontFamily: 'Fraunces, serif',
+                      color: '#205134',
+                      fontFamily: "'Poppins', sans-serif",
                       lineHeight: 1.3,
                       marginBottom: 4,
                     }}
                   >
                     {item.title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginBottom: 8 }}>
+                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
                     {item.producer}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 12, fontWeight: 700, color: '#D4870A', fontFamily: 'Nunito, sans-serif' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {formatPrice(item.price)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: 'Nunito, sans-serif' }}>
+                    <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: "'Nunito Sans', sans-serif" }}>
                       ⭐ {item.rating}
                     </span>
                   </div>
                 </div>
               </div>
-            ))
-          )}
-        </div>
+            ))}
+      </div>
 
+      {/* ══════ BANNER EXPERIENCIAS ══════ */}
+      <div
+        style={{
+          borderRadius: 20,
+          overflow: 'hidden',
+          position: 'relative',
+          height: 130,
+          marginBottom: 28,
+          cursor: 'pointer',
+        }}
+        onClick={() => onNavigate('tourism')}
+      >
+        <img
+          src="https://images.unsplash.com/photo-1717201413771-faa0210c5dae?w=700&h=240&fit=crop&auto=format"
+          alt="Turismo comunitario"
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
         <div
           style={{
-            borderRadius: 20,
-            overflow: 'hidden',
-            position: 'relative',
-            height: 120,
-            marginBottom: 18,
-            cursor: 'pointer',
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(90deg, rgba(28,63,16,0.88) 0%, rgba(28,63,16,0.25) 100%)',
+            padding: '18px 22px',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
           }}
-          onClick={() => onNavigate('tourism')}
         >
-          <img
-            src="https://images.unsplash.com/photo-1717201413771-faa0210c5dae?w=700&h=240&fit=crop&auto=format"
-            alt="Turismo comunitario"
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-          <div
+          <p style={{ color: '#6BAA3D', fontSize: 11, margin: 0, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>
+            TURISMO COMUNITARIO
+          </p>
+          <h3
             style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'linear-gradient(90deg, rgba(28,63,16,0.85) 0%, rgba(28,63,16,0.3) 100%)',
-              padding: '16px 20px',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
+              color: '#F5EEE6',
+              fontSize: 17,
+              margin: '5px 0 0',
+              fontFamily: "'Poppins', sans-serif",
+              fontWeight: 700,
+              lineHeight: 1.3,
             }}
           >
-            <p style={{ color: '#A8D48A', fontSize: 11, margin: 0, fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
-              TURISMO COMUNITARIO
-            </p>
-            <h4 style={{ color: '#FAF7EF', fontSize: 17, margin: '4px 0 0', fontFamily: 'Fraunces, serif', fontWeight: 700 }}>
-              Descubre experiencias únicas en el campo →
-            </h4>
-          </div>
+            Descubre experiencias únicas en el campo →
+          </h3>
         </div>
+      </div>
 
-        {/* Notifications */}
-        <h3 style={{ fontFamily: 'Fraunces, serif', fontSize: 17, color: '#1C3F10', margin: '0 0 12px', fontWeight: 700 }}>
-          Actividad reciente
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {loading ? (
-            Array.from({ length: 3 }).map((_, index) => (
+      {/* ══════ EXPERIENCIAS DESTACADAS ══════ */}
+      {tourism.length > 0 && (
+        <>
+          <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+            <h2
+              style={{
+                fontFamily: "'Poppins', sans-serif",
+                fontSize: 18,
+                color: '#205134',
+                margin: 0,
+                fontWeight: 700,
+              }}
+            >
+              Experiencias
+            </h2>
+            <span
+              style={{
+                fontSize: 12,
+                color: '#9B4728',
+                fontWeight: 700,
+                fontFamily: "'Nunito Sans', sans-serif",
+                cursor: 'pointer',
+              }}
+              onClick={() => onNavigate('tourism')}
+            >
+              Ver todas →
+            </span>
+          </div>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+              gap: 14,
+              marginBottom: 28,
+            }}
+          >
+            {tourism.map((exp) => (
+              <div
+                key={exp.id}
+                onClick={() => onNavigate('tourism')}
+                style={{
+                  background: '#fff',
+                  borderRadius: 18,
+                  overflow: 'hidden',
+                  boxShadow: '0 2px 16px rgba(42,92,26,0.08)',
+                  border: '1px solid #E8E0CF',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ position: 'relative', height: 110 }}>
+                  <img
+                    src={exp.img}
+                    alt={exp.title}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                </div>
+                <div style={{ padding: '10px 12px 12px' }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#205134',
+                      fontFamily: "'Poppins', sans-serif",
+                      lineHeight: 1.3,
+                      marginBottom: 4,
+                    }}
+                  >
+                    {exp.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
+                    {exp.host}
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    {formatPrice(exp.price)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ══════ ACTIVIDAD RECIENTE ══════ */}
+      <h2
+        style={{
+          fontFamily: "'Poppins', sans-serif",
+          fontSize: 18,
+          color: '#205134',
+          margin: '0 0 14px',
+          fontWeight: 700,
+        }}
+      >
+        Actividad reciente
+      </h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {loading
+          ? Array.from({ length: 3 }).map((_, index) => (
               <div
                 key={index}
                 className="animate-pulse"
                 style={{
-                  background: '#f4efe8',
+                  background: '#fff',
                   borderRadius: 14,
                   padding: '12px 14px',
                   display: 'flex',
@@ -524,12 +819,13 @@ export default function HomeScreen({ onNavigate }: Props) {
                 </div>
               </div>
             ))
-          ) : notifications.length === 0 ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: 'Nunito, sans-serif' }}>
+          : notifications.length === 0
+          ? (
+            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
               No tienes actividad reciente.
             </p>
-          ) : (
-            notifications.map((a) => (
+          )
+          : notifications.map((a) => (
               <div
                 key={a.id}
                 style={{
@@ -542,33 +838,32 @@ export default function HomeScreen({ onNavigate }: Props) {
                   border: '1px solid #E8E0CF',
                 }}
               >
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  background: a.color + '18',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 20,
-                  flexShrink: 0,
-                }}
-              >
-                {a.icon}
-              </div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#1C3F10', fontFamily: 'Nunito, sans-serif' }}>
-                  {a.text}
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    background: a.color + '18',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 20,
+                    flexShrink: 0,
+                  }}
+                >
+                  {a.icon}
                 </div>
-                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: 'Nunito, sans-serif', marginTop: 2 }}>
-                  {timeAgo(a.created_at)}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    {a.text}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
+                    {timeAgo(a.created_at)}
+                  </div>
                 </div>
               </div>
-            </div>
-            ))
-          )}
-        </div>
+            ))}
+      </div>
     </ScreenShell>
   )
 }

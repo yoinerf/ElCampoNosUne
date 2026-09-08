@@ -49,6 +49,7 @@ interface ProductDetailProps {
   addFromCard: (id: string) => void
   addingProduct: { id: string; phase: 'plusOne' | 'check' } | null
   onReloadProducts?: () => void
+  isProducer?: boolean
 }
 
 function ProductDetail({
@@ -64,6 +65,7 @@ function ProductDetail({
   addFromCard,
   addingProduct,
   onReloadProducts,
+  isProducer,
 }: ProductDetailProps) {
   const isExperience = product.type === 'experiencia' || product.unit === 'pers'
   const [activeTab, setActiveTab] = useState<'descripcion' | 'origen' | 'impacto' | 'resenas'>('descripcion')
@@ -313,7 +315,11 @@ function ProductDetail({
             )}
 
             {/* Cantidad + CTA */}
-            {cart[product.id] && !isExperience ? (
+            {isProducer ? (
+              <div style={{ padding: '12px 16px', background: '#F5EEE6', borderRadius: 14, color: '#205134', fontSize: 13, fontWeight: 700, textAlign: 'center', marginBottom: 14, border: '1px solid #EDE4D8' }}>
+                Vista previa de producto (Modo asociación / productor)
+              </div>
+            ) : cart[product.id] && !isExperience ? (
               <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
                 <div
                   style={{
@@ -365,8 +371,7 @@ function ProductDetail({
                   🛒 Ir al carrito
                 </button>
               </div>
-            ) : !
-            isExperience ? (
+            ) : !isExperience ? (
               <button
                 type="button"
                 onClick={() => onAddToCart(product.id)}
@@ -392,7 +397,7 @@ function ProductDetail({
             ) : null}
 
             {/* Boton reservar experiencia */}
-            {isExperience && (
+            {isExperience && !isProducer && (
               <button
                 type="button"
                 onClick={() => { if (!cart[product.id]) { onAddToCart(product.id) } onCheckout() }}
@@ -804,29 +809,31 @@ function ProductDetail({
                   <div style={{ fontSize: 14, fontWeight: 800, color: '#9B4728', marginBottom: 10 }}>
                     {formatPrice(rel.price)}
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); addFromCard(rel.id) }}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      borderRadius: 10,
-                      border: '1.5px solid #E8E2D9',
-                      background: '#fff',
-                      color: '#205134',
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                    }}
-                  >
-                    {addingProduct?.id === rel.id
-                      ? addingProduct.phase === 'plusOne' ? '+1' : '✓'
-                      : '+ Agregar al carrito'}
-                  </button>
+                  {!isProducer && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); addFromCard(rel.id) }}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        borderRadius: 10,
+                        border: '1.5px solid #E8E2D9',
+                        background: '#fff',
+                        color: '#205134',
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                      }}
+                    >
+                      {addingProduct?.id === rel.id
+                        ? addingProduct.phase === 'plusOne' ? '+1' : '✓'
+                        : '+ Agregar al carrito'}
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -844,7 +851,8 @@ export default function MarketplaceScreen({
   activeNav,
   onProfileClick,
   initialSelectedProduct,
-  onClearInitialProduct
+  onClearInitialProduct,
+  userRole: propUserRole,
 }: MarketplaceScreenProps) {
   const [activeFilter, setActiveFilter] = useState('Todos')
   const [searchVal, setSearchVal] = useState('')
@@ -966,10 +974,11 @@ export default function MarketplaceScreen({
     loadRole()
   }, [])
 
-  const canCreateProduct = userRole === 'asociacion'
+  const isProducer = (userRole || propUserRole) === 'asociacion'
+  const canCreateProduct = isProducer
   const filters = ['Todos', ...Array.from(new Set(products.map((product) => product.category?.trim()).filter(Boolean)))]
   const cartItems: CartItem[] = products.filter((product) => cart[product.id] > 0).map((product) => ({ product, quantity: cart[product.id] }))
-  const cartCount = Object.values(cart).reduce((sum, quantity) => sum + quantity, 0)
+  const cartCount = isProducer ? 0 : Object.values(cart).reduce((sum, quantity) => sum + quantity, 0)
 
   const recordActivity = async ({
     userId,
@@ -1255,32 +1264,34 @@ export default function MarketplaceScreen({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={(event) => { event.stopPropagation(); addFromCard(product.id) }}
-          aria-label={addingProduct?.id === product.id ? 'Producto agregado' : 'Agregar al carrito'}
-          style={{
-            width: '100%',
-            height: 36,
-            background: addingProduct?.id === product.id ? '#205134' : '#F5EEE6',
-            color: addingProduct?.id === product.id ? '#fff' : '#205134',
-            border: '1px solid #E8DED0',
-            borderRadius: 10,
-            fontSize: 12,
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 4,
-            transition: 'all 0.2s ease',
-          }}
-          className="hover:bg-[#205134] hover:text-white"
-        >
-          {addingProduct?.id === product.id
-            ? addingProduct.phase === 'plusOne' ? '+1' : '✓ Agregado'
-            : '+ Agregar al carrito'}
-        </button>
+        {!isProducer && (
+          <button
+            type="button"
+            onClick={(event) => { event.stopPropagation(); addFromCard(product.id) }}
+            aria-label={addingProduct?.id === product.id ? 'Producto agregado' : 'Agregar al carrito'}
+            style={{
+              width: '100%',
+              height: 36,
+              background: addingProduct?.id === product.id ? '#205134' : '#F5EEE6',
+              color: addingProduct?.id === product.id ? '#fff' : '#205134',
+              border: '1px solid #E8DED0',
+              borderRadius: 10,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              transition: 'all 0.2s ease',
+            }}
+            className="hover:bg-[#205134] hover:text-white"
+          >
+            {addingProduct?.id === product.id
+              ? addingProduct.phase === 'plusOne' ? '+1' : '✓ Agregado'
+              : '+ Agregar al carrito'}
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1315,6 +1326,7 @@ export default function MarketplaceScreen({
             addFromCard={addFromCard}
             addingProduct={addingProduct}
             onReloadProducts={loadProducts}
+            isProducer={isProducer}
           />
         )
       })() : (

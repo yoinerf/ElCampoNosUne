@@ -118,7 +118,8 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     loadRole()
   }, [])
 
-  const canCreateExperience = userRole === 'turismo'
+  const isTurismo = (userRole || propUserRole) === 'turismo'
+  const canCreateExperience = isTurismo
   const filteredExperiences = experiences.filter((experience) => {
     const query = searchVal.trim().toLowerCase()
     return !query || experience.title.toLowerCase().includes(query) || experience.host.toLowerCase().includes(query)
@@ -172,6 +173,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   const formatPrice = (n: number) => `$${n.toLocaleString('es-CO')}`
 
   const openReserveModal = async (exp: Experience) => {
+    if (isTurismo) return
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) {
       setPendingReservation(exp)
@@ -423,28 +425,30 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
 
             {submitMessage && <div style={{ marginBottom: 12, color: '#205134', fontSize: 12, fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>{submitMessage}</div>}
 
-            <button
-              onClick={() => openReserveModal(selectedExperience)}
-              disabled={reservingExperienceId === selectedExperience.id}
-              style={{
-                width: '100%',
-                padding: '15px',
-                borderRadius: 16,
-                border: 'none',
-                background: reservingExperienceId === selectedExperience.id
-                  ? '#7FB069'
-                  : 'linear-gradient(135deg, #205134, #3D7A28)',
-                color: '#F5EEE6',
-                fontSize: 16,
-                fontWeight: 700,
-                fontFamily: "'Nunito Sans', sans-serif",
-                cursor: reservingExperienceId === selectedExperience.id ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 16px rgba(42,92,26,0.35)',
-                opacity: reservingExperienceId === selectedExperience.id ? 0.8 : 1,
-              }}
-            >
-              {reservingExperienceId === selectedExperience.id ? 'Reservando...' : `Reservar experiencia — ${formatPrice(selectedExperience.price)}`}
-            </button>
+            {!isTurismo && (
+              <button
+                onClick={() => openReserveModal(selectedExperience)}
+                disabled={reservingExperienceId === selectedExperience.id}
+                style={{
+                  width: '100%',
+                  padding: '15px',
+                  borderRadius: 16,
+                  border: 'none',
+                  background: reservingExperienceId === selectedExperience.id
+                    ? '#7FB069'
+                    : 'linear-gradient(135deg, #205134, #3D7A28)',
+                  color: '#F5EEE6',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  cursor: reservingExperienceId === selectedExperience.id ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 4px 16px rgba(42,92,26,0.35)',
+                  opacity: reservingExperienceId === selectedExperience.id ? 0.8 : 1,
+                }}
+              >
+                {reservingExperienceId === selectedExperience.id ? 'Reservando...' : `Reservar experiencia — ${formatPrice(selectedExperience.price)}`}
+              </button>
+            )}
           </div>
         </div>
       ) : (

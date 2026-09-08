@@ -9,20 +9,21 @@ import RegisterScreen from './screens/RegisterScreen'
 import LoginScreen from './screens/LoginScreen'
 import AdminPanelScreen from './screens/AdminPanelScreen'
 import { supabase } from './lib/supabase'
+import logoImg from './assets/logo-nofond.png'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin'
 type UserRole = 'asociacion' | 'turismo' | 'comprador'
 type AppFlow = 'auth' | 'login' | 'app'
 
-const getVisibleTabs = (role?: UserRole) => {
+const getVisibleTabs = (role?: UserRole): Tab[] => {
   switch (role) {
     case 'asociacion':
-      return ['home', 'market', 'profile'] as Tab[]
+      return ['admin', 'market']
     case 'turismo':
-      return ['home', 'market', 'tourism', 'profile'] as Tab[]
+      return ['admin', 'tourism']
     case 'comprador':
     default:
-      return ['home', 'market', 'tourism', 'profile'] as Tab[]
+      return ['home', 'market', 'tourism', 'profile']
   }
 }
 
@@ -50,11 +51,19 @@ export default function App() {
 
       const role = data?.user_type as UserRole | undefined
       setUserRole(role)
+
+      if (role === 'asociacion' || role === 'turismo') {
+        setActiveTab((prev) => {
+          if (role === 'asociacion' && prev === 'market') return 'market'
+          if (role === 'turismo' && prev === 'tourism') return 'tourism'
+          return 'admin'
+        })
+      }
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setFlow('app')
-      loadRole(session)
+      await loadRole(session)
       setCheckingSession(false)
     })
 
@@ -87,21 +96,30 @@ export default function App() {
 
   const returnToStore = () => {
     setFlow('app')
-    setActiveTab('market')
+    if (userRole === 'turismo') {
+      setActiveTab('tourism')
+    } else if (userRole === 'asociacion') {
+      setActiveTab('market')
+    } else {
+      setActiveTab('market')
+    }
   }
 
   const returnToHome = () => {
     setFlow('app')
-    setActiveTab('home')
+    if (userRole === 'asociacion' || userRole === 'turismo') {
+      setActiveTab('admin')
+    } else {
+      setActiveTab('home')
+    }
   }
 
-  const isProducer = userRole === 'asociacion' || userRole === 'turismo'
-
   const mainScreens: Record<Tab, JSX.Element> = {
-    home: isProducer ? (
-      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
-    ) : (
+    home: (
       <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+    ),
+    admin: (
+      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
     market: (
       <MarketplaceScreen
@@ -127,7 +145,7 @@ export default function App() {
       >
         <div style={{ textAlign: 'center' }}>
           <img
-            src="/src/assets/logo-nofond.png"
+            src={logoImg}
             alt="El Campo Nos Une"
             style={{ height: 60, margin: '0 auto 16px', display: 'block' }}
           />
@@ -187,6 +205,7 @@ export default function App() {
               onProfileClick={handleProfileClick}
               initialSelectedProduct={initialProduct}
               onClearInitialProduct={() => setInitialProduct(null)}
+              userRole={userRole}
             />
           ) : mainScreens[activeTab])}
         </div>

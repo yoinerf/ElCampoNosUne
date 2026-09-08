@@ -684,7 +684,10 @@ export default function ProfileScreen({ userRole: propRole, onNavigate, activeNa
 
         {/* Logout */}
         <button
-          onClick={() => supabase.auth.signOut()}
+          onClick={async () => {
+            await supabase.auth.signOut()
+            window.location.href = '/'
+          }}
           style={{
             width: '100%',
             padding: '13px',

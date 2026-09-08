@@ -313,7 +313,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     const { error } = await supabase.from('profiles').update({ first_name: profileForm.first_name, last_name: profileForm.last_name, org_name: profileForm.org_name, department: profileForm.department, municipality: profileForm.municipality, user_type: profileForm.user_type }).eq('id', user.id)
     setSavingProfile(false)
     if (error) { setProfileMsg('Error al guardar: ' + error.message) }
-    else { setProfileMsg('Perfil actualizado. Recarga la app para aplicar cambios de rol.'); setProfile((prev) => ({ ...prev, ...profileForm })) }
+    else {
+      setProfileMsg('Perfil actualizado. Recargando...')
+      setProfile((prev) => ({ ...prev, ...profileForm }))
+      window.location.reload()
+    }
   }
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #EDE4D8', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: "'Nunito Sans', sans-serif", background: '#FDFAF6', color: '#1C3A14' }
@@ -374,7 +378,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
               </div>
               <div style={{ fontSize: 11, color: '#8A8070' }}>{isTurismo ? 'Turismo' : 'Asociacion'}</div>
             </div>
-            <button type="button" onClick={() => supabase.auth.signOut().then(() => onNavigate('home'))} title="Cerrar sesion" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4622D', padding: 4 }}>
+            <button type="button" onClick={async () => { await supabase.auth.signOut(); window.location.href = '/'; }} title="Cerrar sesion" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#C4622D', padding: 4 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
               </svg>
@@ -398,9 +402,9 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : 'market')} style={{ height: 38, padding: '0 16px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title="Ir a la tienda">
+            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : 'market')} style={{ height: 38, padding: '0 16px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
-              {isTurismo ? 'Experiencias' : 'Tienda'}
+              {isTurismo ? 'Ver Experiencias' : 'Ver Tienda'}
             </button>
             <button style={{ width: 38, height: 38, borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5A5248' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" /></svg>

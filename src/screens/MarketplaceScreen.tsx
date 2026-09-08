@@ -1061,44 +1061,66 @@ export default function MarketplaceScreen({
       return false
     }
 
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
+
     try {
-      await supabase.from('reservations').insert(
-        checkoutItems.map(({ product, quantity }) => ({
+      // 1. Enviar datos al backend para validación de precios, stock y creación de reserva en DB
+      const checkoutResponse = await fetch(`${backendUrl}/api/payments/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           user_id: user.id,
-          product_id: product.id,
-          quantity,
-          total: product.price * quantity,
-          status: 'pendiente',
-          created_at: new Date().toISOString(),
-        }))
-      )
-    } catch {
-      // La estructura real de reservations puede variar; el feed principal va en activities.
+          customer_email: user.email,
+          items: checkoutItems.map(({ product, quantity }) => ({
+            id: product.id,
+            type: product.type || 'producto',
+            quantity,
+            price: product.price,
+          })),
+        }),
+      })
+
+      const checkoutData = await checkoutResponse.json()
+
+      if (!checkoutResponse.ok || !checkoutData.success) {
+        const errorMsg = checkoutData.errors?.join(' ') || checkoutData.message || 'Error en la validación del checkout'
+        setSubmitMessage(`❌ No se pudo procesar la compra: ${errorMsg}`)
+        return false
+      }
+
+      console.log('✅ Checkout validado por Backend:', checkoutData)
+      console.log('💳 Referencia Wompi:', checkoutData.reference)
+      console.log('🔒 Payload Wompi para integración:', checkoutData.wompi)
+
+      // 2. Confirmar el pago (simulado o tras confirmación de Wompi) para descontar inventario y marcar completado
+      const confirmResponse = await fetch(`${backendUrl}/api/payments/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference: checkoutData.reference,
+          status: 'APPROVED',
+          transactionId: `wompi_sim_${Date.now()}`,
+          customerEmail: user.email,
+        }),
+      })
+
+      const confirmData = await confirmResponse.json()
+
+      if (!confirmResponse.ok || !confirmData.success) {
+        setSubmitMessage('Reserva guardada en backend, pero hubo un detalle al confirmar el pago.')
+        return false
+      }
+
+      setCart({})
+      setSubmitMessage('¡Pedido confirmado correctamente a través del backend! Inventario actualizado.')
+      return true
+    } catch (err: any) {
+      console.error('Error al comunicarse con el backend de pagos:', err)
+      setSubmitMessage(`Error al conectar con el backend de pagos (${backendUrl}).`)
+      return false
     }
-
-    const activityResults = await Promise.all(
-      checkoutItems.map(({ product, quantity }) =>
-        recordActivity({
-          userId: user.id,
-          userRoleValue: 'comprador',
-          type: 'purchase',
-          title: 'Compra registrada',
-          description: `Compraste ${quantity} ${product.title}`,
-          entityType: 'products',
-          entityId: product.id,
-          metadata: { product_title: product.title, quantity, total: product.price * quantity },
-        })
-      )
-    )
-
-    setCart({})
-    const confirmationMessage = activityResults.every(Boolean)
-      ? 'Pedido confirmado correctamente'
-      : 'Pedido guardado, pero no se pudo registrar la actividad en el feed.'
-
-    setSubmitMessage(confirmationMessage)
-    return activityResults.every(Boolean)
   }
+
 
   const formatPrice = (n: number) => `$${n.toLocaleString('es-CO')}`
 

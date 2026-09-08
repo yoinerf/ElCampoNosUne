@@ -229,46 +229,48 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       userRole={userRole || propUserRole}
       contentStyle={{ paddingBottom: 32 }}
     >
-      {/* ══════ HERO ══════ */}
-{firstName ? (
-  // Usuario logueado: saludo personalizado
-  <div
-    style={{
-      background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
-      borderRadius: '0 0 28px 28px',
-      padding: '28px 20px 32px',
-      margin: '0 -18px 24px',
-      position: 'relative',
-      overflow: 'hidden',
-    }}
-  >
-    <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'rgba(107,170,61,0.15)', pointerEvents: 'none' }} />
-    <div style={{ position: 'absolute', bottom: -20, right: 40, width: 80, height: 80, borderRadius: '50%', background: 'rgba(229,174,48,0.12)', pointerEvents: 'none' }} />
-    <p style={{ margin: 0, color: '#6BAA3D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, letterSpacing: 0.3 }}>
-      {greeting.icon} {greeting.text}
-    </p>
-    <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 26, color: '#F5EEE6', margin: '4px 0 6px', fontWeight: 700, lineHeight: 1.2 }}>
-      Hola, {firstName}
-    </h1>
-    <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif" }}>
-      Conecta con productos, experiencias y comunidades del territorio.
-    </p>
-  </div>
-) : (
-  // Visitante sin cuenta: banner principal
-  <div
-  style={{
-    margin: '0 -18px 24px',
-    animation: 'fadeInBanner 0.8s ease-out',
-  }}
->
-  <img
-    src={bannerImg}
-    alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
-    style={{ width: '100%', height: 'auto', display: 'block' }}
-  />
-</div>
-)}
+      {/* ══════ BANNER SIEMPRE VISIBLE ══════ */}
+      <div
+        style={{
+          margin: '0 -18px 0',
+          animation: 'fadeInBanner 0.8s ease-out',
+        }}
+      >
+        <img
+          src={bannerImg}
+          alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
+          style={{ width: '100%', height: 'auto', display: 'block' }}
+        />
+      </div>
+
+      {/* ══════ HERO — saludo si está logueado ══════ */}
+      {firstName && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+            borderRadius: '0 0 28px 28px',
+            padding: '28px 20px 32px',
+            margin: '0 -18px 24px',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'rgba(107,170,61,0.15)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', bottom: -20, right: 40, width: 80, height: 80, borderRadius: '50%', background: 'rgba(229,174,48,0.12)', pointerEvents: 'none' }} />
+          <p style={{ margin: 0, color: '#6BAA3D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, letterSpacing: 0.3 }}>
+            {greeting.icon} {greeting.text}
+          </p>
+          <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 26, color: '#F5EEE6', margin: '4px 0 6px', fontWeight: 700, lineHeight: 1.2 }}>
+            Hola, {firstName}
+          </h1>
+          <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif" }}>
+            Conecta con productos, experiencias y comunidades del territorio.
+          </p>
+        </div>
+      )}
+
+      {/* Espaciado cuando no hay saludo */}
+      {!firstName && <div style={{ height: 24 }} />}
 
       {/* ══════ STATS (solo productores) ══════ */}
       {!isBuyer && firstName && (
@@ -286,52 +288,52 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         >
           {loading
             ? Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="animate-pulse"
-                  style={{
-                    flex: 1,
-                    textAlign: 'center',
-                    borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
-                    padding: '10px 8px 6px',
-                  }}
-                >
-                  <div style={{ width: 24, height: 24, margin: '0 auto 8px', borderRadius: 8, background: '#E9E2D9' }} />
-                  <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
-                  <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
-                </div>
-              ))
+              <div
+                key={i}
+                className="animate-pulse"
+                style={{
+                  flex: 1,
+                  textAlign: 'center',
+                  borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
+                  padding: '10px 8px 6px',
+                }}
+              >
+                <div style={{ width: 24, height: 24, margin: '0 auto 8px', borderRadius: 8, background: '#E9E2D9' }} />
+                <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
+                <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
+              </div>
+            ))
             : [
-                { label: 'Productos', value: String(stats.productos), icon: '📦' },
-                { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
-                { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
-              ].map((s, i) => (
+              { label: 'Productos', value: String(stats.productos), icon: '📦' },
+              { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
+              { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
+            ].map((s, i) => (
+              <div
+                key={s.label}
+                style={{
+                  flex: 1,
+                  textAlign: 'center',
+                  borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
+                  padding: '8px 6px',
+                }}
+              >
+                <div style={{ fontSize: 20 }}>{s.icon}</div>
                 <div
-                  key={s.label}
                   style={{
-                    flex: 1,
-                    textAlign: 'center',
-                    borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
-                    padding: '8px 6px',
+                    fontSize: 18,
+                    fontWeight: 700,
+                    color: '#205134',
+                    fontFamily: "'Poppins', sans-serif",
+                    lineHeight: 1.2,
                   }}
                 >
-                  <div style={{ fontSize: 20 }}>{s.icon}</div>
-                  <div
-                    style={{
-                      fontSize: 18,
-                      fontWeight: 700,
-                      color: '#205134',
-                      fontFamily: "'Poppins', sans-serif",
-                      lineHeight: 1.2,
-                    }}
-                  >
-                    {s.value}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
-                    {s.label}
-                  </div>
+                  {s.value}
                 </div>
-              ))}
+                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
+                  {s.label}
+                </div>
+              </div>
+            ))}
         </div>
       )}
 
@@ -535,31 +537,31 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       >
         {loading
           ? Array.from({ length: 3 }).map((_, index) => (
-              <div
-                key={index}
-                className="animate-pulse"
-                style={{
-                  background: '#f2eae0',
-                  borderRadius: 18,
-                  height: 200,
-                  border: '1px solid #E8E0CF',
-                  overflow: 'hidden',
-                }}
-              >
-                <div style={{ height: 120, background: '#E9E2D9' }} />
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <div style={{ height: 13, width: '75%', borderRadius: 8, background: '#E9E2D9', marginBottom: 8 }} />
-                  <div style={{ height: 10, width: '55%', borderRadius: 8, background: '#F0E9E0' }} />
-                </div>
+            <div
+              key={index}
+              className="animate-pulse"
+              style={{
+                background: '#f2eae0',
+                borderRadius: 18,
+                height: 200,
+                border: '1px solid #E8E0CF',
+                overflow: 'hidden',
+              }}
+            >
+              <div style={{ height: 120, background: '#E9E2D9' }} />
+              <div style={{ padding: '10px 12px 12px' }}>
+                <div style={{ height: 13, width: '75%', borderRadius: 8, background: '#E9E2D9', marginBottom: 8 }} />
+                <div style={{ height: 10, width: '55%', borderRadius: 8, background: '#F0E9E0' }} />
               </div>
-            ))
+            </div>
+          ))
           : featured.length === 0
-          ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", gridColumn: '1 / -1' }}>
-              Aún no hay productos destacados.
-            </p>
-          )
-          : featured.map((item) => (
+            ? (
+              <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", gridColumn: '1 / -1' }}>
+                Aún no hay productos destacados.
+              </p>
+            )
+            : featured.map((item) => (
               <div
                 key={item.id}
                 onClick={() => onNavigate('market')}
@@ -767,34 +769,34 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {loading
           ? Array.from({ length: 3 }).map((_, index) => (
-              <div
-                key={index}
-                className="animate-pulse"
-                style={{
-                  background: '#fff',
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  border: '1px solid #E8E0CF',
-                  height: 68,
-                }}
-              >
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#E9E2D9' }} />
-                <div style={{ flex: 1, display: 'grid', gap: 8 }}>
-                  <div style={{ height: 12, width: '75%', borderRadius: 8, background: '#E9E2D9' }} />
-                  <div style={{ height: 10, width: '35%', borderRadius: 8, background: '#F0E9E0' }} />
-                </div>
+            <div
+              key={index}
+              className="animate-pulse"
+              style={{
+                background: '#fff',
+                borderRadius: 14,
+                padding: '12px 14px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                border: '1px solid #E8E0CF',
+                height: 68,
+              }}
+            >
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: '#E9E2D9' }} />
+              <div style={{ flex: 1, display: 'grid', gap: 8 }}>
+                <div style={{ height: 12, width: '75%', borderRadius: 8, background: '#E9E2D9' }} />
+                <div style={{ height: 10, width: '35%', borderRadius: 8, background: '#F0E9E0' }} />
               </div>
-            ))
+            </div>
+          ))
           : notifications.length === 0
-          ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
-              No tienes actividad reciente.
-            </p>
-          )
-          : notifications.map((a) => (
+            ? (
+              <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
+                No tienes actividad reciente.
+              </p>
+            )
+            : notifications.map((a) => (
               <div
                 key={a.id}
                 style={{

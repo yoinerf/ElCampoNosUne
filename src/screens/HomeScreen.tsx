@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
-import bannerImg from '../assets/BannerElCampoNosUne(2).png'
+import bannerImg from '../assets/banner-campo.webp'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile'
 

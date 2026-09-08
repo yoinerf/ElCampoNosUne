@@ -1,8 +1,8 @@
 import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import logoSrc from '../assets/logo-nofond.png'
 
-
-type NavTab = 'home' | 'market' | 'tourism' | 'profile'
+type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin'
 
 interface NavItem {
   id: NavTab
@@ -77,9 +77,7 @@ export default function ScreenShell({
   }, [])
 
   const navItems: NavItem[] = (userRole === 'asociacion' || userRole === 'turismo')
-    ? [
-        { id: 'home', label: 'Panel de administración' },
-      ]
+    ? []
     : NAV_ITEMS
   const handleProfileClick = () => {
     if (onProfileClick) {
@@ -113,8 +111,30 @@ export default function ScreenShell({
             boxSizing: 'border-box',
           }}
         >
-          
-
+          {/* Logo */}
+          <div
+            style={{
+              flexShrink: 0,
+              cursor: onNavigate ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            onClick={() => onNavigate?.(userRole === 'asociacion' || userRole === 'turismo' ? 'admin' : 'home')}
+            role={onNavigate ? 'button' : undefined}
+            tabIndex={onNavigate ? 0 : undefined}
+            onKeyDown={(e) => e.key === 'Enter' && onNavigate?.(userRole === 'asociacion' || userRole === 'turismo' ? 'admin' : 'home')}
+            aria-label="Ir al inicio"
+          >
+            <img
+              src={logoSrc}
+              alt="El Campo Nos Une"
+              style={{
+                height: 52,
+                width: 'auto',
+                display: 'block',
+              }}
+            />
+          </div>
           {/* Nav central (Desktop) */}
           <nav
             className="hidden md:flex"
@@ -196,7 +216,7 @@ export default function ScreenShell({
                 {(userRole === 'asociacion' || userRole === 'turismo') && (
                   <button
                     type="button"
-                    onClick={() => onNavigate?.('home')}
+                    onClick={() => onNavigate?.('admin')}
                     style={{
                       background: '#1C3A14',
                       color: '#fff',
@@ -291,7 +311,10 @@ export default function ScreenShell({
                       </button>
                       <div style={{ height: 1, background: '#EDE4D8', margin: '4px 0' }} />
                       <button
-                        onClick={async () => { await supabase.auth.signOut(); setIsProfileMenuOpen(false); }}
+                        onClick={async () => {
+                          await supabase.auth.signOut()
+                          window.location.href = '/'
+                        }}
                         style={{
                           width: '100%',
                           textAlign: 'left',
@@ -316,8 +339,8 @@ export default function ScreenShell({
             </div>
           )}
 
-          {/* Botón Carrito - Oculto en Experiencias */}
-            {activeNav !== 'tourism' && (
+          {/* Botón Carrito - Oculto en Experiencias y para rol Asociacion */}
+            {activeNav !== 'tourism' && userRole !== 'asociacion' && (
               <button
                 type="button"
                 onClick={onCartClick}

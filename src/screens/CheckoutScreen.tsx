@@ -92,7 +92,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     }
   }
 
-  // Avanzar o Finalizar
+  // Avanzar entre pasos o Finalizar
   const handleMainAction = async () => {
     if (isLogged === false) {
       onRequireAuth?.('auth')
@@ -102,16 +102,17 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     setErrorMessage('')
 
     if (currentStep === 1) {
-      // Validar datos de dirección
-      if (!addressForm.fullName.trim() || !addressForm.phone.trim() || !addressForm.address.trim()) {
-        setErrorMessage('Por favor completa los campos de nombre, teléfono y dirección de entrega.')
-        return
-      }
+      // Paso 1 -> Avanzar a datos de entrega
       setCurrentStep(2)
     } else if (currentStep === 2) {
+      // Paso 2 -> Validar campos de entrega antes de avanzar a método de pago
+      if (!addressForm.fullName.trim() || !addressForm.phone.trim() || !addressForm.address.trim()) {
+        setErrorMessage('Por favor completa los campos obligatorios: Nombre, Teléfono y Dirección de entrega.')
+        return
+      }
       setCurrentStep(3)
     } else if (currentStep === 3) {
-      // Finalizar pedido / Proceder al pago
+      // Paso 3 -> Finalizar pedido / Proceder al pago
       await executePaymentFlow()
     }
   }
@@ -124,7 +125,6 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
 
     try {
-      // 1. Enviar solicitud al Backend para validación y creación de la orden/reserva
       const checkoutRes = await fetch(`${backendUrl}/api/payments/checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -155,12 +155,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
       }
 
       if (paymentMethod === 'contraentrega') {
-        // Pedido por contraentrega completado directamente en el backend
-        setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! El vendedor preparará tu envío.')
+        setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! El campesino/vendedor preparará tu envío.')
         onItemsChange([])
         setLoadingPayment(false)
       } else if (paymentMethod === 'wompi') {
-        // Flujo Wompi: abrir modal/pasarela para la transacción
         setPaymentOpen(true)
         setLoadingPayment(false)
       }
@@ -278,7 +276,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                   className={`flex items-center gap-2 text-sm font-bold cursor-pointer ${currentStep === 1 ? 'text-[#205134]' : 'text-[#888]'}`}
                 >
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${currentStep === 1 ? 'bg-[#205134] text-white' : 'bg-[#E8DED0] text-[#555]'}`}>1</span>
-                  <span>Productos y Dirección</span>
+                  <span>1. Carrito de Compras</span>
                 </div>
 
                 <span className="text-[#CCC] hidden sm:inline">›</span>
@@ -288,16 +286,17 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                   className={`flex items-center gap-2 text-sm font-bold ${currentStep >= 2 ? 'text-[#205134] cursor-pointer' : 'text-[#AAA] cursor-not-allowed'}`}
                 >
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${currentStep === 2 ? 'bg-[#205134] text-white' : currentStep > 2 ? 'bg-[#205134] text-white' : 'bg-[#E8DED0] text-[#555]'}`}>2</span>
-                  <span>Método de Pago</span>
+                  <span>2. Datos de Entrega</span>
                 </div>
 
                 <span className="text-[#CCC] hidden sm:inline">›</span>
 
                 <div
-                  className={`flex items-center gap-2 text-sm font-bold ${currentStep === 3 ? 'text-[#205134]' : 'text-[#AAA]'}`}
+                  onClick={() => currentStep > 2 && setCurrentStep(3)}
+                  className={`flex items-center gap-2 text-sm font-bold ${currentStep === 3 ? 'text-[#205134] cursor-pointer' : 'text-[#AAA] cursor-not-allowed'}`}
                 >
                   <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${currentStep === 3 ? 'bg-[#205134] text-white' : 'bg-[#E8DED0] text-[#555]'}`}>3</span>
-                  <span>Confirmación</span>
+                  <span>3. Método de Pago</span>
                 </div>
               </div>
 
@@ -313,244 +312,252 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                 {/* Columna Izquierda: Contenido del paso actual */}
                 <div>
                   
-                  {/* PASO 1: Lista de productos + Formulario de Dirección */}
+                  {/* PASO 1: ÚNICAMENTE Carrito de productos */}
                   {currentStep === 1 && (
-                    <div className="flex flex-col gap-8">
-                      {/* Lista de productos */}
-                      <div>
-                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 mb-4 font-medium">
-                          1. Productos seleccionados ({items.reduce((sum, item) => sum + item.quantity, 0)})
+                    <div className="flex flex-col gap-6">
+                      <div className="flex justify-between items-center mb-2">
+                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 font-medium">
+                          1. Productos en tu carrito ({items.reduce((sum, item) => sum + item.quantity, 0)})
                         </h2>
-                        <div className="flex flex-col gap-4">
-                          {items.map((item) => (
-                            <article key={item.product.id} className="bg-white rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 border border-[#E8DED0]">
-                              <img
-                                src={item.product.img}
-                                alt={item.product.title}
-                                className="w-20 h-20 shrink-0 object-cover rounded-xl bg-[#F5EEE6] cursor-pointer hover:opacity-80 transition-opacity"
-                                onClick={() => onViewProduct?.(item.product.id)}
-                              />
-
-                              <div className="flex-1 min-w-0 text-center sm:text-left w-full sm:w-auto">
-                                <div className="text-[10px] font-bold text-[#205134] uppercase tracking-wider mb-1">
-                                  {item.product.producer}
-                                </div>
-                                <h3
-                                  className="font-['Poppins'] font-bold text-[#1C3A14] text-base m-0 leading-tight truncate cursor-pointer hover:text-[#9B4728] transition-colors"
-                                  onClick={() => onViewProduct?.(item.product.id)}
-                                >
-                                  {item.product.title}
-                                </h3>
-                                <div className="text-[#888] text-xs mt-1">
-                                  {formatPrice(item.product.price)}
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end mt-4 sm:mt-0 shrink-0">
-                                <div className="flex items-center bg-[#F5EEE6] rounded-full h-9 px-1 w-[104px] shrink-0 justify-between">
-                                  <button
-                                    onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                                    className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
-                                  >
-                                    -
-                                  </button>
-                                  <span className="w-8 text-center font-bold text-sm text-[#205134]" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                    {item.quantity}
-                                  </span>
-                                  <button
-                                    onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                                    className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
-                                  >
-                                    +
-                                  </button>
-                                </div>
-
-                                <div className="font-['Poppins'] font-bold text-[#9B4728] text-base w-[135px] shrink-0 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                  {formatPrice(item.product.price * item.quantity)}
-                                </div>
-
-                                <button
-                                  onClick={() => updateQuantity(item.product.id, 0)}
-                                  className="w-8 h-8 shrink-0 flex items-center justify-center border-none bg-transparent text-[#D06050] cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
-                                  title="Eliminar"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onItemsChange([])}
+                          className="bg-transparent border-none text-[#D06050] text-xs font-bold underline cursor-pointer"
+                        >
+                          Limpiar carrito
+                        </button>
                       </div>
-
-                      {/* Formulario de Dirección de Entrega */}
-                      <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0]">
-                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 mb-6 font-medium">
-                          📍 Datos de entrega
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-xs font-bold text-[#444] mb-1">Nombre completo *</label>
-                            <input
-                              type="text"
-                              value={addressForm.fullName}
-                              onChange={(e) => setAddressForm({ ...addressForm, fullName: e.target.value })}
-                              placeholder="Ej: Juan Pérez"
-                              className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-[#444] mb-1">Teléfono celular *</label>
-                            <input
-                              type="tel"
-                              value={addressForm.phone}
-                              onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-                              placeholder="Ej: 3101234567"
-                              className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-[#444] mb-1">Departamento *</label>
-                            <input
-                              type="text"
-                              value={addressForm.department}
-                              onChange={(e) => setAddressForm({ ...addressForm, department: e.target.value })}
-                              placeholder="Ej: Cundinamarca"
-                              className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-bold text-[#444] mb-1">Municipio / Ciudad *</label>
-                            <input
-                              type="text"
-                              value={addressForm.municipality}
-                              onChange={(e) => setAddressForm({ ...addressForm, municipality: e.target.value })}
-                              placeholder="Ej: Fusagasugá"
-                              className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-[#444] mb-1">Dirección de entrega *</label>
-                            <input
-                              type="text"
-                              value={addressForm.address}
-                              onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })}
-                              placeholder="Ej: Calle 10 # 4-15 Finca La Esperanza"
-                              className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
-                            />
-                          </div>
-
-                          <div className="md:col-span-2">
-                            <label className="block text-xs font-bold text-[#444] mb-1">Notas o instrucciones para la entrega (Opcional)</label>
-                            <textarea
-                              rows={2}
-                              value={addressForm.deliveryNotes}
-                              onChange={(e) => setAddressForm({ ...addressForm, deliveryNotes: e.target.value })}
-                              placeholder="Ej: Entregar en la portería o llamar antes de salir."
-                              className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
-                            ></textarea>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* PASO 2: Selección de Método de Pago */}
-                  {currentStep === 2 && (
-                    <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0]">
-                      <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 mb-6 font-medium">
-                        💳 Selección de método de pago
-                      </h2>
 
                       <div className="flex flex-col gap-4">
-                        {/* Opción 1: Contraentrega */}
-                        <div
-                          onClick={() => setPaymentMethod('contraentrega')}
-                          className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                            paymentMethod === 'contraentrega'
-                              ? 'border-[#205134] bg-[#F2F7F4]'
-                              : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 mb-2">
-                            <input
-                              type="radio"
-                              name="paymentMethod"
-                              checked={paymentMethod === 'contraentrega'}
-                              onChange={() => setPaymentMethod('contraentrega')}
-                              className="accent-[#205134] w-5 h-5 cursor-pointer"
+                        {items.map((item) => (
+                          <article key={item.product.id} className="bg-white rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 border border-[#E8DED0]">
+                            <img
+                              src={item.product.img}
+                              alt={item.product.title}
+                              className="w-20 h-20 shrink-0 object-cover rounded-xl bg-[#F5EEE6] cursor-pointer hover:opacity-80 transition-opacity"
+                              onClick={() => onViewProduct?.(item.product.id)}
                             />
-                            <div className="font-bold text-[#1C3A14] text-lg">💵 Pago Contraentrega (Efectivo)</div>
-                          </div>
-                          <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
-                            Le pagas en efectivo directamente al transportista o campesino al momento de recibir tu producto en la dirección especificada. <strong>Sin recargo por procesamiento.</strong>
-                          </p>
+
+                            <div className="flex-1 min-w-0 text-center sm:text-left w-full sm:w-auto">
+                              <div className="text-[10px] font-bold text-[#205134] uppercase tracking-wider mb-1">
+                                {item.product.producer}
+                              </div>
+                              <h3
+                                className="font-['Poppins'] font-bold text-[#1C3A14] text-base m-0 leading-tight truncate cursor-pointer hover:text-[#9B4728] transition-colors"
+                                onClick={() => onViewProduct?.(item.product.id)}
+                              >
+                                {item.product.title}
+                              </h3>
+                              <div className="text-[#888] text-xs mt-1">
+                                {formatPrice(item.product.price)}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end mt-4 sm:mt-0 shrink-0">
+                              <div className="flex items-center bg-[#F5EEE6] rounded-full h-9 px-1 w-[104px] shrink-0 justify-between">
+                                <button
+                                  onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
+                                >
+                                  -
+                                </button>
+                                <span className="w-8 text-center font-bold text-sm text-[#205134]" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
+                                >
+                                  +
+                                </button>
+                              </div>
+
+                              <div className="font-['Poppins'] font-bold text-[#9B4728] text-base w-[135px] shrink-0 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                                {formatPrice(item.product.price * item.quantity)}
+                              </div>
+
+                              <button
+                                onClick={() => updateQuantity(item.product.id, 0)}
+                                className="w-8 h-8 shrink-0 flex items-center justify-center border-none bg-transparent text-[#D06050] cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
+                                title="Eliminar"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* PASO 2: ÚNICAMENTE Formulario de Dirección de Entrega */}
+                  {currentStep === 2 && (
+                    <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0]">
+                      <div className="flex justify-between items-center mb-6">
+                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 font-medium">
+                          2. Datos de entrega y envío
+                        </h2>
+                        <button
+                          type="button"
+                          onClick={() => setCurrentStep(1)}
+                          className="bg-transparent border-none text-[#205134] text-xs font-bold underline cursor-pointer"
+                        >
+                          ← Volver al carrito
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-bold text-[#444] mb-1">Nombre completo *</label>
+                          <input
+                            type="text"
+                            value={addressForm.fullName}
+                            onChange={(e) => setAddressForm({ ...addressForm, fullName: e.target.value })}
+                            placeholder="Ej: Juan Pérez"
+                            className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
+                          />
                         </div>
 
-                        {/* Opción 2: Wompi */}
-                        <div
-                          onClick={() => setPaymentMethod('wompi')}
-                          className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                            paymentMethod === 'wompi'
-                              ? 'border-[#205134] bg-[#F2F7F4]'
-                              : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-3 mb-2">
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="radio"
-                                name="paymentMethod"
-                                checked={paymentMethod === 'wompi'}
-                                onChange={() => setPaymentMethod('wompi')}
-                                className="accent-[#205134] w-5 h-5 cursor-pointer"
-                              />
-                              <div className="font-bold text-[#1C3A14] text-lg">💳 Tarjeta de Crédito / Débito / PSE / Nequi (Wompi)</div>
-                            </div>
-                            <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Wompi</span>
-                          </div>
-                          <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
-                            Pago en línea 100% seguro procesado por la pasarela oficial Wompi (Bancolombia). Incluye tarifa de procesamiento digital (+2.9%).
-                          </p>
+                        <div>
+                          <label className="block text-xs font-bold text-[#444] mb-1">Teléfono celular *</label>
+                          <input
+                            type="tel"
+                            value={addressForm.phone}
+                            onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
+                            placeholder="Ej: 3101234567"
+                            className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#444] mb-1">Departamento *</label>
+                          <input
+                            type="text"
+                            value={addressForm.department}
+                            onChange={(e) => setAddressForm({ ...addressForm, department: e.target.value })}
+                            placeholder="Ej: Cundinamarca"
+                            className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold text-[#444] mb-1">Municipio / Ciudad *</label>
+                          <input
+                            type="text"
+                            value={addressForm.municipality}
+                            onChange={(e) => setAddressForm({ ...addressForm, municipality: e.target.value })}
+                            placeholder="Ej: Fusagasugá"
+                            className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-bold text-[#444] mb-1">Dirección de entrega *</label>
+                          <input
+                            type="text"
+                            value={addressForm.address}
+                            onChange={(e) => setAddressForm({ ...addressForm, address: e.target.value })}
+                            placeholder="Ej: Calle 10 # 4-15 Finca La Esperanza"
+                            className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
+                          />
+                        </div>
+
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-bold text-[#444] mb-1">Notas o instrucciones para el repartidor (Opcional)</label>
+                          <textarea
+                            rows={3}
+                            value={addressForm.deliveryNotes}
+                            onChange={(e) => setAddressForm({ ...addressForm, deliveryNotes: e.target.value })}
+                            placeholder="Ej: Dejar en la portería o llamar al llegar."
+                            className="w-full bg-[#F9F6F0] border border-[#E8DED0] rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-[#205134]"
+                          ></textarea>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* PASO 3: Confirmación de Pedido */}
+                  {/* PASO 3: Método de Pago y Confirmación */}
                   {currentStep === 3 && (
                     <div className="flex flex-col gap-6">
                       <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0]">
-                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 mb-6 font-medium">
-                          🔍 Confirmación de tu orden
-                        </h2>
+                        <div className="flex justify-between items-center mb-6">
+                          <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 font-medium">
+                            3. Método de pago y confirmación
+                          </h2>
+                          <button
+                            type="button"
+                            onClick={() => setCurrentStep(2)}
+                            className="bg-transparent border-none text-[#205134] text-xs font-bold underline cursor-pointer"
+                          >
+                            ← Modificar dirección
+                          </button>
+                        </div>
 
-                        <div className="space-y-6">
-                          {/* Resumen Dirección */}
-                          <div className="bg-[#F9F6F0] p-4 rounded-xl border border-[#E8DED0]">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="font-bold text-xs uppercase text-[#205134] tracking-wider">Dirección de Entrega</span>
-                              <button onClick={() => setCurrentStep(1)} className="text-xs text-[#D06050] font-bold border-none bg-transparent cursor-pointer underline">Editar</button>
+                        {/* Opciones de Método de Pago */}
+                        <div className="flex flex-col gap-4 mb-8">
+                          {/* Opción 1: Contraentrega */}
+                          <div
+                            onClick={() => setPaymentMethod('contraentrega')}
+                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
+                              paymentMethod === 'contraentrega'
+                                ? 'border-[#205134] bg-[#F2F7F4]'
+                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 mb-2">
+                              <input
+                                type="radio"
+                                name="paymentMethod"
+                                checked={paymentMethod === 'contraentrega'}
+                                onChange={() => setPaymentMethod('contraentrega')}
+                                className="accent-[#205134] w-5 h-5 cursor-pointer"
+                              />
+                              <div className="font-bold text-[#1C3A14] text-lg">💵 Pago Contraentrega (Efectivo)</div>
                             </div>
-                            <div className="font-bold text-[#1C3A14]">{addressForm.fullName} ({addressForm.phone})</div>
-                            <div className="text-sm text-[#555]">{addressForm.address}, {addressForm.municipality}, {addressForm.department}</div>
-                            {addressForm.deliveryNotes && <div className="text-xs text-[#777] mt-1">Notas: {addressForm.deliveryNotes}</div>}
+                            <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
+                              Le pagas en efectivo directamente al transportista o campesino al momento de recibir tu producto en la dirección especificada. <strong>Sin recargo por procesamiento.</strong>
+                            </p>
                           </div>
 
-                          {/* Resumen Pago */}
-                          <div className="bg-[#F9F6F0] p-4 rounded-xl border border-[#E8DED0]">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="font-bold text-xs uppercase text-[#205134] tracking-wider">Método de Pago Seleccionado</span>
-                              <button onClick={() => setCurrentStep(2)} className="text-xs text-[#D06050] font-bold border-none bg-transparent cursor-pointer underline">Editar</button>
+                          {/* Opción 2: Wompi */}
+                          <div
+                            onClick={() => setPaymentMethod('wompi')}
+                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
+                              paymentMethod === 'wompi'
+                                ? 'border-[#205134] bg-[#F2F7F4]'
+                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="radio"
+                                  name="paymentMethod"
+                                  checked={paymentMethod === 'wompi'}
+                                  onChange={() => setPaymentMethod('wompi')}
+                                  className="accent-[#205134] w-5 h-5 cursor-pointer"
+                                />
+                                <div className="font-bold text-[#1C3A14] text-lg">💳 Tarjeta de Crédito / Débito / PSE / Nequi (Wompi)</div>
+                              </div>
+                              <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Wompi</span>
                             </div>
-                            <div className="font-bold text-[#1C3A14]">
-                              {paymentMethod === 'contraentrega' ? '💵 Pago Contraentrega (Efectivo al recibir)' : '💳 Tarjeta / PSE / Nequi (Wompi)'}
-                            </div>
+                            <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
+                              Pago en línea 100% seguro procesado por la pasarela oficial Wompi (Bancolombia). Incluye tarifa de procesamiento digital (+2.9%).
+                            </p>
                           </div>
                         </div>
+
+                        {/* Tarjeta Resumen de Entrega */}
+                        <div className="bg-[#F9F6F0] p-4 rounded-xl border border-[#E8DED0]">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="font-bold text-xs uppercase text-[#205134] tracking-wider">Dirección de Entrega Confirmada</span>
+                            <button onClick={() => setCurrentStep(2)} className="text-xs text-[#D06050] font-bold border-none bg-transparent cursor-pointer underline">Editar</button>
+                          </div>
+                          <div className="font-bold text-[#1C3A14]">{addressForm.fullName} ({addressForm.phone})</div>
+                          <div className="text-sm text-[#555]">{addressForm.address}, {addressForm.municipality}, {addressForm.department}</div>
+                          {addressForm.deliveryNotes && <div className="text-xs text-[#777] mt-1">Notas: {addressForm.deliveryNotes}</div>}
+                        </div>
+
                       </div>
                     </div>
                   )}
@@ -572,7 +579,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                       <span className="font-bold text-[#205134]">{formatPrice(shippingFee)}</span>
                     </div>
 
-                    {paymentMethod === 'wompi' && (
+                    {paymentMethod === 'wompi' && currentStep === 3 && (
                       <div className="flex justify-between text-sm text-[#555] mb-4">
                         <span>Comisión procesamiento (Wompi)</span>
                         <span className="font-bold text-[#D06050]">{formatPrice(wompiFee)}</span>

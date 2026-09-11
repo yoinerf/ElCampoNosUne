@@ -12,7 +12,6 @@ logs/
 .claude-replay.*
 .tmp-*
 instructions/
-.figma
 *.md
 *.MD
 

@@ -45,8 +45,8 @@ interface ProfileData {
 }
 
 interface Props {
-  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin'
   onProfileClick?: () => void
   userRole?: string
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
 import bannerImg from '../assets/BannerElCampoNosUne(2).png'
+import AutoCarousel from '../components/AutoCarousel'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile'
 
@@ -223,65 +224,112 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
   return (
     <ScreenShell
-      activeNav={activeNav ?? 'home'}
+      activeNav={activeNav ?? "home"}
       onNavigate={onNavigate}
       onProfileClick={onProfileClick}
       userRole={userRole || propUserRole}
       contentStyle={{ paddingBottom: 32 }}
     >
       {/* ══════ HERO ══════ */}
-{firstName ? (
-  // Usuario logueado: saludo personalizado
-  <div
-    style={{
-      background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
-      borderRadius: '0 0 28px 28px',
-      padding: '28px 20px 32px',
-      margin: '0 -18px 24px',
-      position: 'relative',
-      overflow: 'hidden',
-    }}
-  >
-    <div style={{ position: 'absolute', top: -40, right: -40, width: 180, height: 180, borderRadius: '50%', background: 'rgba(107,170,61,0.15)', pointerEvents: 'none' }} />
-    <div style={{ position: 'absolute', bottom: -20, right: 40, width: 80, height: 80, borderRadius: '50%', background: 'rgba(229,174,48,0.12)', pointerEvents: 'none' }} />
-    <p style={{ margin: 0, color: '#6BAA3D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, letterSpacing: 0.3 }}>
-      {greeting.icon} {greeting.text}
-    </p>
-    <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 26, color: '#F5EEE6', margin: '4px 0 6px', fontWeight: 700, lineHeight: 1.2 }}>
-      Hola, {firstName}
-    </h1>
-    <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif" }}>
-      Conecta con productos, experiencias y comunidades del territorio.
-    </p>
-  </div>
-) : (
-  // Visitante sin cuenta: banner principal
-  <div
-  style={{
-    margin: '0 -18px 24px',
-    animation: 'fadeInBanner 0.8s ease-out',
-  }}
->
-  <img
-    src={bannerImg}
-    alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
-    style={{ width: '100%', height: 'auto', display: 'block' }}
-  />
-</div>
-)}
+      {firstName ? (
+        // Usuario logueado: saludo personalizado
+        <div
+          style={{
+            background: "linear-gradient(135deg, #205134 0%, #2E6B42 100%)",
+            borderRadius: "0 0 28px 28px",
+            padding: "28px 20px 32px",
+            margin: "0 -18px 24px",
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              top: -40,
+              right: -40,
+              width: 180,
+              height: 180,
+              borderRadius: "50%",
+              background: "rgba(107,170,61,0.15)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              bottom: -20,
+              right: 40,
+              width: 80,
+              height: 80,
+              borderRadius: "50%",
+              background: "rgba(229,174,48,0.12)",
+              pointerEvents: "none",
+            }}
+          />
+          <p
+            style={{
+              margin: 0,
+              color: "#6BAA3D",
+              fontSize: 13,
+              fontFamily: "'Nunito Sans', sans-serif",
+              fontWeight: 700,
+              letterSpacing: 0.3,
+            }}
+          >
+            {greeting.icon} {greeting.text}
+          </p>
+          <h1
+            style={{
+              fontFamily: "'Poppins', sans-serif",
+              fontSize: 26,
+              color: "#F5EEE6",
+              margin: "4px 0 6px",
+              fontWeight: 700,
+              lineHeight: 1.2,
+            }}
+          >
+            Hola, {firstName}
+          </h1>
+          <p
+            style={{
+              margin: 0,
+              color: "rgba(245,238,230,0.75)",
+              fontSize: 13,
+              fontFamily: "'Nunito Sans', sans-serif",
+            }}
+          >
+            Conecta con productos, experiencias y comunidades del territorio.
+          </p>
+        </div>
+      ) : (
+        // Visitante sin cuenta: banner principal
+        <div
+          style={{
+            margin: "0 -18px 24px",
+            animation: "fadeInBanner 0.8s ease-out",
+          }}
+        >
+          <img
+            src={bannerImg}
+            alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
+            style={{ width: "100%", height: "auto", display: "block" }}
+          />
+        </div>
+      )}
 
       {/* ══════ STATS (solo productores) ══════ */}
       {!isBuyer && firstName && (
         <div
           style={{
-            background: '#FFFFFF',
+            background: "#FFFFFF",
             borderRadius: 20,
-            boxShadow: '0 4px 24px rgba(32,81,52,0.09)',
-            padding: '14px 16px',
-            display: 'flex',
+            boxShadow: "0 4px 24px rgba(32,81,52,0.09)",
+            padding: "14px 16px",
+            display: "flex",
             gap: 0,
             marginBottom: 24,
-            border: '1px solid #EDE4D8',
+            border: "1px solid #EDE4D8",
           }}
         >
           {loading
@@ -291,28 +339,60 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                   className="animate-pulse"
                   style={{
                     flex: 1,
-                    textAlign: 'center',
-                    borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
-                    padding: '10px 8px 6px',
+                    textAlign: "center",
+                    borderRight: i < 2 ? "1px solid #E8DED0" : "none",
+                    padding: "10px 8px 6px",
                   }}
                 >
-                  <div style={{ width: 24, height: 24, margin: '0 auto 8px', borderRadius: 8, background: '#E9E2D9' }} />
-                  <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
-                  <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      margin: "0 auto 8px",
+                      borderRadius: 8,
+                      background: "#E9E2D9",
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: 18,
+                      margin: "0 auto 6px",
+                      width: "60%",
+                      borderRadius: 8,
+                      background: "#E9E2D9",
+                    }}
+                  />
+                  <div
+                    style={{
+                      height: 11,
+                      width: "68%",
+                      margin: "0 auto",
+                      borderRadius: 8,
+                      background: "#F0E9E0",
+                    }}
+                  />
                 </div>
               ))
             : [
-                { label: 'Productos', value: String(stats.productos), icon: '📦' },
-                { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
-                { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
+                {
+                  label: "Productos",
+                  value: String(stats.productos),
+                  icon: "📦",
+                },
+                { label: "Pedidos", value: String(stats.pedidos), icon: "🛒" },
+                {
+                  label: "Ingresos",
+                  value: formatCompact(stats.ingresos),
+                  icon: "💰",
+                },
               ].map((s, i) => (
                 <div
                   key={s.label}
                   style={{
                     flex: 1,
-                    textAlign: 'center',
-                    borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
-                    padding: '8px 6px',
+                    textAlign: "center",
+                    borderRight: i < 2 ? "1px solid #E8DED0" : "none",
+                    padding: "8px 6px",
                   }}
                 >
                   <div style={{ fontSize: 20 }}>{s.icon}</div>
@@ -320,14 +400,20 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                     style={{
                       fontSize: 18,
                       fontWeight: 700,
-                      color: '#205134',
+                      color: "#205134",
                       fontFamily: "'Poppins', sans-serif",
                       lineHeight: 1.2,
                     }}
                   >
                     {s.value}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      color: "#8A8070",
+                      fontFamily: "'Nunito Sans', sans-serif",
+                    }}
+                  >
                     {s.label}
                   </div>
                 </div>
@@ -336,12 +422,15 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       )}
 
       {/* ══════ EXPLORA — tarjetas de sección ══════ */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+      <div
+        className="flex items-center justify-between"
+        style={{ marginBottom: 14 }}
+      >
         <h2
           style={{
             fontFamily: "'Poppins', sans-serif",
             fontSize: 18,
-            color: '#205134',
+            color: "#205134",
             margin: 0,
             fontWeight: 700,
           }}
@@ -351,41 +440,41 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       </div>
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
           gap: 14,
           marginBottom: 28,
         }}
       >
         {/* Productos */}
         <div
-          onClick={() => onNavigate('market')}
+          onClick={() => onNavigate("market")}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onNavigate('market')}
+          onKeyDown={(e) => e.key === "Enter" && onNavigate("market")}
           style={{
             borderRadius: 20,
-            background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
-            padding: '20px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
+            background: "linear-gradient(135deg, #205134 0%, #2E6B42 100%)",
+            padding: "20px 18px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
             gap: 10,
-            cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(32,81,52,0.20)',
-            position: 'relative',
-            overflow: 'hidden',
+            cursor: "pointer",
+            boxShadow: "0 6px 20px rgba(32,81,52,0.20)",
+            position: "relative",
+            overflow: "hidden",
           }}
         >
           <div
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: -20,
               right: -20,
               width: 90,
               height: 90,
-              borderRadius: '50%',
-              background: 'rgba(107,170,61,0.18)',
+              borderRadius: "50%",
+              background: "rgba(107,170,61,0.18)",
             }}
           />
           <div
@@ -393,10 +482,10 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               width: 52,
               height: 52,
               borderRadius: 16,
-              background: 'rgba(255,255,255,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: "rgba(255,255,255,0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               fontSize: 26,
             }}
           >
@@ -407,7 +496,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               style={{
                 fontSize: 15,
                 fontWeight: 700,
-                color: '#F5EEE6',
+                color: "#F5EEE6",
                 fontFamily: "'Poppins', sans-serif",
                 lineHeight: 1.2,
               }}
@@ -417,7 +506,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             <div
               style={{
                 fontSize: 11,
-                color: 'rgba(245,238,230,0.7)',
+                color: "rgba(245,238,230,0.7)",
                 fontFamily: "'Nunito Sans', sans-serif",
                 marginTop: 2,
               }}
@@ -429,33 +518,33 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
         {/* Experiencias */}
         <div
-          onClick={() => onNavigate('tourism')}
+          onClick={() => onNavigate("tourism")}
           role="button"
           tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onNavigate('tourism')}
+          onKeyDown={(e) => e.key === "Enter" && onNavigate("tourism")}
           style={{
             borderRadius: 20,
-            background: '#FFF8EE',
-            border: '2px solid #E5AE3040',
-            padding: '20px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
+            background: "#FFF8EE",
+            border: "2px solid #E5AE3040",
+            padding: "20px 18px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
             gap: 10,
-            cursor: 'pointer',
-            position: 'relative',
-            overflow: 'hidden',
+            cursor: "pointer",
+            position: "relative",
+            overflow: "hidden",
           }}
         >
           <div
             style={{
-              position: 'absolute',
+              position: "absolute",
               top: -20,
               right: -20,
               width: 90,
               height: 90,
-              borderRadius: '50%',
-              background: 'rgba(229,174,48,0.12)',
+              borderRadius: "50%",
+              background: "rgba(229,174,48,0.12)",
             }}
           />
           <div
@@ -463,11 +552,11 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               width: 52,
               height: 52,
               borderRadius: 16,
-              background: '#E5AE3018',
-              border: '1.5px solid #E5AE3030',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              background: "#E5AE3018",
+              border: "1.5px solid #E5AE3030",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               fontSize: 26,
             }}
           >
@@ -478,7 +567,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               style={{
                 fontSize: 15,
                 fontWeight: 700,
-                color: '#205134',
+                color: "#205134",
                 fontFamily: "'Poppins', sans-serif",
                 lineHeight: 1.2,
               }}
@@ -488,7 +577,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             <div
               style={{
                 fontSize: 11,
-                color: '#8A8070',
+                color: "#8A8070",
                 fontFamily: "'Nunito Sans', sans-serif",
                 marginTop: 2,
               }}
@@ -500,12 +589,15 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       </div>
 
       {/* ══════ PRODUCTOS DESTACADOS ══════ */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+      <div
+        className="flex items-center justify-between"
+        style={{ marginBottom: 14 }}
+      >
         <h2
           style={{
             fontFamily: "'Poppins', sans-serif",
             fontSize: 18,
-            color: '#205134',
+            color: "#205134",
             margin: 0,
             fontWeight: 700,
           }}
@@ -515,151 +607,213 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         <span
           style={{
             fontSize: 12,
-            color: '#9B4728',
+            color: "#9B4728",
             fontWeight: 700,
             fontFamily: "'Nunito Sans', sans-serif",
-            cursor: 'pointer',
+            cursor: "pointer",
           }}
-          onClick={() => onNavigate('market')}
+          onClick={() => onNavigate("market")}
         >
           Ver todos →
         </span>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 14,
-          marginBottom: 28,
-        }}
-      >
-        {loading
-          ? Array.from({ length: 3 }).map((_, index) => (
-              <div
-                key={index}
-                className="animate-pulse"
-                style={{
-                  background: '#f2eae0',
-                  borderRadius: 18,
-                  height: 200,
-                  border: '1px solid #E8E0CF',
-                  overflow: 'hidden',
-                }}
-              >
-                <div style={{ height: 120, background: '#E9E2D9' }} />
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <div style={{ height: 13, width: '75%', borderRadius: 8, background: '#E9E2D9', marginBottom: 8 }} />
-                  <div style={{ height: 10, width: '55%', borderRadius: 8, background: '#F0E9E0' }} />
-                </div>
+      {loading ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 14,
+            marginBottom: 28,
+          }}
+        >
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="animate-pulse"
+              style={{
+                background: "#f2eae0",
+                borderRadius: 18,
+                height: 200,
+                border: "1px solid #E8E0CF",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ height: 120, background: "#E9E2D9" }} />
+              <div style={{ padding: "10px 12px 12px" }}>
+                <div
+                  style={{
+                    height: 13,
+                    width: "75%",
+                    borderRadius: 8,
+                    background: "#E9E2D9",
+                    marginBottom: 8,
+                  }}
+                />
+                <div
+                  style={{
+                    height: 10,
+                    width: "55%",
+                    borderRadius: 8,
+                    background: "#F0E9E0",
+                  }}
+                />
               </div>
-            ))
-          : featured.length === 0
-          ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", gridColumn: '1 / -1' }}>
-              Aún no hay productos destacados.
-            </p>
-          )
-          : featured.map((item) => (
+            </div>
+          ))}
+        </div>
+      ) : featured.length === 0 ? (
+        <p
+          style={{
+            fontSize: 13,
+            color: "#8A8070",
+            fontFamily: "'Nunito Sans', sans-serif",
+            marginBottom: 28,
+          }}
+        >
+          Aún no hay productos destacados.
+        </p>
+      ) : (
+        <div style={{ marginBottom: 28 }}>
+          <AutoCarousel>
+            {featured.map((item) => (
               <div
                 key={item.id}
-                onClick={() => onNavigate('market')}
+                onClick={() => onNavigate("market")}
                 style={{
-                  background: '#fff',
+                  background: "#fff",
+                  overflow: "hidden",
+                  cursor: "pointer",
+                  border: "1px solid #E8E0CF",
                   borderRadius: 18,
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 16px rgba(42,92,26,0.08)',
-                  border: '1px solid #E8E0CF',
-                  cursor: 'pointer',
+                  boxShadow: "0 2px 16px rgba(42,92,26,0.08)",
+                  maxWidth: 320,
+                  margin: "0 auto",
                 }}
               >
-                <div style={{ position: 'relative', height: 120 }}>
+                <div style={{ position: "relative", height: 220 }}>
                   <img
                     src={item.img}
                     alt={item.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
                   />
                   <div
                     style={{
-                      position: 'absolute',
-                      top: 8,
-                      left: 8,
-                      background: '#D4870A',
-                      color: '#F5EEE6',
+                      position: "absolute",
+                      top: 10,
+                      left: 10,
+                      background: "#D4870A",
+                      color: "#F5EEE6",
                       fontSize: 10,
                       fontWeight: 700,
                       fontFamily: "'Nunito Sans', sans-serif",
-                      padding: '2px 8px',
+                      padding: "3px 10px",
                       borderRadius: 20,
+                      letterSpacing: 0.3,
                     }}
                   >
-                    Destacado
+                    PATROCINADO
                   </div>
                 </div>
-                <div style={{ padding: '10px 12px 12px' }}>
+                <div style={{ padding: "12px 14px 14px" }}>
                   <div
                     style={{
-                      fontSize: 13,
+                      fontSize: 15,
                       fontWeight: 700,
-                      color: '#205134',
+                      color: "#205134",
                       fontFamily: "'Poppins', sans-serif",
-                      lineHeight: 1.3,
                       marginBottom: 4,
                     }}
                   >
                     {item.title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#8A8070",
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      marginBottom: 8,
+                    }}
+                  >
                     {item.producer}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    <span
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: "#D4870A",
+                        fontFamily: "'Nunito Sans', sans-serif",
+                      }}
+                    >
                       {formatPrice(item.price)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: "#3D7A28",
+                        fontFamily: "'Nunito Sans', sans-serif",
+                      }}
+                    >
                       ⭐ {item.rating}
                     </span>
                   </div>
                 </div>
               </div>
             ))}
-      </div>
+          </AutoCarousel>
+        </div>
+      )}
 
       {/* ══════ BANNER EXPERIENCIAS ══════ */}
       <div
         style={{
           borderRadius: 20,
-          overflow: 'hidden',
-          position: 'relative',
+          overflow: "hidden",
+          position: "relative",
           height: 130,
           marginBottom: 28,
-          cursor: 'pointer',
+          cursor: "pointer",
         }}
-        onClick={() => onNavigate('tourism')}
+        onClick={() => onNavigate("tourism")}
       >
         <img
           src="https://images.unsplash.com/photo-1717201413771-faa0210c5dae?w=700&h=240&fit=crop&auto=format"
           alt="Turismo comunitario"
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
         <div
           style={{
-            position: 'absolute',
+            position: "absolute",
             inset: 0,
-            background: 'linear-gradient(90deg, rgba(28,63,16,0.88) 0%, rgba(28,63,16,0.25) 100%)',
-            padding: '18px 22px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
+            background:
+              "linear-gradient(90deg, rgba(28,63,16,0.88) 0%, rgba(28,63,16,0.25) 100%)",
+            padding: "18px 22px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "center",
           }}
         >
-          <p style={{ color: '#6BAA3D', fontSize: 11, margin: 0, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>
+          <p
+            style={{
+              color: "#6BAA3D",
+              fontSize: 11,
+              margin: 0,
+              fontFamily: "'Nunito Sans', sans-serif",
+              fontWeight: 800,
+              letterSpacing: 0.5,
+            }}
+          >
             TURISMO COMUNITARIO
           </p>
           <h3
             style={{
-              color: '#F5EEE6',
+              color: "#F5EEE6",
               fontSize: 17,
-              margin: '5px 0 0',
+              margin: "5px 0 0",
               fontFamily: "'Poppins', sans-serif",
               fontWeight: 700,
               lineHeight: 1.3,
@@ -673,12 +827,15 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       {/* ══════ EXPERIENCIAS DESTACADAS ══════ */}
       {tourism.length > 0 && (
         <>
-          <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
+          <div
+            className="flex items-center justify-between"
+            style={{ marginBottom: 14 }}
+          >
             <h2
               style={{
                 fontFamily: "'Poppins', sans-serif",
                 fontSize: 18,
-                color: '#205134',
+                color: "#205134",
                 margin: 0,
                 fontWeight: 700,
               }}
@@ -688,66 +845,93 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             <span
               style={{
                 fontSize: 12,
-                color: '#9B4728',
+                color: "#9B4728",
                 fontWeight: 700,
                 fontFamily: "'Nunito Sans', sans-serif",
-                cursor: 'pointer',
+                cursor: "pointer",
               }}
-              onClick={() => onNavigate('tourism')}
+              onClick={() => onNavigate("tourism")}
             >
               Ver todas →
             </span>
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 14,
-              marginBottom: 28,
-            }}
-          >
-            {tourism.map((exp) => (
-              <div
-                key={exp.id}
-                onClick={() => onNavigate('tourism')}
-                style={{
-                  background: '#fff',
-                  borderRadius: 18,
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 16px rgba(42,92,26,0.08)',
-                  border: '1px solid #E8E0CF',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ position: 'relative', height: 110 }}>
-                  <img
-                    src={exp.img}
-                    alt={exp.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                </div>
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: '#205134',
-                      fontFamily: "'Poppins', sans-serif",
-                      lineHeight: 1.3,
-                      marginBottom: 4,
-                    }}
-                  >
-                    {exp.title}
+          <div style={{ marginBottom: 28 }}>
+            <AutoCarousel>
+              {tourism.map((exp) => (
+                <div
+                  key={exp.id}
+                  onClick={() => onNavigate("tourism")}
+                  style={{
+                    background: "#fff",
+                    overflow: "hidden",
+                    cursor: "pointer",
+                    border: "1px solid #E8E0CF",
+                  }}
+                >
+                  <div style={{ position: "relative", height: 160 }}>
+                    <img
+                      src={exp.img}
+                      alt={exp.title}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        left: 10,
+                        background: "#D4870A",
+                        color: "#F5EEE6",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        fontFamily: "'Nunito Sans', sans-serif",
+                        padding: "3px 10px",
+                        borderRadius: 20,
+                        letterSpacing: 0.3,
+                      }}
+                    >
+                      PATROCINADO
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
-                    {exp.host}
+                  <div style={{ padding: "12px 14px 14px" }}>
+                    <div
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: "#205134",
+                        fontFamily: "'Poppins', sans-serif",
+                        marginBottom: 4,
+                      }}
+                    >
+                      {exp.title}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#8A8070",
+                        fontFamily: "'Nunito Sans', sans-serif",
+                        marginBottom: 8,
+                      }}
+                    >
+                      {exp.host}
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: "#D4870A",
+                        fontFamily: "'Nunito Sans', sans-serif",
+                      }}
+                    >
+                      {formatPrice(exp.price)}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
-                    {formatPrice(exp.price)}
-                  </span>
                 </div>
-              </div>
-            ))}
+              ))}
+            </AutoCarousel>
           </div>
         </>
       )}
@@ -757,82 +941,123 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         style={{
           fontFamily: "'Poppins', sans-serif",
           fontSize: 18,
-          color: '#205134',
-          margin: '0 0 14px',
+          color: "#205134",
+          margin: "0 0 14px",
           fontWeight: 700,
         }}
       >
         Actividad reciente
       </h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {loading
-          ? Array.from({ length: 3 }).map((_, index) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="animate-pulse"
+              style={{
+                background: "#fff",
+                borderRadius: 14,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                border: "1px solid #E8E0CF",
+                height: 68,
+              }}
+            >
               <div
-                key={index}
-                className="animate-pulse"
                 style={{
-                  background: '#fff',
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  border: '1px solid #E8E0CF',
-                  height: 68,
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: "#E9E2D9",
                 }}
-              >
-                <div style={{ width: 40, height: 40, borderRadius: 12, background: '#E9E2D9' }} />
-                <div style={{ flex: 1, display: 'grid', gap: 8 }}>
-                  <div style={{ height: 12, width: '75%', borderRadius: 8, background: '#E9E2D9' }} />
-                  <div style={{ height: 10, width: '35%', borderRadius: 8, background: '#F0E9E0' }} />
-                </div>
-              </div>
-            ))
-          : notifications.length === 0
-          ? (
-            <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
-              No tienes actividad reciente.
-            </p>
-          )
-          : notifications.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  background: '#fff',
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  border: '1px solid #E8E0CF',
-                }}
-              >
+              />
+              <div style={{ flex: 1, display: "grid", gap: 8 }}>
                 <div
                   style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    background: a.color + '18',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 20,
-                    flexShrink: 0,
+                    height: 12,
+                    width: "75%",
+                    borderRadius: 8,
+                    background: "#E9E2D9",
+                  }}
+                />
+                <div
+                  style={{
+                    height: 10,
+                    width: "35%",
+                    borderRadius: 8,
+                    background: "#F0E9E0",
+                  }}
+                />
+              </div>
+            </div>
+          ))
+        ) : notifications.length === 0 ? (
+          <p
+            style={{
+              fontSize: 13,
+              color: "#8A8070",
+              fontFamily: "'Nunito Sans', sans-serif",
+            }}
+          >
+            No tienes actividad reciente.
+          </p>
+        ) : (
+          notifications.map((a) => (
+            <div
+              key={a.id}
+              style={{
+                background: "#fff",
+                borderRadius: 14,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                border: "1px solid #E8E0CF",
+              }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  background: a.color + "18",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 20,
+                  flexShrink: 0,
+                }}
+              >
+                {a.icon}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#205134",
+                    fontFamily: "'Nunito Sans', sans-serif",
                   }}
                 >
-                  {a.icon}
+                  {a.text}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
-                    {a.text}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
-                    {timeAgo(a.created_at)}
-                  </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#8A8070",
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    marginTop: 2,
+                  }}
+                >
+                  {timeAgo(a.created_at)}
                 </div>
               </div>
-            ))}
+            </div>
+          ))
+        )}
       </div>
     </ScreenShell>
-  )
+  );
 }

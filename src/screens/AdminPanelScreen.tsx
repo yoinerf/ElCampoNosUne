@@ -162,31 +162,40 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     if (deptsData && deptsData.length > 0) setDepartments(deptsData as { id: string; name: string }[])
 
     if (isTurismo) {
-      // Cargar experiencias desde tabla experiences usando host_id
-      const { data: expData } = await supabase.from('experiences').select('*').eq('host_id', user.id).order('created_at', { ascending: false })
-      const exps = (expData ?? []).map((e: any) => ({
-        id: e.id,
-        title: e.title,
-        producer: e.host || '',
-        price: e.price || 0,
-        // capacity es texto como "10 personas", extraemos el número
-        stock: String(parseInt(e.capacity) || e.capacity || '0'),
-        unit: 'pers',
-        category: e.tags?.[0] || '',
-        category_id: '',
-        origin: '',
-        description: e.description || '',
-        img: e.img || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
-        duration: e.duration,
-        capacity: e.capacity,
-        tags: e.tags,
-      })) as ProductItem[]
+      // Cargar experiencias desde tabla experiences con sus imagenes
+      const { data: expData } = await supabase.from('experiences').select('*, images(*)').eq('host_id', user.id).order('created_at', { ascending: false })
+      const exps = (expData ?? []).map((e: any) => {
+        const primaryImg = e.images?.find((i: any) => i.is_primary)?.image_url || e.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
+        return {
+          id: e.id,
+          title: e.title,
+          producer: e.host || '',
+          price: e.price || 0,
+          stock: String(parseInt(e.capacity) || e.capacity || '0'),
+          unit: 'pers',
+          category: e.tags?.[0] || '',
+          category_id: '',
+          origin: '',
+          description: e.description || '',
+          img: primaryImg,
+          duration: e.duration,
+          capacity: e.capacity,
+          tags: e.tags,
+        }
+      }) as ProductItem[]
       setProducts(exps)
       setStats({ activeItems: exps.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: exps.filter(e => (parseInt(e.stock) || 0) < 5).length })
     } else {
-      // Cargar productos desde tabla products usando producer_id
-      const { data: userProducts } = await supabase.from('products').select('*').eq('producer_id', user.id).order('created_at', { ascending: false })
-      const prods = (userProducts ?? []) as ProductItem[]
+      // Cargar productos desde tabla products con sus imagenes
+      const { data: userProducts } = await supabase.from('products').select('*, images(*)').eq('producer_id', user.id).order('created_at', { ascending: false })
+      const prods = (userProducts ?? []).map((p: any) => {
+        const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url || p.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'
+        return {
+          ...p,
+          img: primaryImg,
+          description: p.description || '',
+        }
+      }) as ProductItem[]
       setProducts(prods)
       const lowStock = prods.filter((p) => { const n = parseInt(p.stock) || 0; return n < 20 }).length
       setStats({ activeItems: prods.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: lowStock })
@@ -218,7 +227,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     setEditingId(null)
     const defaultCatId = categories.length > 0 ? categories[0].id : ''
     const defaultDept = departments.length > 0 ? departments[0].name : ''
-    setForm({ title: '', category_id: defaultCatId, price: '', unit: isTurismo ? 'pers' : 'uds', stockNum: '45', origin: defaultDept, description: '', img: isTurismo ? 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?w=600&h=400&fit=crop&auto=format' : 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format' })
+    setForm({ title: '', category_id: defaultCatId, price: '', unit: isTurismo ? 'pers' : 'uds', stockNum: '45', origin: defaultDept, description: '', img: '' })
     setShowModal(true)
   }
 
@@ -242,17 +251,34 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
       unit: formData.unit || 'uds',
       category_id: formData.category_id || null,
       certified: formData.certified ?? true,
-      img: formData.img,
       stock: `${formData.stockNum || '0'}`,
-      description: formData.description.trim(),
+      description: formData.description ? formData.description.trim() : null,
     }
     
+    let savedProductId = editingId
     if (editingId) {
       const { error } = await supabase.from('products').update(commonPayload).eq('id', editingId)
-      if (error) console.error('Error al actualizar:', error.message)
+      if (error) console.error('Error al actualizar producto:', error.message)
     } else {
-      const { error } = await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id, rating: 5, reviews: 0 }])
-      if (error) console.error('Error al insertar:', error.message)
+      const { data, error } = await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id, rating: 5, reviews: 0 }]).select('id').single()
+      if (error) console.error('Error al insertar producto:', error.message)
+      if (data) savedProductId = data.id
+    }
+
+    if (savedProductId && formData.uploadedImages && formData.uploadedImages.length > 0) {
+      if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+        await supabase.from('images').update({ is_primary: false }).eq('product_id', savedProductId)
+      }
+      const imageRows = formData.uploadedImages.map((img: any) => ({
+        product_id: savedProductId,
+        experience_id: null,
+        storage_path: img.storagePath,
+        image_url: img.imageUrl,
+        is_primary: img.isPrimary,
+        sort_order: img.sortOrder,
+      }))
+      const { error: imgErr } = await supabase.from('images').insert(imageRows)
+      if (imgErr) console.error('Error al guardar en tabla images:', imgErr.message)
     }
     
     setSaving(false)
@@ -273,20 +299,37 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
       price: Number(formData.price),
       capacity: `${formData.capacity || '10'} personas`,
       duration: formData.duration || '2 horas',
-      img: formData.img,
-      description: formData.description.trim(),
+      description: formData.description ? formData.description.trim() : null,
       tags: formData.tags ? formData.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : (categories.find(c => c.id === formData.category_id)?.name ? [categories.find(c => c.id === formData.category_id)!.name] : ['Experiencia']),
       featured: formData.featured ?? true,
       rating: 5,
       reviews: 0,
     }
 
+    let savedExpId = editingId
     if (editingId) {
       const { error } = await supabase.from('experiences').update(expPayload).eq('id', editingId)
       if (error) console.error('Error al actualizar experiencia:', error.message)
     } else {
-      const { error } = await supabase.from('experiences').insert([{ ...expPayload, host_id: user.id }])
+      const { data, error } = await supabase.from('experiences').insert([{ ...expPayload, host_id: user.id }]).select('id').single()
       if (error) console.error('Error al insertar experiencia:', error.message)
+      if (data) savedExpId = data.id
+    }
+
+    if (savedExpId && formData.uploadedImages && formData.uploadedImages.length > 0) {
+      if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+        await supabase.from('images').update({ is_primary: false }).eq('experience_id', savedExpId)
+      }
+      const imageRows = formData.uploadedImages.map((img: any) => ({
+        product_id: null,
+        experience_id: savedExpId,
+        storage_path: img.storagePath,
+        image_url: img.imageUrl,
+        is_primary: img.isPrimary,
+        sort_order: img.sortOrder,
+      }))
+      const { error: imgErr } = await supabase.from('images').insert(imageRows)
+      if (imgErr) console.error('Error al guardar en tabla images:', imgErr.message)
     }
 
     setSaving(false)
@@ -771,13 +814,13 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
 
       {/* MODAL EDITAR STOCK */}
       {stockModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          <div style={{ background: '#fff', borderRadius: 24, padding: 32, width: '100%', maxWidth: 420, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 24 }}>
-              <img src={stockModal.product.img} alt={stockModal.product.title} style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flexShrink: 0 }} />
-              <div>
-                <h3 style={{ margin: 0, fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#1C3A14', fontWeight: 800 }}>{isTurismo ? 'Agregar Cupos' : 'Editar Stock'}</h3>
-                <p style={{ margin: '4px 0 0', fontSize: 13, color: '#8A8070' }}>{stockModal.product.title}</p>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-7 w-full max-w-sm sm:max-w-md shadow-2xl box-border my-auto">
+            <div className="flex items-center gap-3 sm:gap-4 mb-4 sm:mb-5">
+              <img src={stockModal.product.img} alt={stockModal.product.title} className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover shrink-0" />
+              <div className="min-w-0">
+                <h3 className="m-0 font-['Poppins'] text-base sm:text-lg text-[#1C3A14] font-extrabold truncate">{isTurismo ? 'Agregar Cupos' : 'Editar Stock'}</h3>
+                <p className="m-0 text-xs sm:text-sm text-[#8A8070] truncate">{stockModal.product.title}</p>
               </div>
             </div>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#3D5A34', marginBottom: 8, fontFamily: "'Nunito Sans', sans-serif" }}>{isTurismo ? 'Cupos disponibles' : 'Cantidad disponible'}</label>
@@ -786,11 +829,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
               min="0"
               value={stockModal.newStock}
               onChange={e => setStockModal(s => s ? { ...s, newStock: e.target.value } : s)}
-              style={{ width: '100%', padding: '14px 16px', borderRadius: 14, border: '1.5px solid #EDE4D8', fontSize: 28, fontWeight: 800, fontFamily: "'Poppins', sans-serif", color: '#1C3A14', textAlign: 'center', outline: 'none', boxSizing: 'border-box', marginBottom: 24 }}
+              className="w-full px-4 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border-[1.5px] border-[#EDE4D8] text-2xl sm:text-3xl font-extrabold font-['Poppins'] text-[#1C3A14] text-center outline-none box-border mb-5 sm:mb-6"
             />
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={() => setStockModal(null)} style={{ flex: 1, padding: '13px', borderRadius: 14, border: 'none', background: '#F3ECE2', color: '#205134', fontWeight: 700, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", fontSize: 15 }}>Cancelar</button>
-              <button type="button" onClick={handleSaveStock} disabled={savingStock} style={{ flex: 1, padding: '13px', borderRadius: 14, border: 'none', background: 'linear-gradient(90deg, #205134, #2A6542)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", fontSize: 15, opacity: savingStock ? 0.7 : 1, boxShadow: '0 4px 12px rgba(32,81,52,0.25)' }}>
+            <div className="flex flex-col-reverse sm:flex-row gap-2.5 sm:gap-3">
+              <button type="button" onClick={() => setStockModal(null)} className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl border-0 bg-[#F3ECE2] text-[#205134] font-bold cursor-pointer font-['Nunito_Sans'] text-sm sm:text-base hover:bg-[#EADBCA] transition-colors">Cancelar</button>
+              <button type="button" onClick={handleSaveStock} disabled={savingStock} className="w-full sm:flex-1 py-2.5 sm:py-3 rounded-xl border-0 bg-gradient-to-r from-[#205134] to-[#2A6542] text-white font-extrabold cursor-pointer font-['Nunito_Sans'] text-sm sm:text-base opacity-100 disabled:opacity-70 shadow-md shadow-[#205134]/20 transition-opacity">
                 {savingStock ? 'Guardando...' : 'Guardar Stock'}
               </button>
             </div>

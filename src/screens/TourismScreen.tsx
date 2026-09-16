@@ -41,6 +41,29 @@ interface TourismScreenProps {
 
 export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick, userRole: propUserRole }: TourismScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
+
+  const handleSelectExperience = (expId: string) => {
+    window.history.pushState({ modal: 'experience', id: expId }, '', window.location.href)
+    setSelected(expId)
+  }
+
+  const handleBackFromExperience = () => {
+    // Only go back in history; the popstate listener will clear selected
+    window.history.back()
+  }
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // If the new state has an experience modal, show it; otherwise close detail view
+      if (e.state?.modal === 'experience' && e.state.id) {
+        setSelected(e.state.id)
+      } else {
+        setSelected(null)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
   const [searchVal, setSearchVal] = useState('')
   const [experiences, setExperiences] = useState<Experience[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,7 +85,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   const loadExperiences = async () => {
     try {
       const [{ data: experiencesData, error: expErr }, { data: reviewsData }] = await Promise.all([
-        supabase.from('experiences').select('*').order('created_at', { ascending: false }),
+        supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experience_reviews').select('experience_id, rating'),
       ])
 
@@ -82,15 +105,21 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         }
       }
 
-      const processed: Experience[] = (experiencesData || []).map((exp) => {
+      const processed: Experience[] = (experiencesData || []).map((exp: any) => {
         const ratings = reviewsMap[exp.id] || []
         const count = ratings.length
         const avg = count > 0
           ? Number((ratings.reduce((sum, val) => sum + val, 0) / count).toFixed(1))
           : (exp.rating ?? 5)
 
+        const primaryImg = exp.images?.find((i: any) => i.is_primary)?.image_url 
+          || exp.images?.[0]?.image_url 
+          || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
+
         return {
           ...exp,
+          img: primaryImg,
+          description: exp.description || '',
           rating: avg,
           reviews: count,
         }
@@ -272,7 +301,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       duration: formData.duration || '2 horas',
       price: Number(formData.price),
       capacity: formData.capacity || '10 personas',
-      img: formData.img || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format',
+      description: formData.description ? formData.description.trim() : null,
       tags: formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean),
       featured: formData.featured,
       rating: 5,
@@ -285,6 +314,19 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       setSubmitMessage(error.message)
       setSaving(false)
       return
+    }
+
+    if (insertedExperience?.[0]?.id && formData.uploadedImages && formData.uploadedImages.length > 0) {
+      const imageRows = formData.uploadedImages.map((img: any) => ({
+        product_id: null,
+        experience_id: insertedExperience[0].id,
+        storage_path: img.storagePath,
+        image_url: img.imageUrl,
+        is_primary: img.isPrimary,
+        sort_order: img.sortOrder,
+      }))
+      const { error: imgErr } = await supabase.from('images').insert(imageRows)
+      if (imgErr) console.error('Error al registrar imágenes de experiencia en public.images:', imgErr.message)
     }
 
     const activitySaved = await recordActivity({
@@ -334,7 +376,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
             <img src={selectedExperience.img} alt={selectedExperience.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(28,63,16,0.7) 0%, transparent 50%)' }} />
             <button
-              onClick={() => setSelected(null)}
+              onClick={handleBackFromExperience}
               style={{
                 position: 'absolute',
                 top: 16,
@@ -433,11 +475,35 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
             {/* ══ MÓDULO INTERACTIVO DE RESERVA ══ */}
             {!isTurismo && selectedExperience && (() => {
               const maxCap = (() => {
-                if (!selectedExperience.capacity) return 20
+                if (selectedExperience.capacity === undefined || selectedExperience.capacity === null || selectedExperience.capacity === '') return 20
                 if (typeof selectedExperience.capacity === 'number') return selectedExperience.capacity
                 const p = parseInt(String(selectedExperience.capacity).replace(/\D/g, ''), 10)
-                return isNaN(p) || p <= 0 ? 20 : p
+                return isNaN(p) ? 20 : p
               })()
+
+              if (maxCap <= 0) {
+                return (
+                  <div
+                    style={{
+                      background: '#FFF3EB',
+                      border: '1.5px solid #F3D2C4',
+                      borderRadius: 20,
+                      padding: '24px 22px',
+                      marginBottom: 24,
+                      textAlign: 'center',
+                      boxShadow: '0 8px 24px rgba(155, 71, 40, 0.05)',
+                    }}
+                  >
+                    <div style={{ fontSize: 28, marginBottom: 6 }}>🚫</div>
+                    <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#9B4728', margin: '0 0 6px', fontWeight: 700 }}>
+                      Sin cupos disponibles
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 13, color: '#7A351D', fontFamily: "'Nunito Sans', sans-serif" }}>
+                      Esta experiencia actualmente no cuenta con cupos disponibles para reservar.
+                    </p>
+                  </div>
+                )
+              }
 
               return (
                 <div
@@ -664,7 +730,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                 <div
                   key={exp.id}
                   className="tourism-card group"
-                  onClick={() => setSelected(exp.id)}
+                  onClick={() => handleSelectExperience(exp.id)}
                   style={{
                     background: '#fff',
                     borderRadius: 18,
@@ -684,18 +750,40 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       className="transition-transform duration-500 ease-out group-hover:scale-105"
                     />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 45%, rgba(20,45,25,0.42) 100%)',
+                        pointerEvents: 'none',
+                      }}
+                    />
                     <span style={{ position: 'absolute', top: 8, left: 8, background: '#EAF3EC', color: '#205134', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
                       🏞️ EXPERIENCIA
                     </span>
-                    {(exp.reviews ?? 0) > 0 ? (
-                      <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
-                        ⭐ {exp.rating} <span style={{ fontWeight: 500, color: '#666' }}>({exp.reviews})</span>
-                      </span>
-                    ) : (
-                      <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.85)', color: '#888', fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20 }}>
-                        NUEVA
-                      </span>
-                    )}
+                    {(() => {
+                      const p = parseInt(String(exp.capacity ?? '').replace(/\D/g, ''), 10)
+                      const isOutOfCap = !isNaN(p) && p <= 0
+                      if (isOutOfCap) {
+                        return (
+                          <span style={{ position: 'absolute', top: 8, right: 8, background: '#FFF3EB', color: '#9B4728', border: '1px solid #F3D2C4', fontSize: 9, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
+                            SIN CUPOS
+                          </span>
+                        )
+                      }
+                      if ((exp.reviews ?? 0) > 0) {
+                        return (
+                          <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
+                            ⭐ {exp.rating} <span style={{ fontWeight: 500, color: '#666' }}>({exp.reviews})</span>
+                          </span>
+                        )
+                      }
+                      return (
+                        <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.85)', color: '#888', fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20 }}>
+                          NUEVA
+                        </span>
+                      )
+                    })()}
                   </div>
                   <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
                     <div>

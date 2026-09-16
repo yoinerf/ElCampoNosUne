@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400;1,600&display=swap');
 @import 'tailwindcss';
 
 @theme {
@@ -74,7 +75,21 @@
   }
 }
 
+@keyframes authScreenFade {
+  0% {
+    opacity: 0;
+    transform: scale(0.988) translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
 
+.auth-screen-enter {
+  animation: authScreenFade 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
 
 @keyframes pulseError {
   0% {

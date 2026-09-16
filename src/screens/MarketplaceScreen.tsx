@@ -218,8 +218,8 @@ function ProductDetail({
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
               <span
                 style={{
-                  background: product.certified ? '#FFF3E8' : '#FFF3E8',
-                  color: product.certified ? '#205134' : '#9B4728',
+                  background: product.type === 'experiencia' ? '#EAF3EC' : '#FFF6E5',
+                  color: product.type === 'experiencia' ? '#205134' : '#A86B05',
                   fontSize: 10,
                   fontWeight: 800,
                   padding: '4px 10px',
@@ -227,7 +227,7 @@ function ProductDetail({
                   letterSpacing: 0.5,
                 }}
               >
-                {product.certified ? '✓ CERTIFICADO' : product.type === 'experiencia' ? '📸 EXPERIENCIA' : '🌱 PRODUCTO'}
+                {product.certified ? '✓ CERTIFICADO' : product.type === 'experiencia' ? '🏞️ EXPERIENCIA' : '🌾 PRODUCTO'}
               </span>
               {product.reviews > 0 ? (
                 <span style={{ fontSize: 12, color: '#E5AE30', fontWeight: 700 }}>
@@ -268,7 +268,7 @@ function ProductDetail({
                   fontFamily: "'Poppins', sans-serif",
                   fontSize: 26,
                   fontWeight: 800,
-                  color: '#9B4728',
+                  color: isExperience ? '#205134' : '#C8860A',
                 }}
               >
                 {formatPrice(product.price)}
@@ -357,7 +357,7 @@ function ProductDetail({
                     height: 46,
                     borderRadius: 14,
                     border: 'none',
-                    background: '#9B4728',
+                    background: '#205134',
                     color: '#fff',
                     fontSize: 13,
                     fontWeight: 800,
@@ -380,7 +380,7 @@ function ProductDetail({
                   height: 48,
                   borderRadius: 14,
                   border: 'none',
-                  background: '#9B4728',
+                  background: '#205134',
                   color: '#fff',
                   fontSize: 14,
                   fontWeight: 800,
@@ -401,7 +401,7 @@ function ProductDetail({
               <button
                 type="button"
                 onClick={() => { if (!cart[product.id]) { onAddToCart(product.id) } onCheckout() }}
-                style={{ width: '100%', height: 50, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #9B4728, #C4622D)', color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 14px rgba(155,71,40,0.35)', letterSpacing: 0.3 }}
+                style={{ width: '100%', height: 50, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #205134, #2E6B42)', color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 14px rgba(32,81,52,0.25)', letterSpacing: 0.3 }}
               >
                 🌄 Reservar experiencia &middot; {cart[product.id] || 1} persona{(cart[product.id] || 1) > 1 ? 's' : ''}
               </button>
@@ -458,8 +458,8 @@ function ProductDetail({
                 fontFamily: "'Nunito Sans', sans-serif",
                 fontSize: 13,
                 fontWeight: activeTab === tab.key ? 800 : 600,
-                color: activeTab === tab.key ? '#9B4728' : '#666',
-                borderBottom: activeTab === tab.key ? '2.5px solid #9B4728' : '2.5px solid transparent',
+                color: activeTab === tab.key ? '#205134' : '#666',
+                borderBottom: activeTab === tab.key ? '2.5px solid #205134' : '2.5px solid transparent',
                 cursor: 'pointer',
                 transition: 'all 200ms',
                 marginBottom: -1,
@@ -1224,8 +1224,8 @@ export default function MarketplaceScreen({
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           className="transition-transform duration-500 ease-out group-hover:scale-105"
         />
-        <span style={{ position: 'absolute', top: 8, left: 8, background: product.type === 'experiencia' ? '#FFF3E8' : '#EAF3EC', color: product.type === 'experiencia' ? '#9B4728' : '#205134', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
-          {product.type === 'experiencia' ? '📸 EXPERIENCIA' : product.category ? `🌱 ${product.category.toUpperCase()}` : '🌱 PRODUCTO'}
+        <span style={{ position: 'absolute', top: 8, left: 8, background: product.type === 'experiencia' ? '#EAF3EC' : '#FFF6E5', color: product.type === 'experiencia' ? '#205134' : '#A86B05', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
+          {product.type === 'experiencia' ? '🏞️ EXPERIENCIA' : product.category ? `🌽 ${product.category.toUpperCase()}` : '🌾 PRODUCTO'}
         </span>
         {product.reviews > 0 ? (
           <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
@@ -1258,7 +1258,7 @@ export default function MarketplaceScreen({
           >
             {product.title}
           </div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#9B4728', marginBottom: 14 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: product.type === 'experiencia' ? '#205134' : '#C8860A', marginBottom: 14 }}>
             {formatPrice(product.price)}
             <span style={{ fontSize: 11, color: '#888', fontWeight: 500, marginLeft: 4 }}>/ {product.unit}</span>
           </div>
@@ -1334,7 +1334,7 @@ export default function MarketplaceScreen({
           {/* ══ BANNER TIENDA ══ */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+              background: 'linear-gradient(135deg, #A86B05 0%, #D4870A 60%, #E5AE30 100%)',
               borderRadius: '0 0 28px 28px',
               padding: '22px 20px 28px',
               margin: '0 -18px 20px',
@@ -1342,10 +1342,11 @@ export default function MarketplaceScreen({
               overflow: 'hidden',
             }}
           >
-            <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(107,170,61,0.15)', pointerEvents: 'none' }} />
-            <p style={{ margin: 0, color: '#6BAA3D', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>🌽 MERCADOS CAMPESINOS</p>
-            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#F5EEE6', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Productos del campo</h1>
-            <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Frescos y directos de productores colombianos</p>
+            <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: -20, left: 20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.10)', pointerEvents: 'none' }} />
+            <p style={{ margin: 0, color: '#FFF8EE', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>🌽 MERCADOS CAMPESINOS</p>
+            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#FFFFFF', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Productos del campo</h1>
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Frescos y directos de productores colombianos</p>
           </div>
 
           {/* ══ BARRA DE BÚSQUEDA ══ */}
@@ -1405,10 +1406,10 @@ export default function MarketplaceScreen({
           <div style={{ flex: 1, overflowY: 'auto' }}>
             {!loading && outstandingProducts.length > 0 && activeFilter === 'Todos' && searchVal === '' && (
               <div style={{ marginBottom: 32 }}>
-                <p style={{ margin: 0, color: '#9B4728', fontSize: 11, fontFamily: "'Poppins', sans-serif", fontWeight: 800, letterSpacing: 0.2 }}>
+                <p style={{ margin: 0, color: '#C8860A', fontSize: 11, fontFamily: "'Poppins', sans-serif", fontWeight: 800, letterSpacing: 0.2 }}>
                   PRODUCTOS GENUINOS.
                 </p>
-                <h2 style={{ fontFamily: "'Nunito Sans', sans-serif", fontSize: 22, color: '#3D2B1A', margin: '0 0 16px', fontWeight: 700 }}>
+                <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#205134', margin: '0 0 16px', fontWeight: 700 }}>
                   Los favoritos del mes
                 </h2>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>

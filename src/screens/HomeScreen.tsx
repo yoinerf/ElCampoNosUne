@@ -41,13 +41,13 @@ interface ActivityItem {
 const getActivityTypeMeta = (type: string) => {
   switch (type) {
     case 'product_created':
-      return { icon: '📦', color: '#E5AE30', label: 'Producto publicado' }
+      return { icon: '📦', color: '#E5AE30', label: 'Producto publicado' }  // Dorado para productos
     case 'experience_created':
-      return { icon: '🏞️', color: '#205134', label: 'Experiencia publicada' }
+      return { icon: '🏞️', color: '#6BAA3D', label: 'Experiencia publicada' }  // Verde para experiencias
     case 'purchase':
       return { icon: '🛒', color: '#9B4728', label: 'Compra registrada' }
     case 'reservation':
-      return { icon: '✅', color: '#6BAA3D', label: 'Reserva creada' }
+      return { icon: '✅', color: '#6BAA3D', label: 'Reserva creada' }  // Verde para experiencias
     case 'message':
       return { icon: '💬', color: '#5A7BCA', label: 'Mensaje nuevo' }
     default:
@@ -359,7 +359,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           marginBottom: 28,
         }}
       >
-        {/* Productos */}
+        {/* Productos — Dorado según manual de identidad */}
         <div
           onClick={() => onNavigate('market')}
           role="button"
@@ -367,7 +367,77 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           onKeyDown={(e) => e.key === 'Enter' && onNavigate('market')}
           style={{
             borderRadius: 20,
-            background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+            background: 'linear-gradient(135deg, #C8860A 0%, #E5AE30 100%)',
+            padding: '20px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: 10,
+            cursor: 'pointer',
+            boxShadow: '0 6px 20px rgba(200,134,10,0.25)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              top: -20,
+              right: -20,
+              width: 90,
+              height: 90,
+              borderRadius: '50%',
+              background: 'rgba(255,255,255,0.15)',
+            }}
+          />
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: 16,
+              background: 'rgba(255,255,255,0.18)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 26,
+            }}
+          >
+            🌽
+          </div>
+          <div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: '#1C2700',
+                fontFamily: "'Poppins', sans-serif",
+                lineHeight: 1.2,
+              }}
+            >
+              Productos
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: 'rgba(28,39,0,0.65)',
+                fontFamily: "'Nunito Sans', sans-serif",
+                marginTop: 2,
+              }}
+            >
+              Mercados campesinos
+            </div>
+          </div>
+        </div>
+
+        {/* Experiencias — Verde según manual de identidad */}
+        <div
+          onClick={() => onNavigate('tourism')}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => e.key === 'Enter' && onNavigate('tourism')}
+          style={{
+            borderRadius: 20,
+            background: 'linear-gradient(135deg, #205134 0%, #6BAA3D 100%)',
             padding: '20px 18px',
             display: 'flex',
             flexDirection: 'column',
@@ -387,7 +457,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               width: 90,
               height: 90,
               borderRadius: '50%',
-              background: 'rgba(107,170,61,0.18)',
+              background: 'rgba(255,255,255,0.12)',
             }}
           />
           <div
@@ -395,78 +465,8 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               width: 52,
               height: 52,
               borderRadius: 16,
-              background: 'rgba(255,255,255,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 26,
-            }}
-          >
-            🌽
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: '#F5EEE6',
-                fontFamily: "'Poppins', sans-serif",
-                lineHeight: 1.2,
-              }}
-            >
-              Productos
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: 'rgba(245,238,230,0.7)',
-                fontFamily: "'Nunito Sans', sans-serif",
-                marginTop: 2,
-              }}
-            >
-              Mercados campesinos
-            </div>
-          </div>
-        </div>
-
-        {/* Experiencias */}
-        <div
-          onClick={() => onNavigate('tourism')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onNavigate('tourism')}
-          style={{
-            borderRadius: 20,
-            background: '#FFF8EE',
-            border: '2px solid #E5AE3040',
-            padding: '20px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 10,
-            cursor: 'pointer',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              top: -20,
-              right: -20,
-              width: 90,
-              height: 90,
-              borderRadius: '50%',
-              background: 'rgba(229,174,48,0.12)',
-            }}
-          />
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 16,
-              background: '#E5AE3018',
-              border: '1.5px solid #E5AE3030',
+              background: 'rgba(255,255,255,0.18)',
+              border: '1.5px solid rgba(255,255,255,0.2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -480,7 +480,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               style={{
                 fontSize: 15,
                 fontWeight: 700,
-                color: '#205134',
+                color: '#F5EEE6',
                 fontFamily: "'Poppins', sans-serif",
                 lineHeight: 1.2,
               }}
@@ -490,7 +490,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             <div
               style={{
                 fontSize: 11,
-                color: '#8A8070',
+                color: 'rgba(245,238,230,0.75)',
                 fontFamily: "'Nunito Sans', sans-serif",
                 marginTop: 2,
               }}
@@ -517,7 +517,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         <span
           style={{
             fontSize: 12,
-            color: '#9B4728',
+            color: '#C8860A',
             fontWeight: 700,
             fontFamily: "'Nunito Sans', sans-serif",
             cursor: 'pointer',
@@ -585,8 +585,8 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                       position: 'absolute',
                       top: 8,
                       left: 8,
-                      background: '#D4870A',
-                      color: '#F5EEE6',
+                      background: '#E5AE30',
+                      color: '#1C2700',
                       fontSize: 10,
                       fontWeight: 700,
                       fontFamily: "'Nunito Sans', sans-serif",
@@ -614,7 +614,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                     {item.producer}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#C8860A', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {formatPrice(item.price)}
                     </span>
                     <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: "'Nunito Sans', sans-serif" }}>
@@ -690,7 +690,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             <span
               style={{
                 fontSize: 12,
-                color: '#9B4728',
+                color: '#205134',
                 fontWeight: 700,
                 fontFamily: "'Nunito Sans', sans-serif",
                 cursor: 'pointer',
@@ -744,7 +744,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                   <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
                     {exp.host}
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#D4870A', fontFamily: "'Nunito Sans', sans-serif" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
                     {formatPrice(exp.price)}
                   </span>
                 </div>

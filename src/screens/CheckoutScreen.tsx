@@ -13,7 +13,7 @@ interface CheckoutScreenProps {
   onViewProduct?: (productId: string) => void
 }
 
-export type PaymentMethodType = 'contraentrega' | 'wompi'
+export type PaymentMethodType = 'contraentrega' | 'wompi' | 'transferencia'
 
 export interface ShippingAddressForm {
   fullName: string
@@ -76,9 +76,15 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     })
   }, [])
 
+  const [transferData, setTransferData] = useState<{
+    reference: string
+    transferInfo: any
+  } | null>(null)
+
   // Cálculos dinámicos
+  const isExperienceOnly = items.length > 0 && items.every((item) => item.product.type === 'experiencia')
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-  const shippingFee = items.length > 0 ? 9000 : 0
+  const shippingFee = items.length > 0 && !isExperienceOnly ? 9000 : 0
   const wompiFee = paymentMethod === 'wompi' ? Math.round((subtotal + shippingFee) * 0.029) : 0
   const grandTotal = subtotal + shippingFee + wompiFee
 
@@ -95,7 +101,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
   // Avanzar entre pasos o Finalizar
   const handleMainAction = async () => {
     if (isLogged === false) {
-      onRequireAuth?.('auth')
+      onRequireAuth?.('login')
       return
     }
 
@@ -158,6 +164,22 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
         setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! El campesino/vendedor preparará tu envío.')
         onItemsChange([])
         setLoadingPayment(false)
+      } else if (paymentMethod === 'transferencia') {
+        setTransferData({
+          reference: checkoutData.reference,
+          transferInfo: checkoutData.transferInfo || {
+            bank: 'Bancolombia',
+            accountType: 'Cuenta de Ahorros',
+            accountNumber: '458-920184-12',
+            accountHolder: 'El Campo Nos Une S.A.S',
+            nit: '901.582.419-3',
+            nequi: '315 482 9102',
+            daviplata: '315 482 9102',
+          },
+        })
+        setMessage(`🎉 ¡Registro exitoso! Referencia: ${checkoutData.reference}. Realiza tu transferencia para confirmar.`)
+        onItemsChange([])
+        setLoadingPayment(false)
       } else if (paymentMethod === 'wompi') {
         setPaymentOpen(true)
         setLoadingPayment(false)
@@ -203,8 +225,8 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span>🛡️</span> Necesitas una cuenta para completar tu compra
             </div>
-            <button type="button" onClick={() => onRequireAuth?.('auth')} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}>
-              Crear cuenta ahora
+            <button type="button" onClick={() => onRequireAuth?.('login')} style={{ background: 'none', border: 'none', color: '#fff', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer' }}>
+              Ingresar a tu cuenta
             </button>
           </div>
         )}
@@ -240,7 +262,49 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
             <div style={{ background: '#fff', border: '1px solid #E8DED0', borderRadius: 18, padding: '48px 24px', textAlign: 'center', maxWidth: 540, margin: '40px auto', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
               <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
               <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 26, margin: '0 0 12px', fontWeight: 700 }}>¡Gracias por tu compra!</h2>
-              <p style={{ color: '#444', fontSize: 16, margin: '0 0 28px', lineHeight: 1.6 }}>{message}</p>
+              <p style={{ color: '#444', fontSize: 16, margin: '0 0 20px', lineHeight: 1.6 }}>{message}</p>
+
+              {transferData && (
+                <div style={{ background: '#FAF7F0', border: '1.5px solid #6BAA3D', borderRadius: 16, padding: 18, textAlign: 'left', marginBottom: 24 }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#205134', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    🏦 DATOS PARA LA TRANSFERENCIA
+                  </div>
+                  <div style={{ display: 'grid', gap: 5, fontSize: 13, color: '#3D2B1A' }}>
+                    <div>Banco: <strong>{transferData.transferInfo?.bank || 'Bancolombia'}</strong> ({transferData.transferInfo?.accountType || 'Ahorros'})</div>
+                    <div>Cuenta: <strong style={{ color: '#205134' }}>{transferData.transferInfo?.accountNumber || '458-920184-12'}</strong></div>
+                    <div>Titular: <strong>{transferData.transferInfo?.accountHolder || 'El Campo Nos Une S.A.S'}</strong></div>
+                    <div>NIT: <strong>{transferData.transferInfo?.nit || '901.582.419-3'}</strong></div>
+                    <div>Nequi / Daviplata: <strong style={{ color: '#205134' }}>{transferData.transferInfo?.nequi || '315 482 9102'}</strong></div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: '#9B4728', fontWeight: 700 }}>
+                      ⚠️ Incluye la referencia <u>{transferData.reference}</u> en la descripción de la transferencia.
+                    </div>
+                  </div>
+                  <a
+                    href={`https://wa.me/573154829102?text=${encodeURIComponent(
+                      `Hola, acabo de realizar una orden con referencia ${transferData.reference}. Adjunto mi comprobante:`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      background: '#25D366',
+                      color: '#fff',
+                      padding: '11px',
+                      borderRadius: 12,
+                      marginTop: 14,
+                      textDecoration: 'none',
+                      fontWeight: 800,
+                      fontSize: 13,
+                    }}
+                  >
+                    💬 Enviar comprobante por WhatsApp
+                  </a>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={onBack}
@@ -316,7 +380,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                   {currentStep === 1 && (
                     <div className="flex flex-col gap-6">
                       <div className="flex justify-between items-center mb-2">
-                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 font-medium">
+                        <h2 className="font-['Poppins',sans-serif] text-2xl text-[#205134] m-0 font-bold">
                           1. Productos en tu carrito ({items.reduce((sum, item) => sum + item.quantity, 0)})
                         </h2>
                         <button
@@ -372,7 +436,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                                 </button>
                               </div>
 
-                              <div className="font-['Poppins'] font-bold text-[#9B4728] text-base w-[135px] shrink-0 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                              <div className="font-['Poppins'] font-bold text-[#C8860A] text-base w-[135px] shrink-0 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
                                 {formatPrice(item.product.price * item.quantity)}
                               </div>
 
@@ -394,7 +458,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                   {currentStep === 2 && (
                     <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0]">
                       <div className="flex justify-between items-center mb-6">
-                        <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 font-medium">
+                        <h2 className="font-['Poppins',sans-serif] text-2xl text-[#205134] m-0 font-bold">
                           2. Datos de entrega y envío
                         </h2>
                         <button
@@ -481,7 +545,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                     <div className="flex flex-col gap-6">
                       <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0]">
                         <div className="flex justify-between items-center mb-6">
-                          <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 font-medium">
+                          <h2 className="font-['Poppins',sans-serif] text-2xl text-[#205134] m-0 font-bold">
                             3. Método de pago y confirmación
                           </h2>
                           <button
@@ -545,6 +609,33 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                               Pago en línea 100% seguro procesado por la pasarela oficial Wompi (Bancolombia). Incluye tarifa de procesamiento digital (+2.9%).
                             </p>
                           </div>
+
+                          {/* Opción 3: Transferencia Bancaria */}
+                          <div
+                            onClick={() => setPaymentMethod('transferencia')}
+                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
+                              paymentMethod === 'transferencia'
+                                ? 'border-[#205134] bg-[#F2F7F4]'
+                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="radio"
+                                  name="paymentMethod"
+                                  checked={paymentMethod === 'transferencia'}
+                                  onChange={() => setPaymentMethod('transferencia')}
+                                  className="accent-[#205134] w-5 h-5 cursor-pointer"
+                                />
+                                <div className="font-bold text-[#1C3A14] text-lg">🏦 Transferencia Bancaria Directa / Nequi</div>
+                              </div>
+                              <span className="bg-[#6BAA3D] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">0% Recargo</span>
+                            </div>
+                            <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
+                              Transfiere directamente por Bancolombia, Nequi o Daviplata a la cuenta comunitaria. Sin costo de procesamiento adicional.
+                            </p>
+                          </div>
                         </div>
 
                         {/* Tarjeta Resumen de Entrega */}
@@ -567,7 +658,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                 {/* Columna Derecha: Resumen de Pedido y Botón Dinámico */}
                 <div>
                   <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0] shadow-sm sticky top-6">
-                    <h2 className="font-['Playfair_Display',serif] text-2xl text-[#1C3A14] m-0 mb-6 font-medium">Resumen del pedido</h2>
+                    <h2 className="font-['Poppins',sans-serif] text-2xl text-[#205134] m-0 mb-6 font-bold">Resumen del pedido</h2>
 
                     <div className="flex justify-between text-sm text-[#555] mb-4">
                       <span>Subtotal productos</span>
@@ -590,7 +681,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
 
                     <div className="flex justify-between items-center mb-8">
                       <span className="font-['Poppins'] text-lg font-bold text-[#1C3A14]">Total estimado</span>
-                      <span className="font-['Poppins'] text-2xl font-bold text-[#D06050]">{formatPrice(grandTotal)}</span>
+                      <span className="font-['Poppins'] text-2xl font-bold text-[#205134]">{formatPrice(grandTotal)}</span>
                     </div>
 
                     {/* BOTÓN PRINCIPAL: "Continuar" vs "Proceder al pago" */}
@@ -598,7 +689,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                       type="button"
                       disabled={loadingPayment}
                       onClick={handleMainAction}
-                      className="w-full bg-[#D06050] hover:bg-[#ba5546] disabled:opacity-50 text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
+                      className="w-full bg-[#205134] hover:bg-[#1a422a] disabled:opacity-50 text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
                     >
                       {loadingPayment
                         ? 'Procesando...'

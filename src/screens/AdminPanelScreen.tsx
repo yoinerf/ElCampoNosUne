@@ -432,9 +432,9 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                     {[
                       { emoji: '✅', value: stats.activeItems, label: 'Items activos', bg: '#EAF3EC', color: '#205134' },
                       { emoji: '📈', value: stats.salesThisMonth, label: isTurismo ? 'Reservas este mes' : 'Ventas este mes', bg: '#EAF3EC', color: '#205134' },
-                      { emoji: '💰', value: formatPrice(stats.totalIncome), label: 'Ingresos totales', bg: '#FFF7E8', color: '#9B4728' },
+                      { emoji: '💰', value: formatPrice(stats.totalIncome), label: 'Ingresos totales', bg: '#FFF7E8', color: '#C8860A' },
                       ...(isTurismo
-                        ? [{ emoji: '🌄', value: products.length, label: 'Experiencias activas', bg: '#FEE9E1', color: '#9B4728' }]
+                        ? [{ emoji: '🌄', value: products.length, label: 'Experiencias activas', bg: '#EAF3EC', color: '#205134' }]
                         : [{ emoji: '⚠️', value: stats.lowStockCount, label: 'Stock bajo', bg: '#FEE9E1', color: '#C4622D' }]
                       ),
                     ].map((card) => (
@@ -463,8 +463,8 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
                     {[
                       isTurismo
-                        ? { section: 'experiences' as AdminSection, label: 'Gestionar Experiencias', emoji: '🌄', desc: 'Edita tus paquetes y rutas', grad: 'linear-gradient(135deg, #FFEFDB, #FDE6D1)', text: '#9B4728' }
-                        : { section: 'products' as AdminSection, label: 'Gestionar Productos', emoji: '📦', desc: 'Añade y edita tus productos', grad: 'linear-gradient(135deg, #E8F5E9, #C8E6C9)', text: '#205134' },
+                        ? { section: 'experiences' as AdminSection, label: 'Gestionar Experiencias', emoji: '🌄', desc: 'Edita tus paquetes y rutas', grad: 'linear-gradient(135deg, #EAF3EC, #D6E8D8)', text: '#205134' }
+                        : { section: 'products' as AdminSection, label: 'Gestionar Productos', emoji: '📦', desc: 'Añade y edita tus productos', grad: 'linear-gradient(135deg, #FFF8E7, #FDE6B8)', text: '#A86B05' },
                       { section: 'reports' as AdminSection, label: 'Reportes y Ventas', emoji: '📈', desc: 'Consulta tus ingresos', grad: 'linear-gradient(135deg, #E3F2FD, #BBDEFB)', text: '#1B4D82' },
                       ...(!isTurismo ? [{ section: 'inventory' as AdminSection, label: 'Ver Inventario', emoji: '📋', desc: 'Controla tu stock', grad: 'linear-gradient(135deg, #F1F8E9, #DCEDC8)', text: '#3D7A28' }] : []),
                     ].map((q) => (

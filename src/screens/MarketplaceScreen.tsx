@@ -16,6 +16,7 @@ export interface Product {
   type: 'producto' | 'experiencia'
   certified: boolean
   img: string
+  images?: any[]
   stock: string
   outstanding?: boolean
 }
@@ -68,8 +69,21 @@ function ProductDetail({
   isProducer,
 }: ProductDetailProps) {
   const isExperience = product.type === 'experiencia' || product.unit === 'pers'
+  const isOutOfStock = (() => {
+    if (product.stock === undefined || product.stock === null || product.stock === '') return false
+    const p = parseInt(String(product.stock).replace(/\D/g, ''), 10)
+    return !isNaN(p) && p <= 0
+  })()
   const [activeTab, setActiveTab] = useState<'descripcion' | 'origen' | 'impacto' | 'resenas'>('descripcion')
   const [mainImg, setMainImg] = useState(product.img)
+  const carouselRef = useRef<HTMLDivElement>(null)
+
+  const scrollCarousel = (direction: 'left' | 'right') => {
+    if (carouselRef.current) {
+      const scrollAmount = direction === 'left' ? -300 : 300
+      carouselRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' })
+    }
+  }
   const [reviewsList, setReviewsList] = useState<any[]>([])
   const [loadingReviews, setLoadingReviews] = useState(false)
   const [newRating, setNewRating] = useState(5)
@@ -137,11 +151,9 @@ function ProductDetail({
     }
   }
 
-  const thumbs = [
-    product.img,
-    `https://images.unsplash.com/photo-1464226184884-fa280b87c399?w=300&h=220&fit=crop&auto=format`,
-    `https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=300&h=220&fit=crop&auto=format`,
-  ]
+  const thumbs = (product.images && product.images.length > 0)
+    ? product.images.map((i: any) => i.image_url)
+    : [product.img]
 
   return (
     <div
@@ -149,698 +161,841 @@ function ProductDetail({
       style={{ background: '#F5F0E8', fontFamily: "'Nunito Sans', sans-serif" }}
     >
       {/* ── Breadcrumb ── */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #EDE4D8' }} className="flex items-center gap-2 px-5 py-3 text-xs text-[#888]">
-        <button
-          type="button"
-          onClick={onBack}
-          style={{ background: 'none', border: 'none', color: '#205134', cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: 0 }}
-        >
-          ← Tienda
-        </button>
-        <span>›</span>
-        <span>{product.category}</span>
-        <span>›</span>
-        <span className="font-bold text-[#3D2B1A] truncate max-w-[160px]">
-          {product.title}
-        </span>
+      <div style={{ background: '#fff', borderBottom: '1px solid #EDE4D8' }}>
+        <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-2 text-xs text-[#888]">
+          <button
+            type="button"
+            onClick={onBack}
+            style={{ background: 'none', border: 'none', color: '#205134', cursor: 'pointer', fontSize: 12, fontWeight: 700, padding: 0 }}
+          >
+            ← Tienda
+          </button>
+          <span>›</span>
+          <span>{product.category}</span>
+          <span>›</span>
+          <span className="font-bold text-[#3D2B1A] truncate max-w-[200px]">
+            {product.title}
+          </span>
+        </div>
       </div>
 
       {/* ── Hero: imagen izquierda + detalles derecha ── */}
-      <div style={{ background: '#fff', padding: '24px 20px 20px', borderTopLeftRadius: 0, borderTopRightRadius: 0, borderEndEndRadius: 16, borderEndStartRadius: 16, margin: '0 0 12px' }}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8" style={{ width: '95%', margin: '0 auto' }}>
-          {/* Columna imagen */}
-          <div className="w-full">
-            <div
-              style={{
-                borderRadius: 16,
-                overflow: 'hidden',
-                border: '1px solid #E8E2D9',
-                width: '100%',
-                aspectRatio: '16/9',
-                background: '#F5EEE6',
-                marginBottom: 10,
-              }}
-            >
-              <img
-                src={mainImg}
-                alt={product.title}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
-            </div>
-            {/* Miniaturas — tamaño fijo, no crecen con la columna */}
-            <div className="flex gap-2">
-              {thumbs.map((src, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setMainImg(src)}
-                  style={{
-                    width: 90,
-                    height: 74,
-                    flexShrink: 0,
-                    borderRadius: 10,
-                    overflow: 'hidden',
-                    border: mainImg === src ? '2.5px solid #205134' : '2px solid #E8E2D9',
-                    padding: 0,
-                    cursor: 'pointer',
-                    background: 'none',
-                  }}
-                >
-                  <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Columna detalles */}
-          <div style={{ background: '#fff', border: '1px solid #fff', borderRadius: 20, padding: '22px 22px 18px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {/* Badge */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <span
-                style={{
-                  background: product.type === 'experiencia' ? '#EAF3EC' : '#FFF6E5',
-                  color: product.type === 'experiencia' ? '#205134' : '#A86B05',
-                  fontSize: 10,
-                  fontWeight: 800,
-                  padding: '4px 10px',
-                  borderRadius: 20,
-                  letterSpacing: 0.5,
-                }}
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
+        <div className="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl sm:rounded-3xl border border-[#EDE4D8] shadow-xs">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-12 items-start">
+            {/* Columna imagen */}
+            <div className="lg:col-span-6 w-full flex flex-col items-center lg:items-start">
+              <div
+                className="w-full max-h-[320px] lg:max-h-none aspect-square rounded-2xl sm:rounded-3xl overflow-hidden border border-[#E8E2D9] bg-[#F5EEE6] mb-3 sm:mb-4 relative shadow-sm"
               >
-                {product.certified ? '✓ CERTIFICADO' : product.type === 'experiencia' ? '🏞️ EXPERIENCIA' : '🌾 PRODUCTO'}
-              </span>
-              {product.reviews > 0 ? (
-                <span style={{ fontSize: 12, color: '#E5AE30', fontWeight: 700 }}>
-                  ★ {product.rating}
-                  <span style={{ color: '#999', fontWeight: 400 }}> ({product.reviews} {product.reviews === 1 ? 'reseña' : 'reseñas'})</span>
-                </span>
-              ) : (
-                <span style={{ fontSize: 11, color: '#888', fontWeight: 500 }}>Sin reseñas aún</span>
-              )}
-            </div>
-
-            {/* Título */}
-            <h1
-              style={{
-                fontFamily: "'Poppins', sans-serif",
-                fontSize: 24,
-                color: '#1C3A14',
-                margin: '12px 0 6px ',
-                lineHeight: 1.25,
-                fontWeight: 700,
-              }}
-            >
-              {product.title}
-            </h1>
-
-            {/* Productor */}
-            <p style={{ fontSize: 12, color: '#666', margin: '0 0 16px' }}>
-              Producido por:{' '}
-              <span style={{ color: '#205134', fontWeight: 700 }}>{product.producer}</span>
-            </p>
-
-            <hr style={{ border: 'none', borderTop: '1px solid #E8E2D9', margin: '0 0 16px' }} />
-
-            {/* Precio */}
-            <div style={{ marginBottom: 10 }}>
-              <span
-                style={{
-                  fontFamily: "'Poppins', sans-serif",
-                  fontSize: 26,
-                  fontWeight: 800,
-                  color: isExperience ? '#205134' : '#C8860A',
-                }}
-              >
-                {formatPrice(product.price)}
-              </span>
-              <span style={{ fontSize: 12, color: '#888', marginLeft: 6 }}>/ {product.unit}</span>
-            </div>
-
-            {/* Descripción corta */}
-            <p style={{ fontSize: 13, color: '#555', lineHeight: 1.6, margin: '0 0 20px' }}>
-              {product.description || 'Producto del campo colombiano, seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.'}
-            </p>
-
-            <span
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                background: '#F0F7EC',
-                border: '1px solid #C8E0BC',
-                borderRadius: 20,
-                padding: '5px 12px',
-                fontSize: 12,
-                color: '#205134',
-                fontWeight: 600,
-                marginBottom: '1rem',
-              }}
-            >
-              {!isNaN(Number(product.stock)) && product.stock !== ''
-                ? <><strong>{product.stock}</strong> {isExperience ? 'cupos disponibles.' : 'unidades disponibles.'}</>
-                : product.stock}
-            </span>
-
-            {/* Personas para experiencias */}
-            {isExperience && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: '#1C3A14', marginBottom: 8 }}>Número de personas</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px solid #E8E2D9', borderRadius: 14, overflow: 'hidden', height: 46, width: '60%' }}>
-                  <button type="button" onClick={() => { const cur = cart[product.id] || 1; if (cur > 1) onRemoveFromCart(product.id) }} style={{ width: 46, height: '100%', border: 'none', background: '#f5f0ea33', color: '#205134', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}>−</button>
-                  <span style={{ flex: 1, textAlign: 'center', fontWeight: 800, fontSize: 15, color: '#205134' }}>{cart[product.id] || 1}</span>
-                  <button type="button" onClick={() => onAddToCart(product.id)} style={{ width: 46, height: '100%', border: 'none', background: '#f5f0ea33', color: '#205134', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}>+</button>
-                </div>
-                <span style={{ fontSize: 12, color: '#8A8070', marginTop: 4, display: 'block' }}>Total: {formatPrice(product.price * (cart[product.id] || 1))}</span>
-              </div>
-            )}
-
-            {/* Cantidad + CTA */}
-            {isProducer ? (
-              <div style={{ padding: '12px 16px', background: '#F5EEE6', borderRadius: 14, color: '#205134', fontSize: 13, fontWeight: 700, textAlign: 'center', marginBottom: 14, border: '1px solid #EDE4D8' }}>
-                Vista previa de producto (Modo asociación / productor)
-              </div>
-            ) : cart[product.id] && !isExperience ? (
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14 }}>
+                <img
+                  src={mainImg}
+                  alt={product.title}
+                  className="w-full h-full object-cover block"
+                />
                 <div
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    border: '1.5px solid #E8E2D9',
-                    borderRadius: 14,
-                    overflow: 'hidden',
-                    height: 46,
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(20,45,25,0.38) 100%)',
+                    pointerEvents: 'none',
+                  }}
+                />
+              </div>
+              {/* Miniaturas */}
+              <div className="flex gap-2.5 sm:gap-3 overflow-x-auto w-full pb-1 scrollbar-none">
+                {thumbs.map((src, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setMainImg(src)}
+                    className={`w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-xl sm:rounded-2xl overflow-hidden p-0 cursor-pointer transition-all ${mainImg === src ? 'ring-2 ring-[#205134] border-transparent' : 'border border-[#E8E2D9] opacity-80 hover:opacity-100'
+                      }`}
+                    style={{ background: 'none' }}
+                  >
+                    <img src={src} alt="" className="w-full h-full object-cover block" />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Columna detalles */}
+            <div className="lg:col-span-6 w-full flex flex-col justify-start lg:pl-2">
+              {/* Badge */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span
+                  style={{
+                    background: product.type === 'experiencia' ? '#EAF3EC' : '#FFF6E5',
+                    color: product.type === 'experiencia' ? '#205134' : '#A86B05',
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: '5px 12px',
+                    borderRadius: 20,
+                    letterSpacing: 0.5,
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={() => onRemoveFromCart(product.id)}
-                    style={{ width: 46, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
-                  >
-                    −
-                  </button>
-                  <span style={{ width: 46, textAlign: 'center', fontWeight: 800, fontSize: 15, color: '#205134' }}>
-                    {cart[product.id]}
+                  {product.certified ? '✓ CERTIFICADO' : product.type === 'experiencia' ? '🏞️ EXPERIENCIA' : '🌾 PRODUCTO'}
+                </span>
+                {product.reviews > 0 ? (
+                  <span style={{ fontSize: 13, color: '#E5AE30', fontWeight: 700 }}>
+                    ★ {product.rating}
+                    <span style={{ color: '#888', fontWeight: 500, fontSize: 12 }}> ({product.reviews} {product.reviews === 1 ? 'reseña' : 'reseñas'})</span>
                   </span>
+                ) : (
+                  <span style={{ fontSize: 12, color: '#888', fontWeight: 500 }}>Sin reseñas aún</span>
+                )}
+              </div>
+
+              {/* Título */}
+              <h1 className="font-['Poppins'] text-2xl sm:text-3xl md:text-[32px] text-[#1C3A14] font-bold leading-tight mb-1.5 sm:mb-2 tracking-tight">
+                {product.title}
+              </h1>
+
+              {/* Productor */}
+              <p className="text-xs sm:text-sm text-[#666] mb-2 sm:mb-3">
+                Producido por:{' '}
+                <span className="text-[#205134] font-bold text-sm sm:text-base">{product.producer}</span>
+              </p>
+
+              <hr style={{ border: 'none', borderTop: '1px solid #E8E2D9', margin: '0 0 12px' }} />
+
+              {/* Precio */}
+              <div style={{ marginBottom: 12, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                <span
+                  className={`font-['Poppins'] text-2xl sm:text-3xl font-extrabold tracking-tight ${isExperience ? 'text-[#205134]' : 'text-[#C8860A]'
+                    }`}
+                >
+                  {formatPrice(product.price)}
+                </span>
+                <span className="text-xs sm:text-sm text-[#7A6E62] font-semibold">/ {product.unit}</span>
+              </div>
+
+              {/* Descripción */}
+              <p className="text-sm sm:text-[15px] text-[#4A4036] leading-relaxed mb-3 sm:mb-4 font-['Nunito_Sans']">
+                {product.description || 'Producto del campo colombiano, seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.'}
+              </p>
+
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  alignSelf: 'flex-start',
+                  gap: 6,
+                  background: isOutOfStock ? '#FFF3EB' : '#F0F7EC',
+                  border: isOutOfStock ? '1px solid #F3D2C4' : '1px solid #C8E0BC',
+                  borderRadius: 20,
+                  padding: '6px 14px',
+                  fontSize: 13,
+                  color: isOutOfStock ? '#9B4728' : '#205134',
+                  fontWeight: 600,
+                  marginBottom: '1.25rem',
+                }}
+              >
+                {isOutOfStock
+                  ? (isExperience ? 'Sin cupos disponibles' : '0 unidades disponibles')
+                  : (!isNaN(Number(product.stock)) && product.stock !== ''
+                    ? <><strong>{product.stock}</strong> {isExperience ? 'cupos disponibles.' : 'unidades disponibles.'}</>
+                    : product.stock)}
+              </span>
+
+              {/* Personas para experiencias */}
+              {isExperience && !isOutOfStock && (
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: 'block', fontSize: 14, fontWeight: 700, color: '#1C3A14', marginBottom: 8 }}>Número de personas</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px solid #E8E2D9', borderRadius: 14, overflow: 'hidden', height: 48, width: '60%' }}>
+                    <button type="button" onClick={() => { const cur = cart[product.id] || 1; if (cur > 1) onRemoveFromCart(product.id) }} style={{ width: 48, height: '100%', border: 'none', background: '#f5f0ea33', color: '#205134', fontSize: 22, fontWeight: 800, cursor: 'pointer' }}>−</button>
+                    <span style={{ flex: 1, textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#205134' }}>{cart[product.id] || 1}</span>
+                    <button type="button" onClick={() => onAddToCart(product.id)} style={{ width: 48, height: '100%', border: 'none', background: '#f5f0ea33', color: '#205134', fontSize: 22, fontWeight: 800, cursor: 'pointer' }}>+</button>
+                  </div>
+                  <span style={{ fontSize: 13, color: '#8A8070', marginTop: 6, display: 'block', fontWeight: 600 }}>Total: {formatPrice(product.price * (cart[product.id] || 1))}</span>
+                </div>
+              )}
+
+              {/* Cantidad + CTA */}
+              {isOutOfStock ? (
+                <div
+                  style={{
+                    padding: '14px 18px',
+                    background: '#FFF3EB',
+                    borderRadius: 14,
+                    color: '#9B4728',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    marginBottom: 16,
+                    border: '1px solid #F3D2C4',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                  }}
+                >
+                  <span>🚫</span>
+                  <span>
+                    {isExperience
+                      ? 'Experiencia sin cupos disponibles, pronto se abriran nuevos cupos'
+                      : 'Producto agotado, pronto tendremos disponibilidad.'}
+                  </span>
+                </div>
+              ) : isProducer ? (
+                <div style={{ padding: '14px 18px', background: '#F5EEE6', borderRadius: 14, color: '#205134', fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 16, border: '1px solid #EDE4D8' }}>
+                  Vista previa de producto (Modo asociación / productor)
+                </div>
+              ) : cart[product.id] && !isExperience ? (
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      border: '1.5px solid #E8E2D9',
+                      borderRadius: 14,
+                      overflow: 'hidden',
+                      height: 50,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onRemoveFromCart(product.id)}
+                      style={{ width: 48, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 22, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      −
+                    </button>
+                    <span style={{ width: 48, textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#205134' }}>
+                      {cart[product.id]}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onAddToCart(product.id)}
+                      style={{ width: 48, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 22, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                      +
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => onAddToCart(product.id)}
-                    style={{ width: 46, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 20, fontWeight: 800, cursor: 'pointer' }}
+                    onClick={onCheckout}
+                    style={{
+                      flex: 1,
+                      height: 50,
+                      borderRadius: 14,
+                      border: 'none',
+                      background: '#205134',
+                      color: '#fff',
+                      fontSize: 15,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      boxShadow: '0 4px 14px rgba(32,81,52,0.2)',
+                    }}
                   >
-                    +
+                    🛒 Ir al carrito
                   </button>
                 </div>
+              ) : !isExperience ? (
                 <button
                   type="button"
-                  onClick={onCheckout}
+                  onClick={() => onAddToCart(product.id)}
                   style={{
-                    flex: 1,
-                    height: 46,
+                    width: '100%',
+                    height: 52,
                     borderRadius: 14,
                     border: 'none',
                     background: '#205134',
                     color: '#fff',
-                    fontSize: 13,
+                    fontSize: 16,
                     fontWeight: 800,
                     cursor: 'pointer',
+                    marginBottom: 16,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: 6,
+                    gap: 8,
+                    boxShadow: '0 4px 14px rgba(32,81,52,0.2)',
                   }}
                 >
-                  🛒 Ir al carrito
+                  🛒 Agregar al carrito
                 </button>
-              </div>
-            ) : !isExperience ? (
-              <button
-                type="button"
-                onClick={() => onAddToCart(product.id)}
-                style={{
-                  width: '100%',
-                  height: 48,
-                  borderRadius: 14,
-                  border: 'none',
-                  background: '#205134',
-                  color: '#fff',
-                  fontSize: 14,
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  marginBottom: 14,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                🛒 Agregar al carrito
-              </button>
-            ) : null}
+              ) : null}
 
-            {/* Boton reservar experiencia */}
-            {isExperience && !isProducer && (
-              <button
-                type="button"
-                onClick={() => { if (!cart[product.id]) { onAddToCart(product.id) } onCheckout() }}
-                style={{ width: '100%', height: 50, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #205134, #2E6B42)', color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 14px rgba(32,81,52,0.25)', letterSpacing: 0.3 }}
-              >
-                🌄 Reservar experiencia &middot; {cart[product.id] || 1} persona{(cart[product.id] || 1) > 1 ? 's' : ''}
-              </button>
-            )}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              {[
-                { icon: '📍', text: product.category },
-                { icon: '📦', text: 'Disponible' },
-                { icon: '🚚', text: 'Envío en 48h' },
-              ].map((chip) => (
-                <span
-                  key={chip.text}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    background: '#F0F7EC',
-                    border: '1px solid #C8E0BC',
-                    borderRadius: 20,
-                    padding: '5px 12px',
-                    fontSize: 11,
-                    color: '#205134',
-                    fontWeight: 600,
-                  }}
+              {/* Boton reservar experiencia */}
+              {isExperience && !isProducer && !isOutOfStock && (
+                <button
+                  type="button"
+                  onClick={() => { if (!cart[product.id]) { onAddToCart(product.id) } onCheckout() }}
+                  style={{ width: '100%', height: 52, borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, #205134, #2E6B42)', color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: '0 4px 14px rgba(32,81,52,0.25)', letterSpacing: 0.3 }}
                 >
-                  {chip.icon} {chip.text}
-                </span>
-              ))}
+                  🌄 Reservar experiencia &middot; {cart[product.id] || 1} persona{(cart[product.id] || 1) > 1 ? 's' : ''}
+                </button>
+              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {[
+                  { icon: '📍', text: product.category, isRed: false },
+                  {
+                    icon: isOutOfStock ? '' : '📦',
+                    text: isOutOfStock ? (isExperience ? 'Sin cupos' : 'Agotado') : 'Disponible',
+                    isRed: isOutOfStock,
+                  },
+                  ...(!isExperience && !isOutOfStock ? [{ icon: '🚚', text: 'Envío en 48h', isRed: false }] : []),
+                ].map((chip) => (
+                  <span
+                    key={chip.text}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      background: chip.isRed ? '#FDF2F2' : '#F0F7EC',
+                      border: chip.isRed ? '1px solid #F8B4B4' : '1px solid #C8E0BC',
+                      borderRadius: 20,
+                      padding: '6px 14px',
+                      fontSize: 12,
+                      color: chip.isRed ? '#9B1C1C' : '#205134',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {chip.icon} {chip.text}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* ── Tabs de información ── */}
-      <div style={{ background: '#fff', borderRadius: 16, margin: '0 0 12px', overflow: 'hidden' }}>
-        {/* Tab headers */}
-        <div className="flex border-b border-[#E8E2D9] px-6 md:px-12 overflow-x-auto">
-          {(
-            [
-              { key: 'descripcion', label: 'Descripción' },
-              { key: 'origen', label: 'Origen y Productor' },
-              { key: 'impacto', label: 'Envío e Impacto' },
-              { key: 'resenas', label: `Reseñas (${product.reviews})` },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                padding: '14px 18px',
-                border: 'none',
-                background: 'none',
-                fontFamily: "'Nunito Sans', sans-serif",
-                fontSize: 13,
-                fontWeight: activeTab === tab.key ? 800 : 600,
-                color: activeTab === tab.key ? '#205134' : '#666',
-                borderBottom: activeTab === tab.key ? '2.5px solid #205134' : '2.5px solid transparent',
-                cursor: 'pointer',
-                transition: 'all 200ms',
-                marginBottom: -1,
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+      <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
+        <div style={{ background: '#fff', borderRadius: 20, border: '1px solid #EDE4D8', overflow: 'hidden' }}>
+          {/* Tab headers */}
+          <div className="flex border-b border-[#E8E2D9] px-6 md:px-12 overflow-x-auto">
+            {(
+              [
+                { key: 'descripcion', label: 'Descripción' },
+                { key: 'origen', label: 'Origen y Productor' },
+                { key: 'impacto', label: 'Envío e Impacto' },
+                { key: 'resenas', label: `Reseñas (${product.reviews})` },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                style={{
+                  padding: '14px 18px',
+                  border: 'none',
+                  background: 'none',
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  fontSize: 13,
+                  fontWeight: activeTab === tab.key ? 800 : 600,
+                  color: activeTab === tab.key ? '#205134' : '#666',
+                  borderBottom: activeTab === tab.key ? '2.5px solid #205134' : '2.5px solid transparent',
+                  cursor: 'pointer',
+                  transition: 'all 200ms',
+                  marginBottom: -1,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-        {/* Tab content */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-6 md:px-12 py-6" style={{ minHeight: 250, alignContent: 'start' }}>
-          {activeTab === 'descripcion' && (
-            <>
-              <div >
-                <h2
-                  style={{
-                    fontFamily: "'Poppins', sans-serif",
-                    fontSize: 17,
-                    color: '#205134',
-                    margin: '0 0 10px',
-                    fontWeight: 700,
-                  }}
-                >
-                  El saber hacer de {product.producer}
-                </h2>
-                <p style={{ fontSize: 13, color: '#555', lineHeight: 1.75, margin: 0 }}>
-                  {product.description ||
-                    'Nuestro producto pasa por un proceso artesanal que respeta los ciclos naturales de la tierra. Cultivado con técnicas ancestrales y prácticas modernas de agricultura sostenible, cada unidad refleja el trabajo y dedicación de los campesinos colombianos que lo producen con orgullo.'}
-                </p>
-              </div>
-              <div
-                style={{
-                  background: '#F0F7EC',
-                  border: '1px solid #C8E0BC',
-                  borderRadius: 16,
-                  padding: 18,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 10,
-                    fontWeight: 800,
-                    color: '#205134',
-                    letterSpacing: 1,
-                    marginBottom: 8,
-                  }}
-                >
-                  IMPACTO SOCIAL
-                </div>
-                <p style={{ fontSize: 13, color: '#3D5C35', lineHeight: 1.65, margin: 0 }}>
-                  El 75% del precio de venta final va directamente al productor <strong>{product.producer}</strong> y su familia.
-                  Esto es un 40% por encima de las tasas de comercio justo internacionales.
-                </p>
-              </div>
-            </>
-          )}
-          {activeTab === 'origen' && (
-            <>
-              <div>
-                <h2
-                  style={{
-                    fontFamily: "'Poppins', sans-serif",
-                    fontSize: 17,
-                    color: '#205134',
-                    margin: '0 0 10px',
-                    fontWeight: 700,
-                  }}
-                >
-                  Productor
-                </h2>
-                <p style={{ fontSize: 13, color: '#555', lineHeight: 1.75, margin: '0 0 14px' }}>
-                  <strong>{product.producer}</strong> trabaja desde hace años en las tierras colombianas,
-                  preservando variedades nativas y técnicas de cultivo que pasan de generación en generación.
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {[
-                    { label: 'Categoría', value: product.category },
-                    { label: 'Certificado', value: product.certified ? 'Sí ✓' : 'No' },
-                    { label: 'Disponibilidad', value: product.stock },
-                  ].map((item) => (
-                    <div key={item.label} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <span style={{ fontSize: 12, color: '#888', minWidth: 100 }}>{item.label}</span>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: '#205134' }}>{item.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div
-                style={{
-                  background: '#FFF8F0',
-                  border: '1px solid #F5D8C0',
-                  borderRadius: 16,
-                  padding: 18,
-                }}
-              >
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#9B4728', letterSpacing: 1, marginBottom: 8 }}>
-                  ORIGEN DEL PRODUCTO
-                </div>
-                <p style={{ fontSize: 13, color: '#6B3E26', lineHeight: 1.65, margin: 0 }}>
-                  Proveniente de las regiones agrícolas de Colombia, este {product.type === 'experiencia' ? 'servicio' : 'producto'} fue
-                  elaborado con el mayor cuidado y dedicación, respetando las tradiciones locales y el medioambiente.
-                </p>
-              </div>
-            </>
-          )}
-          {activeTab === 'impacto' && (
-            <>
-              <div>
-                <h2
-                  style={{
-                    fontFamily: "'Poppins', sans-serif",
-                    fontSize: 17,
-                    color: '#205134',
-                    margin: '0 0 10px',
-                    fontWeight: 700,
-                  }}
-                >
-                  Envío y Logística
-                </h2>
-                <p style={{ fontSize: 13, color: '#555', lineHeight: 1.75, margin: 0 }}>
-                  Realizamos envíos en 48 horas hábiles a todo el país. Los productos frescos son empacados cuidadosamente
-                  para preservar su calidad. Trabajamos con operadores logísticos locales para reducir la huella de carbono.
-                </p>
-              </div>
-              <div
-                style={{
-                  background: '#F0F7EC',
-                  border: '1px solid #C8E0BC',
-                  borderRadius: 16,
-                  padding: 18,
-                }}
-              >
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#205134', letterSpacing: 1, marginBottom: 8 }}>
-                  IMPACTO AMBIENTAL
-                </div>
-                <p style={{ fontSize: 13, color: '#3D5C35', lineHeight: 1.65, margin: 0 }}>
-                  Empaques 100% biodegradables. Por cada compra contribuyes a la reforestación de 1m² en zonas de
-                  amortiguación de reservas naturales colombianas.
-                </p>
-              </div>
-            </>
-          )}
-          {activeTab === 'resenas' && (
-            <>
-              {/* Formulario para calificar */}
-              <div
-                style={{
-                  background: '#fff',
-                  border: '1px solid #E8DED0',
-                  borderRadius: 16,
-                  padding: 10,
-                }}
-              >
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#1C3A14', fontFamily: "'Poppins', sans-serif" }}>
-                    Califica este producto
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={handleSendReview}
-                    disabled={submittingReview}
+          {/* Tab content */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-6 md:px-12 py-6" style={{ minHeight: 250, alignContent: 'start' }}>
+            {activeTab === 'descripcion' && (
+              <>
+                <div >
+                  <h2
                     style={{
-                      background: '#205134',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 10,
-                      padding: '8px 18px',
-                      fontSize: 13,
+                      fontFamily: "'Poppins', sans-serif",
+                      fontSize: 17,
+                      color: '#205134',
+                      margin: '0 0 10px',
                       fontWeight: 700,
-                      cursor: 'pointer',
                     }}
                   >
-                    {submittingReview ? 'Enviando...' : 'Publicar reseña'}
-                  </button>
+                    El saber hacer de {product.producer}
+                  </h2>
+                  <p style={{ fontSize: 13, color: '#555', lineHeight: 1.75, margin: 0 }}>
+                    {product.description ||
+                      'Nuestro producto pasa por un proceso artesanal que respeta los ciclos naturales de la tierra. Cultivado con técnicas ancestrales y prácticas modernas de agricultura sostenible, cada unidad refleja el trabajo y dedicación de los campesinos colombianos que lo producen con orgullo.'}
+                  </p>
                 </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 12, color: '#666' }}>Tu calificación:</span>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setNewRating(star)}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          fontSize: 22,
-                          color: star <= newRating ? '#E5AE30' : '#D0C8B8',
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                      >
-                        ★
-                      </button>
+                <div
+                  style={{
+                    background: '#F0F7EC',
+                    border: '1px solid #C8E0BC',
+                    borderRadius: 16,
+                    padding: 18,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 800,
+                      color: '#205134',
+                      letterSpacing: 1,
+                      marginBottom: 8,
+                    }}
+                  >
+                    IMPACTO SOCIAL
+                  </div>
+                  <p style={{ fontSize: 13, color: '#3D5C35', lineHeight: 1.65, margin: 0 }}>
+                    El 75% del precio de venta final va directamente al productor <strong>{product.producer}</strong> y su familia.
+                    Esto es un 40% por encima de las tasas de comercio justo internacionales.
+                  </p>
+                </div>
+              </>
+            )}
+            {activeTab === 'origen' && (
+              <>
+                <div>
+                  <h2
+                    style={{
+                      fontFamily: "'Poppins', sans-serif",
+                      fontSize: 17,
+                      color: '#205134',
+                      margin: '0 0 10px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Productor
+                  </h2>
+                  <p style={{ fontSize: 13, color: '#555', lineHeight: 1.75, margin: '0 0 14px' }}>
+                    <strong>{product.producer}</strong> trabaja desde hace años en las tierras colombianas,
+                    preservando variedades nativas y técnicas de cultivo que pasan de generación en generación.
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[
+                      { label: 'Categoría', value: product.category },
+                      { label: 'Certificado', value: product.certified ? 'Sí ✓' : 'No' },
+                      { label: 'Disponibilidad', value: product.stock },
+                    ].map((item) => (
+                      <div key={item.label} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                        <span style={{ fontSize: 12, color: '#888', minWidth: 100 }}>{item.label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: '#205134' }}>{item.value}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
-
-                <textarea
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Escribe tu opinión sobre la calidad, sabor o presentación..."
-                  rows={3}
+                <div
                   style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: 12,
-                    border: '1px solid #E8DED0',
-                    fontSize: 13,
-                    fontFamily: "'Nunito Sans', sans-serif",
-                    boxSizing: 'border-box',
-                    marginBottom: 10,
-                    outline: 'none',
-                    resize: 'vertical',
+                    background: '#FFF8F0',
+                    border: '1px solid #F5D8C0',
+                    borderRadius: 16,
+                    padding: 18,
                   }}
-                />
-
-                {reviewMsg && (
-                  <div style={{ fontSize: 12, fontWeight: 600, color: reviewMsg.includes('No se pudo') || reviewMsg.includes('Debes') ? '#D06050' : '#205134', marginBottom: 10 }}>
-                    {reviewMsg}
+                >
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#9B4728', letterSpacing: 1, marginBottom: 8 }}>
+                    ORIGEN DEL PRODUCTO
                   </div>
-                )}
-
-
-              </div>
-
-              {/* Lista de Reseñas */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
-                {loadingReviews ? (
-                  <p style={{ color: '#888', fontSize: 13, margin: 0 }}>Cargando opiniones...</p>
-                ) : reviewsList.length === 0 ? (
-                  <div style={{ background: '#FAF7F2', border: '1px solid #E8DED0', borderRadius: 14, padding: 18, textAlign: 'center' }}>
-                    <p style={{ color: '#666', fontSize: 13, margin: 0, fontStyle: 'italic' }}>
-                      Este producto aún no tiene opiniones escritas. ¡Sé el primero en calificarlo!
-                    </p>
+                  <p style={{ fontSize: 13, color: '#6B3E26', lineHeight: 1.65, margin: 0 }}>
+                    Proveniente de las regiones agrícolas de Colombia, este {product.type === 'experiencia' ? 'servicio' : 'producto'} fue
+                    elaborado con el mayor cuidado y dedicación, respetando las tradiciones locales y el medioambiente.
+                  </p>
+                </div>
+              </>
+            )}
+            {activeTab === 'impacto' && (
+              <>
+                <div>
+                  <h2
+                    style={{
+                      fontFamily: "'Poppins', sans-serif",
+                      fontSize: 17,
+                      color: '#205134',
+                      margin: '0 0 10px',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Envío y Logística
+                  </h2>
+                  <p style={{ fontSize: 13, color: '#555', lineHeight: 1.75, margin: 0 }}>
+                    Realizamos envíos en 48 horas hábiles a todo el país. Los productos frescos son empacados cuidadosamente
+                    para preservar su calidad. Trabajamos con operadores logísticos locales para reducir la huella de carbono.
+                  </p>
+                </div>
+                <div
+                  style={{
+                    background: '#F0F7EC',
+                    border: '1px solid #C8E0BC',
+                    borderRadius: 16,
+                    padding: 18,
+                  }}
+                >
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#205134', letterSpacing: 1, marginBottom: 8 }}>
+                    IMPACTO AMBIENTAL
                   </div>
-                ) : (
-                  reviewsList.map((rev) => {
-                    const authorName = rev.profiles?.first_name
-                      ? `${rev.profiles.first_name} ${rev.profiles.last_name || ''}`.trim()
-                      : rev.profiles?.org_name || 'Comprador verificado'
-                    const dateStr = rev.created_at
-                      ? new Date(rev.created_at).toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' })
-                      : ''
-                    return (
-                      <div
-                        key={rev.id}
-                        style={{
-                          background: '#fff',
-                          border: '1px solid #EDE4D8',
-                          borderRadius: 14,
-                          padding: '12px 14px',
-                        }}
-                      >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: '#1C3A14' }}>{authorName}</span>
-                          <span style={{ fontSize: 10, color: '#999' }}>{dateStr}</span>
+                  <p style={{ fontSize: 13, color: '#3D5C35', lineHeight: 1.65, margin: 0 }}>
+                    Empaques 100% biodegradables. Por cada compra contribuyes a la reforestación de 1m² en zonas de
+                    amortiguación de reservas naturales colombianas.
+                  </p>
+                </div>
+              </>
+            )}
+            {activeTab === 'resenas' && (
+              <>
+                {/* Formulario para calificar */}
+                <div
+                  style={{
+                    background: '#fff',
+                    border: '1px solid #E8DED0',
+                    borderRadius: 16,
+                    padding: 10,
+                  }}
+                >
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#1C3A14', fontFamily: "'Poppins', sans-serif" }}>
+                      Califica este producto
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={handleSendReview}
+                      disabled={submittingReview}
+                      style={{
+                        background: '#205134',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 10,
+                        padding: '8px 18px',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {submittingReview ? 'Enviando...' : 'Publicar reseña'}
+                    </button>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                    <span style={{ fontSize: 12, color: '#666' }}>Tu calificación:</span>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setNewRating(star)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            fontSize: 22,
+                            color: star <= newRating ? '#E5AE30' : '#D0C8B8',
+                            padding: 0,
+                            lineHeight: 1,
+                          }}
+                        >
+                          ★
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <textarea
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="Escribe tu opinión sobre la calidad, sabor o presentación..."
+                    rows={3}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: 12,
+                      border: '1px solid #E8DED0',
+                      fontSize: 13,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      boxSizing: 'border-box',
+                      marginBottom: 10,
+                      outline: 'none',
+                      resize: 'vertical',
+                    }}
+                  />
+
+                  {reviewMsg && (
+                    <div style={{ fontSize: 12, fontWeight: 600, color: reviewMsg.includes('No se pudo') || reviewMsg.includes('Debes') ? '#D06050' : '#205134', marginBottom: 10 }}>
+                      {reviewMsg}
+                    </div>
+                  )}
+
+
+                </div>
+
+                {/* Lista de Reseñas */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 320, overflowY: 'auto' }}>
+                  {loadingReviews ? (
+                    <p style={{ color: '#888', fontSize: 13, margin: 0 }}>Cargando opiniones...</p>
+                  ) : reviewsList.length === 0 ? (
+                    <div style={{ background: '#FAF7F2', border: '1px solid #E8DED0', borderRadius: 14, padding: 18, textAlign: 'center' }}>
+                      <p style={{ color: '#666', fontSize: 13, margin: 0, fontStyle: 'italic' }}>
+                        Este producto aún no tiene opiniones escritas. ¡Sé el primero en calificarlo!
+                      </p>
+                    </div>
+                  ) : (
+                    reviewsList.map((rev) => {
+                      const authorName = rev.profiles?.first_name
+                        ? `${rev.profiles.first_name} ${rev.profiles.last_name || ''}`.trim()
+                        : rev.profiles?.org_name || 'Comprador verificado'
+                      const dateStr = rev.created_at
+                        ? new Date(rev.created_at).toLocaleDateString('es-CO', { year: 'numeric', month: 'short', day: 'numeric' })
+                        : ''
+                      return (
+                        <div
+                          key={rev.id}
+                          style={{
+                            background: '#fff',
+                            border: '1px solid #EDE4D8',
+                            borderRadius: 14,
+                            padding: '12px 14px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#1C3A14' }}>{authorName}</span>
+                            <span style={{ fontSize: 10, color: '#999' }}>{dateStr}</span>
+                          </div>
+                          <div style={{ color: '#E5AE30', fontSize: 12, marginBottom: 4 }}>
+                            {'★'.repeat(rev.rating)}{'☆'.repeat(5 - rev.rating)}
+                          </div>
+                          {rev.comment && (
+                            <p style={{ margin: 0, fontSize: 12, color: '#555', lineHeight: 1.45 }}>
+                              {rev.comment}
+                            </p>
+                          )}
                         </div>
-                        <div style={{ color: '#E5AE30', fontSize: 12, marginBottom: 4 }}>
-                          {'★'.repeat(rev.rating)}{'☆'.repeat(5 - rev.rating)}
-                        </div>
-                        {rev.comment && (
-                          <p style={{ margin: 0, fontSize: 12, color: '#555', lineHeight: 1.45 }}>
-                            {rev.comment}
-                          </p>
-                        )}
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </>
-          )}
+                      )
+                    })
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {related.length > 0 && (
-        <div className="px-6 md:px-12 pt-6 pb-10" style={{ borderRadius: 16, background: '#fafafa' }}>
-          <h2
-            style={{
-              fontFamily: "'Poppins', sans-serif",
-              fontSize: 19,
-              color: '#1C3A14',
-              margin: '0 0 18px',
-              fontWeight: 700,
-            }}
-          >
-            Te podría interesar
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            {related.map((rel) => (
-              <div
-                key={rel.id}
-                onClick={() => onSelectRelated(rel.id)}
-                style={{
-                  background: '#fff',
-                  borderRadius: 18,
-                  overflow: 'hidden',
-                  border: '1px solid #E8E2D9',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 12px rgba(42,92,26,0.06)',
-                  transition: 'transform 180ms ease, box-shadow 180ms ease',
-                }}
-                className="hover:scale-[1.02] hover:shadow-md"
-              >
-                <div style={{ position: 'relative', height: 140 }}>
-                  <img
-                    src={rel.img}
-                    alt={rel.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  />
-                  <span
-                    style={{
-                      position: 'absolute',
-                      top: 8,
-                      left: 8,
-                      background: rel.type === 'experiencia' ? '#FFF3E8' : '#EAF6E3',
-                      color: rel.type === 'experiencia' ? '#9B4728' : '#205134',
-                      fontSize: 9,
-                      fontWeight: 800,
-                      padding: '3px 8px',
-                      borderRadius: 20,
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    {rel.producer.toUpperCase()}
-                  </span>
-                </div>
-                <div style={{ padding: '12px 14px 14px' }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: '#1C3A14',
-                      fontFamily: "'Poppins', sans-serif",
-                      marginBottom: 6,
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {rel.title}
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 800, color: '#9B4728', marginBottom: 10 }}>
-                    {formatPrice(rel.price)}
-                  </div>
-                  {!isProducer && (
+      {
+        related.length > 0 && (
+          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+            <div className="p-4 sm:p-6 lg:p-8 rounded-2xl sm:rounded-3xl bg-white border border-[#EDE4D8] shadow-xs">
+              <div className="flex items-center justify-between mb-4">
+                <h2
+                  style={{
+                    fontFamily: "'Poppins', sans-serif",
+                    fontSize: 19,
+                    color: '#1C3A14',
+                    margin: 0,
+                    fontWeight: 700,
+                  }}
+                >
+                  Te podría interesar
+                </h2>
+                {related.length > 2 && (
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); addFromCard(rel.id) }}
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        borderRadius: 10,
-                        border: '1.5px solid #E8E2D9',
-                        background: '#fff',
-                        color: '#205134',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                      }}
+                      onClick={() => scrollCarousel('left')}
+                      aria-label="Anterior"
+                      className="w-8 h-8 rounded-full border border-[#EDE4D8] bg-white text-[#205134] hover:bg-[#F2EFE9] flex items-center justify-center transition-colors shadow-xs cursor-pointer text-base font-bold select-none"
                     >
-                      {addingProduct?.id === rel.id
-                        ? addingProduct.phase === 'plusOne' ? '+1' : '✓'
-                        : '+ Agregar al carrito'}
+                      ‹
                     </button>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => scrollCarousel('right')}
+                      aria-label="Siguiente"
+                      className="w-8 h-8 rounded-full border border-[#EDE4D8] bg-white text-[#205134] hover:bg-[#F2EFE9] flex items-center justify-center transition-colors shadow-xs cursor-pointer text-base font-bold select-none"
+                    >
+                      ›
+                    </button>
+                  </div>
+                )}
               </div>
-            ))}
+              {/* Carrusel horizontal — scroll en mobile, navegación en desktop */}
+              <div
+                ref={carouselRef}
+                style={{
+                  display: 'flex',
+                  gap: 14,
+                  overflowX: 'auto',
+                  paddingBottom: 8,
+                  scrollSnapType: 'x mandatory',
+                  WebkitOverflowScrolling: 'touch',
+                  msOverflowStyle: 'none',
+                  scrollbarWidth: 'none',
+                }}
+              >
+                {related.map((rel) => {
+                  const isRelOutOfStock = (() => {
+                    if (rel.stock === undefined || rel.stock === null || rel.stock === '') return false
+                    const p = parseInt(String(rel.stock).replace(/\D/g, ''), 10)
+                    return !isNaN(p) && p <= 0
+                  })()
+
+                  return (
+                    <div
+                      key={rel.id}
+                      onClick={() => onSelectRelated(rel.id)}
+                      style={{
+                        minWidth: 'min(220px, 72vw)',
+                        maxWidth: 260,
+                        flex: '0 0 auto',
+                        background: '#fff',
+                        borderRadius: 18,
+                        overflow: 'hidden',
+                        border: '1px solid #E8E2D9',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 12px rgba(42,92,26,0.06)',
+                        transition: 'transform 180ms ease, box-shadow 180ms ease',
+                        scrollSnapAlign: 'start',
+                      }}
+                      className="hover:scale-[1.02] hover:shadow-md"
+                    >
+                      <div style={{ position: 'relative', height: 140 }}>
+                        <img
+                          src={rel.img}
+                          alt={rel.title}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        />
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 8,
+                            left: 8,
+                            background: rel.type === 'experiencia' ? '#FFF3E8' : '#EAF6E3',
+                            color: rel.type === 'experiencia' ? '#9B4728' : '#205134',
+                            fontSize: 9,
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: 20,
+                            letterSpacing: 0.5,
+                          }}
+                        >
+                          {rel.producer.toUpperCase()}
+                        </span>
+                        {isRelOutOfStock && (
+                          <span
+                            style={{
+                              position: 'absolute',
+                              top: 8,
+                              right: 8,
+                              background: '#FFF3EB',
+                              color: '#9B4728',
+                              border: '1px solid #F3D2C4',
+                              fontSize: 9,
+                              fontWeight: 800,
+                              padding: '3px 7px',
+                              borderRadius: 20,
+                            }}
+                          >
+                            {rel.type === 'experiencia' ? 'SIN CUPOS' : 'AGOTADO'}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ padding: '12px 14px 14px' }}>
+                        <div
+                          style={{
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: '#1C3A14',
+                            fontFamily: "'Poppins', sans-serif",
+                            marginBottom: 6,
+                            lineHeight: 1.3,
+                          }}
+                        >
+                          {rel.title}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: '#9B4728', marginBottom: 10 }}>
+                          {formatPrice(rel.price)}
+                        </div>
+                        {!isProducer && (
+                          isRelOutOfStock ? (
+                            <div
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                borderRadius: 10,
+                                border: '1px solid #F3D2C4',
+                                background: '#FFF3EB',
+                                color: '#9B4728',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                textAlign: 'center',
+                              }}
+                            >
+                              {rel.type === 'experiencia' ? 'Sin cupos' : 'Agotado'}
+                            </div>
+                          ) : (cart[rel.id] ?? 0) > 0 && addingProduct?.id !== rel.id ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); addFromCard(rel.id) }}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                borderRadius: 10,
+                                border: '1px solid #B8E2AE',
+                                background: '#EAF6E3',
+                                color: '#205134',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 4,
+                              }}
+                              className="hover:bg-[#DCF0D4]"
+                            >
+                              <span>✓ Agregado</span>
+                              {cart[rel.id] > 1 && (
+                                <span
+                                  style={{
+                                    background: '#205134',
+                                    color: '#fff',
+                                    fontSize: 10,
+                                    borderRadius: 999,
+                                    padding: '1px 5px',
+                                    fontWeight: 800,
+                                  }}
+                                >
+                                  {cart[rel.id]}
+                                </span>
+                              )}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); addFromCard(rel.id) }}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                borderRadius: 10,
+                                border: '1.5px solid #E8E2D9',
+                                background: addingProduct?.id === rel.id ? '#205134' : '#fff',
+                                color: addingProduct?.id === rel.id ? '#fff' : '#205134',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 4,
+                              }}
+                            >
+                              {addingProduct?.id === rel.id
+                                ? addingProduct.phase === 'plusOne' ? '+1' : '✓'
+                                : '+ Agregar'}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   )
 }
 
@@ -892,9 +1047,32 @@ export default function MarketplaceScreen({
   const [submitMessage, setSubmitMessage] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<string | null>(initialSelectedProduct || null)
 
+  const handleSelectProduct = (productId: string) => {
+    window.history.pushState({ modal: 'product', id: productId }, '', window.location.href)
+    setSelectedProduct(productId)
+  }
+
+  const handleBackFromProduct = () => {
+    // Only go back in history; the popstate listener will clear selectedProduct
+    window.history.back()
+  }
+
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      // If the new state has a product modal, show it; otherwise close detail view
+      if (e.state?.modal === 'product' && e.state.id) {
+        setSelectedProduct(e.state.id)
+      } else {
+        setSelectedProduct(null)
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
   useEffect(() => {
     if (initialSelectedProduct) {
-      setSelectedProduct(initialSelectedProduct)
+      handleSelectProduct(initialSelectedProduct)
       onClearInitialProduct?.()
     }
   }, [initialSelectedProduct, onClearInitialProduct])
@@ -904,7 +1082,7 @@ export default function MarketplaceScreen({
   const loadProducts = async () => {
     try {
       const [{ data: productsData, error: prodErr }, { data: reviewsData }, { data: categoriesData }] = await Promise.all([
-        supabase.from('products').select('*').order('created_at', { ascending: false }),
+        supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('product_reviews').select('product_id, rating'),
         supabase.from('categories').select('id, name')
       ])
@@ -925,7 +1103,7 @@ export default function MarketplaceScreen({
         }
       }
 
-      const processed: Product[] = (productsData || []).map((p) => {
+      const processed: Product[] = (productsData || []).map((p: any) => {
         const ratings = reviewsMap[p.id] || []
         const count = ratings.length
         const avgRating = count > 0
@@ -933,9 +1111,15 @@ export default function MarketplaceScreen({
           : (p.rating ?? 5)
 
         const catName = categoriesData?.find((c) => c.id === p.category_id)?.name || 'Sin categoría'
+        const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url
+          || p.images?.[0]?.image_url
+          || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
 
         return {
           ...p,
+          img: primaryImg,
+          images: p.images || [],
+          description: p.description || '',
           rating: avgRating,
           reviews: count,
           category: catName,
@@ -1165,8 +1349,8 @@ export default function MarketplaceScreen({
       unit: formData.unit || 'kg',
       category_id: formData.category_id || null,
       certified: formData.certified,
-      img: formData.img || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format',
       stock: formData.stockNum ? `${formData.stockNum}` : '0',
+      description: formData.description ? formData.description.trim() : null,
       rating: 5,
       reviews: 0,
     }
@@ -1177,6 +1361,19 @@ export default function MarketplaceScreen({
       setSubmitMessage(error.message)
       setSaving(false)
       return
+    }
+
+    if (insertedProduct?.[0]?.id && formData.uploadedImages && formData.uploadedImages.length > 0) {
+      const imageRows = formData.uploadedImages.map((img: any) => ({
+        product_id: insertedProduct[0].id,
+        experience_id: null,
+        storage_path: img.storagePath,
+        image_url: img.imageUrl,
+        is_primary: img.isPrimary,
+        sort_order: img.sortOrder,
+      }))
+      const { error: imgErr } = await supabase.from('images').insert(imageRows)
+      if (imgErr) console.error('Error al registrar imágenes en public.images:', imgErr.message)
     }
 
     const activitySaved = await recordActivity({
@@ -1200,101 +1397,182 @@ export default function MarketplaceScreen({
     loadProducts()
   }
 
-  const renderProductCard = (product: Product) => (
-    <div
-      key={product.id}
-      className="marketplace-card group"
-      onClick={() => setSelectedProduct(product.id)}
-      style={{
-        background: '#fff',
-        borderRadius: 18,
-        overflow: 'hidden',
-        border: '1px solid #E8DED0',
-        boxShadow: '0 2px 10px rgba(42,92,26,0.05)',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        width: '100%',
-      }}
-    >
-      <div style={{ position: 'relative', height: 165, width: '100%', background: '#F5EEE6', overflow: 'hidden' }}>
-        <img
-          src={product.img}
-          alt={product.title}
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          className="transition-transform duration-500 ease-out group-hover:scale-105"
-        />
-        <span style={{ position: 'absolute', top: 8, left: 8, background: product.type === 'experiencia' ? '#EAF3EC' : '#FFF6E5', color: product.type === 'experiencia' ? '#205134' : '#A86B05', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
-          {product.type === 'experiencia' ? '🏞️ EXPERIENCIA' : product.category ? `🌽 ${product.category.toUpperCase()}` : '🌾 PRODUCTO'}
-        </span>
-        {product.reviews > 0 ? (
-          <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
-            ⭐ {product.rating} <span style={{ fontWeight: 500, color: '#666' }}>({product.reviews})</span>
-          </span>
-        ) : (
-          <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.85)', color: '#888', fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20 }}>
-            NUEVO
-          </span>
-        )}
-      </div>
-      <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 800, color: '#205134', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-            {product.producer}
-          </div>
+  const renderProductCard = (product: Product) => {
+    const isOutOfStock = (() => {
+      if (product.stock === undefined || product.stock === null || product.stock === '') return false
+      const p = parseInt(String(product.stock).replace(/\D/g, ''), 10)
+      return !isNaN(p) && p <= 0
+    })()
+
+    return (
+      <div
+        key={product.id}
+        className="marketplace-card group"
+        onClick={() => handleSelectProduct(product.id)}
+        style={{
+          background: '#fff',
+          borderRadius: 18,
+          overflow: 'hidden',
+          border: '1px solid #E8DED0',
+          boxShadow: '0 2px 10px rgba(42,92,26,0.05)',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          width: '100%',
+        }}
+      >
+        <div style={{ position: 'relative', height: 165, width: '100%', background: '#F5EEE6', overflow: 'hidden' }}>
+          <img
+            src={product.img}
+            alt={product.title}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            className="transition-transform duration-500 ease-out group-hover:scale-105"
+          />
           <div
             style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: '#1C3A14',
-              fontFamily: "'Poppins', sans-serif",
-              lineHeight: 1.3,
-              marginBottom: 6,
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
+              position: 'absolute',
+              inset: 0,
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 45%, rgba(20,45,25,0.42) 100%)',
+              pointerEvents: 'none',
             }}
-          >
-            {product.title}
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 800, color: product.type === 'experiencia' ? '#205134' : '#C8860A', marginBottom: 14 }}>
-            {formatPrice(product.price)}
-            <span style={{ fontSize: 11, color: '#888', fontWeight: 500, marginLeft: 4 }}>/ {product.unit}</span>
-          </div>
+          />
+          <span style={{ position: 'absolute', top: 8, left: 8, background: product.type === 'experiencia' ? '#EAF3EC' : '#FFF6E5', color: product.type === 'experiencia' ? '#205134' : '#A86B05', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
+            {product.type === 'experiencia' ? '🏞️ EXPERIENCIA' : product.category ? `🌽 ${product.category.toUpperCase()}` : '🌾 PRODUCTO'}
+          </span>
+          {isOutOfStock ? (
+            <span style={{ position: 'absolute', top: 8, right: 8, background: '#FFF3EB', color: '#9B4728', border: '1px solid #F3D2C4', fontSize: 9, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
+              {product.type === 'experiencia' ? 'SIN CUPOS' : 'AGOTADO'}
+            </span>
+          ) : product.reviews > 0 ? (
+            <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
+              ⭐ {product.rating} <span style={{ fontWeight: 500, color: '#666' }}>({product.reviews})</span>
+            </span>
+          ) : (
+            <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.85)', color: '#888', fontSize: 9, fontWeight: 700, padding: '3px 7px', borderRadius: 20 }}>
+              NUEVO
+            </span>
+          )}
         </div>
+        <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, color: '#205134', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+              {product.producer}
+            </div>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 700,
+                color: '#1C3A14',
+                fontFamily: "'Poppins', sans-serif",
+                lineHeight: 1.3,
+                marginBottom: 6,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+              }}
+            >
+              {product.title}
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: product.type === 'experiencia' ? '#205134' : '#C8860A', marginBottom: 14 }}>
+              {formatPrice(product.price)}
+              <span style={{ fontSize: 11, color: '#888', fontWeight: 500, marginLeft: 4 }}>/ {product.unit}</span>
+            </div>
+          </div>
 
-        {!isProducer && (
-          <button
-            type="button"
-            onClick={(event) => { event.stopPropagation(); addFromCard(product.id) }}
-            aria-label={addingProduct?.id === product.id ? 'Producto agregado' : 'Agregar al carrito'}
-            style={{
-              width: '100%',
-              height: 36,
-              background: addingProduct?.id === product.id ? '#205134' : '#F5EEE6',
-              color: addingProduct?.id === product.id ? '#fff' : '#205134',
-              border: '1px solid #E8DED0',
-              borderRadius: 10,
-              fontSize: 12,
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4,
-              transition: 'all 0.2s ease',
-            }}
-            className="hover:bg-[#205134] hover:text-white"
-          >
-            {addingProduct?.id === product.id
-              ? addingProduct.phase === 'plusOne' ? '+1' : '✓ Agregado'
-              : '+ Agregar al carrito'}
-          </button>
-        )}
+          {!isProducer && (
+            isOutOfStock ? (
+              <div
+                style={{
+                  width: '100%',
+                  height: 36,
+                  background: '#FFF3EB',
+                  color: '#9B4728',
+                  border: '1px solid #F3D2C4',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                }}
+              >
+                <span>{product.type === 'experiencia' ? 'Sin cupos' : 'Agotado'}</span>
+              </div>
+            ) : (cart[product.id] ?? 0) > 0 && addingProduct?.id !== product.id ? (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); addFromCard(product.id) }}
+                aria-label="Producto agregado al carrito. Clic para agregar otra unidad"
+                title="Clic para agregar otra unidad"
+                style={{
+                  width: '100%',
+                  height: 36,
+                  background: '#EAF6E3',
+                  color: '#205134',
+                  border: '1px solid #B8E2AE',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 5,
+                  transition: 'all 0.2s ease',
+                }}
+                className="hover:bg-[#DCF0D4]"
+              >
+                <span>✓ Agregado</span>
+                {cart[product.id] > 1 && (
+                  <span
+                    style={{
+                      background: '#205134',
+                      color: '#fff',
+                      fontSize: 10,
+                      borderRadius: 999,
+                      padding: '1px 6px',
+                      fontWeight: 800,
+                    }}
+                  >
+                    {cart[product.id]}
+                  </span>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); addFromCard(product.id) }}
+                aria-label={addingProduct?.id === product.id ? 'Producto agregado' : 'Agregar al carrito'}
+                style={{
+                  width: '100%',
+                  height: 36,
+                  background: addingProduct?.id === product.id ? '#205134' : '#F5EEE6',
+                  color: addingProduct?.id === product.id ? '#fff' : '#205134',
+                  border: '1px solid #E8DED0',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  transition: 'all 0.2s ease',
+                }}
+                className="hover:bg-[#205134] hover:text-white"
+              >
+                {addingProduct?.id === product.id
+                  ? addingProduct.phase === 'plusOne' ? '+1' : '✓ Agregado'
+                  : '+ Agregar al carrito'}
+              </button>
+            )
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   const outstandingProducts = products.filter(p => p.outstanding)
 
@@ -1310,19 +1588,20 @@ export default function MarketplaceScreen({
     >
       {selectedProduct && products.find((product) => product.id === selectedProduct) ? (() => {
         const product = products.find((item) => item.id === selectedProduct) as Product
-        const related = products.filter((p) => p.id !== product.id && p.category === product.category).slice(0, 3)
-        const allRelated = related.length > 0 ? related : products.filter((p) => p.id !== product.id).slice(0, 3)
+        const sameCategory = products.filter((p) => p.id !== product.id && p.category === product.category)
+        const otherProducts = products.filter((p) => p.id !== product.id && p.category !== product.category)
+        const allRelated = [...sameCategory, ...otherProducts].slice(0, 10)
         return (
           <ProductDetail
             product={product}
             cart={cart}
             formatPrice={formatPrice}
-            onBack={() => setSelectedProduct(null)}
+            onBack={handleBackFromProduct}
             onAddToCart={addToCart}
             onRemoveFromCart={removeFromCart}
             onCheckout={handleCheckoutCart}
             related={allRelated}
-            onSelectRelated={setSelectedProduct}
+            onSelectRelated={handleSelectProduct}
             addFromCard={addFromCard}
             addingProduct={addingProduct}
             onReloadProducts={loadProducts}

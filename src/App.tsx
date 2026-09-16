@@ -114,6 +114,30 @@ export default function App() {
     }
   }
 
+  const handleOpenCheckout = (products: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => {
+    window.history.pushState({ modal: 'checkout' }, '', window.location.href)
+    setCheckoutItems(products)
+    setCheckoutConfirm(() => onConfirm)
+  }
+
+  const handleCloseCheckout = () => {
+    // Only go back in history; the popstate listener will clear checkoutConfirm
+    window.history.back()
+  }
+
+  useEffect(() => {
+    const handlePopState = () => {
+      // If the browser goes back, close whatever modal is open
+      if (checkoutConfirm) {
+        setCheckoutConfirm(null)
+      } else if (flow !== 'app') {
+        setFlow('app')
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [checkoutConfirm, flow])
+
   const mainScreens: Record<Tab, JSX.Element> = {
     home: (
       <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
@@ -127,10 +151,7 @@ export default function App() {
         activeNav={activeTab}
         onProfileClick={handleProfileClick}
         userRole={userRole}
-        onOpenCheckout={(products, onConfirm) => {
-          setCheckoutItems(products)
-          setCheckoutConfirm(() => onConfirm)
-        }}
+        onOpenCheckout={handleOpenCheckout}
       />
     ),
     tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
@@ -190,7 +211,7 @@ export default function App() {
                 }, {} as Record<string, number>)
                 localStorage.setItem('campoconecta_cart', JSON.stringify(newCart))
               }}
-              onBack={() => setCheckoutConfirm(null)}
+              onBack={handleCloseCheckout}
               onConfirm={checkoutConfirm}
               onRequireAuth={(mode) => setFlow(mode)}
               onViewProduct={(productId) => {
@@ -200,10 +221,7 @@ export default function App() {
             />
           ) : activeTab === 'market' ? (
             <MarketplaceScreen
-              onOpenCheckout={(items, confirmFn) => {
-                setCheckoutItems(items)
-                setCheckoutConfirm(() => confirmFn)
-              }}
+              onOpenCheckout={handleOpenCheckout}
               onNavigate={setActiveTab}
               activeNav={activeTab}
               onProfileClick={handleProfileClick}

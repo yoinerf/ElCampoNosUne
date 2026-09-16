@@ -170,7 +170,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
       try {
         const [{ data: products }, { data: reviewsData }] = await Promise.all([
-          supabase.from('products').select('id, title, producer, rating, price, img').order('created_at', { ascending: false }).limit(10),
+          supabase.from('products').select('id, title, producer, rating, price, images(*)').order('created_at', { ascending: false }).limit(10),
           supabase.from('product_reviews').select('product_id, rating'),
         ])
 
@@ -185,12 +185,15 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             }
           }
 
-          const processed = products.map((p) => {
+          const processed = (products as any[]).map((p) => {
             const ratings = reviewsMap[p.id] || []
             const avg = ratings.length > 0
               ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
               : (p.rating ?? 5)
-            return { ...p, rating: avg }
+            const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url 
+              || p.images?.[0]?.image_url 
+              || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
+            return { ...p, img: primaryImg, rating: avg }
           }).sort((a, b) => b.rating - a.rating).slice(0, 3)
 
           setFeatured(processed)
@@ -201,10 +204,18 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
       const { data: tourismData } = await supabase
         .from('experiences')
-        .select('id, title, host, price, img, tags')
+        .select('id, title, host, price, tags, images(*)')
         .order('created_at', { ascending: false })
         .limit(3)
-      if (tourismData) setTourism(tourismData as TourismPreview[])
+      if (tourismData) {
+        const mappedTourism = (tourismData as any[]).map((e) => {
+          const primaryImg = e.images?.find((i: any) => i.is_primary)?.image_url 
+            || e.images?.[0]?.image_url 
+            || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
+          return { ...e, img: primaryImg }
+        })
+        setTourism(mappedTourism as TourismPreview[])
+      }
 
       setLoading(false)
     }
@@ -583,6 +594,14 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                   <div
                     style={{
                       position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 45%, rgba(20,45,25,0.4) 100%)',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
                       top: 8,
                       left: 8,
                       background: '#E5AE30',
@@ -726,6 +745,14 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                     src={exp.img}
                     alt={exp.title}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      inset: 0,
+                      background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 45%, rgba(20,45,25,0.4) 100%)',
+                      pointerEvents: 'none',
+                    }}
                   />
                 </div>
                 <div style={{ padding: '10px 12px 12px' }}>

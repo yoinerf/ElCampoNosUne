@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 
@@ -9,830 +9,932 @@ interface Props {
   onBackToHome?: () => void
 }
 
-type UserType = 'asociacion' | 'turismo' | 'comprador' | null
-
-const userTypes = [
-  {
-    id: 'asociacion' as UserType,
-    icon: '🌽',
-    label: 'Mercados Campesinos',
-    desc: 'Produzco o comercializo alimentos como agricultor, asociación o cooperativa',
-    color: '#D4870A',
-  },
-  {
-    id: 'turismo' as UserType,
-    icon: '🏞️',
-    label: 'Turismo Comunitario',
-    desc: 'Ofrezco experiencias de turismo rural, ecoturismo o vivencias en el campo',
-    color: '#2A5C1A',
-  },
-  {
-    id: 'comprador' as UserType,
-    icon: '🛒',
-    label: 'Visitante / Comprador',
-    desc: 'Quiero comprar productos del campo o reservar experiencias comunitarias',
-    color: '#7FB069',
-  },
-]
-
-const productCategories = [
-  { icon: '🌽', label: 'Cultivos' },
-  { icon: '☕', label: 'Café' },
-  { icon: '🍫', label: 'Cacao' },
-  { icon: '🥛', label: 'Lácteos' },
-  { icon: '🍯', label: 'Procesados' },
-  { icon: '🐓', label: 'Pecuario' },
-  { icon: '🌿', label: 'Hierbas' },
-  { icon: '🐟', label: 'Pesca' },
-]
+type UserType = 'comprador' | 'asociacion' | 'turismo'
 
 export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome }: Props) {
-  const [step, setStep] = useState(0)
-  const [userType, setUserType] = useState<UserType>(null)
+  const [fullName, setFullName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [userType, setUserType] = useState<UserType>('comprador')
+  const [acceptTerms, setAcceptTerms] = useState(false)
+
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
 
   const handleBack = onBackToHome || onBackToStore
-  const [form, setForm] = useState({
-    firstName: '',
-    lastName: '',
-    phone: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    orgName: '',
-    department: '',
-    municipality: '',
-    acceptTerms: false,
-  })
-  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [submitError, setSubmitError] = useState('')
-  const [departments, setDepartments] = useState<string[]>([])
 
-  const [producerCount, setProducerCount] = useState<number | null>(null)
+  const handleRegister = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setError('')
 
-  const TOTAL_STEPS = 4
-
-  useEffect(() => {
-    let active = true
-
-    const loadData = async () => {
-      const { count, error: countErr } = await supabase
-        .from('profiles')
-        .select('*', { count: 'exact', head: true })
-        .in('user_type', ['asociacion', 'turismo'])
-
-      if (!countErr && typeof count === 'number' && active) {
-        setProducerCount(count)
-      }
-
-      const { data, error } = await supabase
-        .from('departments')
-        .select('name')
-        .order('name', { ascending: true })
-
-      if (error || !data || data.length === 0) {
-        if (active) setDepartments([])
-        return
-      }
-
-      const values = data.map((d: any) => d.name)
-      if (active) setDepartments(values)
+    // Validaciones
+    if (!fullName.trim()) {
+      setError('Por favor ingresa tu nombre completo')
+      return
+    }
+    if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
+      setError('Por favor ingresa un correo electrónico válido')
+      return
+    }
+    if (!password || password.length < 6) {
+      setError('La contraseña debe tener al menos 6 caracteres')
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden')
+      return
+    }
+    if (!acceptTerms) {
+      setError('Debes aceptar los Términos de servicio y la Política de privacidad')
+      return
     }
 
-    loadData()
-
-    return () => {
-      active = false
-    }
-  }, [])
-
-  const toggleCategory = (cat: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat],
-    )
-  }
-
-  const validateStep = () => {
-    const newErrors: Record<string, string> = {}
-
-    if (step === 1) {
-      if (!userType) newErrors.userType = 'Selecciona un tipo de usuario'
-    }
-
-    if (step === 2) {
-      if (!form.firstName.trim()) newErrors.firstName = 'Ingresa tu nombre'
-      if (!form.lastName.trim()) newErrors.lastName = 'Ingresa tu apellido'
-      if (!form.phone.trim()) newErrors.phone = 'Ingresa tu número de celular'
-      else if (!/^\d{10}$/.test(form.phone.replace(/\s/g, ''))) newErrors.phone = 'Debe tener 10 dígitos'
-      if (!form.email.trim()) newErrors.email = 'Ingresa tu correo'
-      else if (!/\S+@\S+\.\S+/.test(form.email)) newErrors.email = 'Correo inválido'
-      if (!form.password) newErrors.password = 'Crea una contraseña'
-      else if (form.password.length < 6) newErrors.password = 'Mínimo 6 caracteres'
-      if (form.password !== form.confirmPassword) newErrors.confirmPassword = 'Las contraseñas no coinciden'
-    }
-
-    if (step === 3) {
-      if (!form.department) newErrors.department = 'Selecciona tu departamento'
-      if (!form.municipality.trim()) newErrors.municipality = 'Ingresa tu municipio'
-      if (userType === 'asociacion' && selectedCategories.length === 0) {
-        newErrors.categories = 'Selecciona al menos un rubro'
-      }
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const next = () => {
-    if (validateStep()) setStep((s) => s + 1)
-  }
-
-  const back = () => setStep((s) => Math.max(0, s - 1))
-
-  const setField = (key: keyof typeof form, value: string | boolean) => {
-    setForm((prev) => ({ ...prev, [key]: value }))
-    if (errors[key]) {
-      setErrors((prev) => {
-        const nextErrors = { ...prev }
-        delete nextErrors[key]
-        return nextErrors
-      })
-    }
-  }
-
-  const handleSubmit = async () => {
-    if (!validateStep()) return
     setLoading(true)
-    setSubmitError('')
 
-    const { data, error } = await supabase.auth.signUp({
-      email: form.email,
-      password: form.password,
+    // Separar nombre y apellido
+    const nameParts = fullName.trim().split(' ')
+    const firstName = nameParts[0] || ''
+    const lastName = nameParts.slice(1).join(' ') || ''
+
+    // 1. Registro en Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          first_name: firstName,
+          last_name: lastName,
+          user_type: userType,
+        },
+      },
     })
 
-    if (error) {
-      setSubmitError(error.message)
+    if (authError) {
+      setError(authError.message || 'Ocurrió un error al registrar tu cuenta.')
       setLoading(false)
       return
     }
 
-    if (data.user) {
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        first_name: form.firstName,
-        last_name: form.lastName,
-        phone: form.phone,
-        email: form.email,
+    // 2. Inserción en tabla profiles
+    if (authData.user) {
+      const { error: profileError } = await supabase.from('profiles').upsert({
+        id: authData.user.id,
+        first_name: firstName,
+        last_name: lastName,
+        email: email.trim(),
         user_type: userType,
-        org_name: form.orgName,
-        department: form.department,
-        municipality: form.municipality,
-        categories: selectedCategories,
+        created_at: new Date().toISOString(),
       })
 
       if (profileError) {
-        setSubmitError(profileError.message)
-        setLoading(false)
-        return
+        console.warn('Advertencia al guardar perfil:', profileError)
       }
     }
 
     setLoading(false)
-    setStep(4)
+    setSuccess(true)
   }
 
-  if (step === 0) {
-    return (
-      <div
-        className="h-full flex flex-col overflow-hidden"
-        style={{
-          background: 'linear-gradient(180deg, #1A3F28 0%, #0F2B1A 100%)',
-          minHeight: '100vh',
-        }}
-      >
-        <div
-          style={{
-            width: '100%',
-            maxWidth: 520,
-            margin: '0 auto',
-            minHeight: '100vh',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '32px 20px',
-            boxSizing: 'border-box',
-          }}
-        >
-          <div
-            style={{
-              width: '100%',
-              background: '#F5EEE6',
-              borderRadius: 26,
-              overflow: 'hidden',
-              boxShadow: '0 28px 60px rgba(0, 0, 0, 0.24)',
-              border: '1px solid rgba(255,255,255,0.12)',
-            }}
-          >
-            <div
-              style={{
-                background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)',
-                padding: '28px 26px 22px',
-                position: 'relative',
-                overflow: 'hidden',
-              }}
-            >
-              {/* Botón Volver al inicio */}
-              {handleBack && (
-                <button
-                  type="button"
-                  onClick={handleBack}
-                  style={{
-                    position: 'relative',
-                    zIndex: 10,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    background: 'rgba(255,255,255,0.14)',
-                    border: '1px solid rgba(255,255,255,0.22)',
-                    borderRadius: 12,
-                    padding: '6px 14px',
-                    color: '#F5EEE6',
-                    fontSize: 13,
-                    fontWeight: 700,
-                    fontFamily: "'Nunito Sans', sans-serif",
-                    cursor: 'pointer',
-                    marginBottom: 16,
-                    backdropFilter: 'blur(8px)',
-                    transition: 'background 180ms ease',
-                  }}
-                >
-                  ← Volver al inicio
-                </button>
-              )}
-
-              <div style={{ position: 'absolute', top: 18, right: 18, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(5px)' }} />
-              <div style={{ position: 'absolute', bottom: -12, left: 20, width: 140, height: 140, borderRadius: '50%', background: 'rgba(240,168,48,0.10)', filter: 'blur(4px)' }} />
-
-              {/* Logo grande directo sin contenedor */}
-              <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', marginBottom: 16 }}>
-                <img
-                  src={logoSrc}
-                  alt="El Campo Nos Une"
-                  style={{
-                    height: 86,
-                    width: 'auto',
-                    display: 'block',
-                    margin: '0 auto',
-                    filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.25))',
-                  }}
-                />
-              </div>
-
-              <div style={{ position: 'relative', zIndex: 1, textAlign: 'center' }}>
-                <h1
-                  style={{
-                    fontFamily: "'Poppins', sans-serif",
-                    fontSize: 42,
-                    color: '#F5EEE6',
-                    margin: 0,
-                    fontWeight: 700,
-                    lineHeight: 1.05,
-                    letterSpacing: '-0.04em',
-                  }}
-                >
-                  Campo<span style={{ color: '#E5AE30' }}>Conecta</span>
-                </h1>
-                <p
-                  style={{
-                    fontFamily: "'Nunito Sans', sans-serif",
-                    fontSize: 15,
-                    color: '#E5F4D7',
-                    margin: '10px 0 0',
-                    lineHeight: 1.5,
-                  }}
-                >
-                  La plataforma que conecta comunidades productivas con el mercado
-                </p>
-              </div>
-            </div>
-
-            <div style={{ padding: '26px 28px 24px', background: '#f5efe7' }}>
-              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <button
-                  onClick={() => setStep(1)}
-                  style={{
-                    width: '100%',
-                    padding: '17px 18px',
-                    borderRadius: 16,
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #2b6e1f 0%, #3a8c2d 100%)',
-                    color: '#F5EEE6',
-                    fontSize: 16,
-                    fontWeight: 800,
-                    fontFamily: "'Nunito Sans', sans-serif",
-                    cursor: 'pointer',
-                    boxShadow: '0 16px 26px rgba(42,92,26,0.22)',
-                  }}
-                >
-                  Crear cuenta gratis
-                </button>
-
-                <button
-                  onClick={onLogin}
-                  style={{
-                    width: '100%',
-                    padding: '16px 18px',
-                    borderRadius: 16,
-                    border: '1.5px solid rgba(28,63,16,0.12)',
-                    background: '#fff',
-                    color: '#1C3F10',
-                    fontSize: 16,
-                    fontWeight: 700,
-                    fontFamily: "'Nunito Sans', sans-serif",
-                    cursor: 'pointer',
-                    boxShadow: '0 10px 18px rgba(28,63,16,0.04)',
-                  }}
-                >
-                  Ya tengo cuenta
-                </button>
-              </div>
-
-              <p
-                style={{
-                  fontFamily: "'Nunito Sans', sans-serif",
-                  fontSize: 12,
-                  color: '#6C5F4F',
-                  textAlign: 'center',
-                  margin: '18px 0 0',
-                  letterSpacing: 0.08,
-                }}
-              >
-                {producerCount === null
-                  ? 'Cargando comunidades...'
-                  : producerCount === 0
-                  ? 'Sé el primero en conectar tu comunidad o emprendimiento'
-                  : producerCount === 1
-                  ? '1 productor o comunidad ya está conectado'
-                  : `+${producerCount.toLocaleString('es-CO')} productores y comunidades ya están conectados`}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (step === 4) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center" style={{ background: '#F5EEE6', padding: '32px 28px', textAlign: 'center' }}>
-        <div
-          style={{
-            width: 100,
-            height: 100,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #2A5C1A, #3D7A28)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 52,
-            marginBottom: 24,
-            boxShadow: '0 8px 32px rgba(42,92,26,0.3)',
-          }}
-        >
-          ✅
-        </div>
-        <h2
-          style={{
-            fontFamily: "'Poppins', sans-serif",
-            fontSize: 28,
-            color: '#1C3F10',
-            margin: '0 0 10px',
-            fontWeight: 700,
-          }}
-        >
-          ¡Bienvenido a CampoConecta!
-        </h2>
-        <p
-          style={{
-            fontFamily: "'Nunito Sans', sans-serif",
-            fontSize: 15,
-            color: '#6B4C2A',
-            lineHeight: 1.6,
-            margin: '0 0 32px',
-            maxWidth: 280,
-          }}
-        >
-          Tu cuenta fue creada exitosamente. Ahora haces parte de nuestra comunidad productiva.
-        </p>
-
-        <div
-          style={{
-            background: '#fff',
-            borderRadius: 20,
-            padding: '18px 20px',
-            width: '100%',
-            border: '1px solid #E8E0CF',
-            marginBottom: 32,
-            textAlign: 'left',
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#2A5C1A', fontFamily: "'Poppins', sans-serif", marginBottom: 12 }}>
-            Resumen de tu perfil
-          </div>
-          {[
-            { label: 'Nombre', val: `${form.firstName} ${form.lastName}` },
-            { label: 'Categoría', val: userTypes.find((u) => u.id === userType)?.label || '' },
-            { label: 'Ubicación', val: `${form.municipality}, ${form.department}` },
-            { label: 'Rubros', val: selectedCategories.join(', ') || 'Ninguno seleccionado' },
-          ].map((row) => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 8, marginBottom: 8, borderBottom: '1px solid #F0EBE0' }}>
-              <span style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>{row.label}</span>
-              <span style={{ fontSize: 12, fontWeight: 600, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", maxWidth: 180, textAlign: 'right' }}>{row.val}</span>
-            </div>
-          ))}
-        </div>
-
-        <button
-          onClick={onComplete}
-          style={{
-            width: '100%',
-            padding: '15px',
-            borderRadius: 16,
-            border: 'none',
-            background: 'linear-gradient(135deg, #2A5C1A, #3D7A28)',
-            color: '#F5EEE6',
-            fontSize: 16,
-            fontWeight: 800,
-            fontFamily: "'Nunito Sans', sans-serif",
-            cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(42,92,26,0.3)',
-          }}
-        >
-          Ir a la app →
-        </button>
-      </div>
-    )
+  const handleSocialAuth = async (provider: 'google' | 'apple') => {
+    try {
+      if (provider === 'google') {
+        const { error: authError } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin,
+          },
+        })
+        if (authError) {
+          setError(`Acceso con ${provider} en configuración. Por favor regístrate con tu correo.`)
+        }
+      } else {
+        setError('Registro con Apple próximamente disponible.')
+      }
+    } catch {
+      setError('Servicio de autenticación no disponible temporalmente.')
+    }
   }
 
   return (
     <div
-      className="h-full flex flex-col overflow-hidden"
       style={{
-        background: 'linear-gradient(180deg, #1A3F28 0%, #0F2B1A 100%)',
+        width: '100vw',
         minHeight: '100vh',
+        margin: 0,
+        padding: 0,
+        display: 'flex',
+        flexDirection: 'row',
+        background: '#FAF7F0',
+        fontFamily: "'Nunito Sans', sans-serif",
+        overflowX: 'hidden',
       }}
     >
+      {/* ===================== COLUMNA IZQUIERDA: FORMULARIO WARM CREAM ===================== */}
       <div
         style={{
-          width: '100%',
-          maxWidth: 520,
-          margin: '0 auto',
+          flex: '1 1 50%',
           minHeight: '100vh',
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '32px 20px',
+          padding: '36px 24px',
           boxSizing: 'border-box',
+          backgroundColor: '#FAF7F0',
+          position: 'relative',
         }}
       >
+        {/* Botón Volver visible en móviles */}
+        {handleBack && (
+          <div className="lg:hidden" style={{ width: '100%', maxWidth: 430, marginBottom: 16 }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                background: '#EAE3D6',
+                border: 'none',
+                borderRadius: 16,
+                padding: '6px 14px',
+                color: '#205134',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              ← Volver al inicio
+            </button>
+          </div>
+        )}
+
+        {/* Tarjeta de Formulario centrada */}
         <div
           style={{
             width: '100%',
-            background: '#F5EEE6',
-            borderRadius: 26,
-            overflow: 'hidden',
-            boxShadow: '0 28px 60px rgba(0, 0, 0, 0.24)',
-            border: '1px solid rgba(255,255,255,0.12)',
+            maxWidth: 430,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
           }}
         >
-          <div
+          {/* Logo Central de El Campo Nos Une */}
+          <div style={{ marginBottom: 16, textAlign: 'center' }}>
+            <img
+              src={logoSrc}
+              alt="El Campo Nos Une"
+              style={{
+                height: 120,
+                width: 'auto',
+                display: 'block',
+                margin: '0 auto',
+                filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
+              }}
+            />
+          </div>
+
+          {/* Título y Subtítulo idénticos al manual de identidad */}
+          <h1
             style={{
-              background: 'linear-gradient(180deg, #1A3F28 0%, #205134 100%)',
-              padding: '18px 20px 14px',
-              position: 'relative',
-              overflow: 'hidden',
+              fontFamily: "'Poppins', sans-serif",
+              fontSize: 30,
+              fontWeight: 700,
+              color: '#205134',
+              margin: '0 0 6px',
+              textAlign: 'center',
+              letterSpacing: '-0.03em',
             }}
           >
-            <div style={{ position: 'absolute', top: 14, right: 14, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', filter: 'blur(5px)' }} />
-            <div style={{ position: 'absolute', bottom: -10, left: 16, width: 110, height: 110, borderRadius: '50%', background: 'rgba(240,168,48,0.10)', filter: 'blur(4px)' }} />
+            Crear cuenta
+          </h1>
+          <p
+            style={{
+              fontFamily: "'Nunito Sans', sans-serif",
+              fontSize: 14,
+              color: '#666666',
+              margin: '0 0 24px',
+              textAlign: 'center',
+              lineHeight: 1.45,
+            }}
+          >
+            Únete a la mayor unión de productores y agrónomos del país
+          </p>
 
-            <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button
-                onClick={back}
+          {/* Modal / Alerta de Éxito */}
+          {success ? (
+            <div
+              style={{
+                width: '100%',
+                background: '#ECFDF5',
+                border: '1.5px solid #A7F3D0',
+                borderRadius: 12,
+                padding: '28px 24px',
+                textAlign: 'center',
+                boxSizing: 'border-box',
+              }}
+            >
+              <div style={{ fontSize: 44, marginBottom: 12 }}>🌱</div>
+              <h2
                 style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  border: 'none',
-                  background: 'rgba(255,255,255,0.15)',
-                  color: '#F5EEE6',
-                  fontSize: 18,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0,
+                  fontFamily: "'Poppins', sans-serif",
+                  fontSize: 22,
+                  fontWeight: 700,
+                  color: '#205134',
+                  margin: '0 0 8px',
                 }}
               >
-                ←
+                ¡Bienvenido al Campo!
+              </h2>
+              <p
+                style={{
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  fontSize: 14,
+                  color: '#2E6B47',
+                  margin: '0 0 20px',
+                  lineHeight: 1.5,
+                }}
+              >
+                Tu cuenta ha sido creada exitosamente. Ya puedes iniciar sesión y comenzar a explorar.
+              </p>
+              <button
+                type="button"
+                onClick={onLogin}
+                style={{
+                  background: '#205134',
+                  color: '#FFFFFF',
+                  padding: '12px 28px',
+                  borderRadius: 8,
+                  fontWeight: 700,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  fontSize: 14,
+                  border: 'none',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(32,81,52,0.22)',
+                }}
+              >
+                Iniciar sesión ahora
               </button>
-
-              <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <span style={{ fontSize: 12, color: '#A8D48A', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700 }}>
-                    {step === 1 && 'Tipo de usuario'}
-                    {step === 2 && 'Información personal'}
-                    {step === 3 && 'Ubicación y rubros'}
-                  </span>
-                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', fontFamily: "'Nunito Sans', sans-serif" }}>
-                    {step} / {TOTAL_STEPS - 1}
-                  </span>
+            </div>
+          ) : (
+            <>
+              {/* Mensaje de Error */}
+              {error && (
+                <div
+                  style={{
+                    width: '100%',
+                    background: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    borderRadius: 8,
+                    padding: '11px 14px',
+                    color: '#991B1B',
+                    fontSize: 13,
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    fontWeight: 600,
+                    marginBottom: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <span>⚠️</span>
+                  <span>{error}</span>
                 </div>
-                <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.15)', overflow: 'hidden' }}>
-                  <div
+              )}
+
+              {/* Formulario */}
+              <form onSubmit={handleRegister} style={{ width: '100%' }}>
+                {/* Campo: Nombre Completo */}
+                <div style={{ marginBottom: 15 }}>
+                  <label
+                    htmlFor="register-fullname"
                     style={{
-                      height: '100%',
-                      width: `${(step / (TOTAL_STEPS - 1)) * 100}%`,
-                      background: 'linear-gradient(90deg, #E5AE30 0%, #6BAA3D 100%)',
-                      borderRadius: 2,
-                      transition: 'width 300ms ease',
+                      display: 'block',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#205134',
+                      marginBottom: 5,
+                    }}
+                  >
+                    NOMBRE COMPLETO
+                  </label>
+                  <input
+                    id="register-fullname"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Juan Pérez Gómez"
+                    autoComplete="name"
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: 8,
+                      border: '1.5px solid #D1D5DB',
+                      background: '#FFFFFF',
+                      fontSize: 14,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#1F2937',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      transition: 'border-color 0.2s, box-shadow 0.2s',
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#205134'
+                      e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#D1D5DB'
+                      e.target.style.boxShadow = 'none'
                     }}
                   />
                 </div>
-              </div>
-            </div>
 
-            <h2
-              style={{
-                position: 'relative',
-                zIndex: 1,
-                fontFamily: "'Poppins', sans-serif",
-                fontSize: 28,
-                color: '#F5EEE6',
-                margin: '14px 0 0',
-                fontWeight: 700,
-                textAlign: 'center',
-              }}
-            >
-              {step === 1 && '¿En qué categoría participas?'}
-              {step === 2 && 'Cuéntanos sobre ti'}
-              {step === 3 && 'Tu ubicación y actividad'}
-            </h2>
-          </div>
-
-          <div style={{ padding: '22px 20px 18px', background: '#f5efe7' }}>
-            {step === 1 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {errors.userType && (
-                  <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600 }}>
-                    ⚠️ {errors.userType}
-                  </div>
-                )}
-
-                {userTypes.map((type) => (
-                  <button
-                    key={type.id}
-                    onClick={() => setUserType(type.id)}
+                {/* Campo: Correo Electrónico */}
+                <div style={{ marginBottom: 15 }}>
+                  <label
+                    htmlFor="register-email"
                     style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 14,
-                      padding: '15px 14px',
-                      borderRadius: 18,
-                      border: userType === type.id ? `2px solid ${type.color}` : '1.5px solid rgba(39,74,35,0.12)',
-                      background: userType === type.id ? type.color + '12' : '#fff',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.15s',
-                      boxShadow: userType === type.id ? '0 12px 22px rgba(42,92,26,0.12)' : '0 8px 18px rgba(17,34,16,0.04)',
+                      display: 'block',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#205134',
+                      marginBottom: 5,
                     }}
                   >
-                    <div style={{ width: 50, height: 50, borderRadius: 16, background: type.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 }}>
-                      {type.icon}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: userType === type.id ? type.color : '#1C3F10', fontFamily: "'Poppins', sans-serif", marginBottom: 3 }}>
-                        {type.label}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", lineHeight: 1.4 }}>
-                        {type.desc}
-                      </div>
-                    </div>
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', border: userType === type.id ? 'none' : '1.5px solid #E8E0CF', background: userType === type.id ? type.color : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                      {userType === type.id && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {step === 2 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <Field label="Nombre *" error={errors.firstName}>
-                    <input placeholder="María" value={form.firstName} onChange={(e) => setField('firstName', e.target.value)} style={inputStyle(!!errors.firstName)} />
-                  </Field>
-                  <Field label="Apellido *" error={errors.lastName}>
-                    <input placeholder="Ospina" value={form.lastName} onChange={(e) => setField('lastName', e.target.value)} style={inputStyle(!!errors.lastName)} />
-                  </Field>
+                    CORREO ELECTRÓNICO
+                  </label>
+                  <input
+                    id="register-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="ejemplo@elcamponosune.mx"
+                    autoComplete="email"
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: 8,
+                      border: '1.5px solid #D1D5DB',
+                      background: '#FFFFFF',
+                      fontSize: 14,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#1F2937',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      transition: 'border-color 0.2s, box-shadow 0.2s',
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#205134'
+                      e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#D1D5DB'
+                      e.target.style.boxShadow = 'none'
+                    }}
+                  />
                 </div>
 
-                {userType !== 'comprador' && (
-                  <Field label="Nombre de la organización">
-                    <input placeholder={userType === 'turismo' ? 'Nombre de tu finca o emprendimiento' : 'Cooperativa / Asociación / Empresa'} value={form.orgName} onChange={(e) => setField('orgName', e.target.value)} style={inputStyle(false)} />
-                  </Field>
-                )}
-
-                <Field label="Celular *" error={errors.phone}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 0, border: `1.5px solid ${errors.phone ? '#C4622D' : '#E8E0CF'}`, borderRadius: 12, overflow: 'hidden', background: '#fff' }}>
-                    <div style={{ padding: '12px 12px', background: '#F5F2EA', borderRight: '1px solid #E8E0CF', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", color: '#3D2B1A', fontWeight: 600, flexShrink: 0 }}>
-                      🇨🇴 +57
-                    </div>
-                    <input placeholder="300 123 4567" value={form.phone} onChange={(e) => setField('phone', e.target.value)} type="tel" style={{ flex: 1, border: 'none', outline: 'none', padding: '12px', fontSize: 14, fontFamily: "'Nunito Sans', sans-serif", color: '#1C3F10', background: 'transparent' }} />
+                {/* Selector sutil de Tipo de Cuenta */}
+                <div style={{ marginBottom: 15 }}>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#205134',
+                      marginBottom: 6,
+                    }}
+                  >
+                    TIPO DE PERFIL
+                  </label>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(3, 1fr)',
+                      gap: 6,
+                      background: '#EAE3D6',
+                      padding: 4,
+                      borderRadius: 10,
+                    }}
+                  >
+                    {[
+                      { id: 'comprador' as UserType, label: 'Comprador', icon: '🛒' },
+                      { id: 'asociacion' as UserType, label: 'Productor', icon: '🌽' },
+                      { id: 'turismo' as UserType, label: 'Turismo', icon: '🏞️' },
+                    ].map((item) => {
+                      const isSelected = userType === item.id
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => setUserType(item.id)}
+                          style={{
+                            padding: '8px 6px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: isSelected ? '#FFFFFF' : 'transparent',
+                            color: isSelected ? '#205134' : '#6B7280',
+                            fontWeight: isSelected ? 700 : 600,
+                            fontFamily: "'Nunito Sans', sans-serif",
+                            fontSize: 12,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 4,
+                            boxShadow: isSelected ? '0 2px 5px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.18s ease',
+                          }}
+                        >
+                          <span style={{ fontSize: 13 }}>{item.icon}</span>
+                          <span>{item.label}</span>
+                        </button>
+                      )
+                    })}
                   </div>
-                </Field>
+                </div>
 
-                <Field label="Correo electrónico *" error={errors.email}>
-                  <input placeholder="correo@ejemplo.com" value={form.email} onChange={(e) => setField('email', e.target.value)} type="email" style={inputStyle(!!errors.email)} />
-                </Field>
-
-                <Field label="Contraseña *" error={errors.password}>
+                {/* Campo: Contraseña */}
+                <div style={{ marginBottom: 15 }}>
+                  <label
+                    htmlFor="register-password"
+                    style={{
+                      display: 'block',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#205134',
+                      marginBottom: 5,
+                    }}
+                  >
+                    CONTRASEÑA
+                  </label>
                   <div style={{ position: 'relative' }}>
-                    <input placeholder="Mínimo 6 caracteres" value={form.password} onChange={(e) => setField('password', e.target.value)} type={showPassword ? 'text' : 'password'} style={{ ...inputStyle(!!errors.password), paddingRight: 44 }} />
-                    <button type="button" onClick={() => setShowPassword((v) => !v)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}>
-                      {showPassword ? '🙈' : '👁️'}
+                    <input
+                      id="register-password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Mínimo 6 caracteres"
+                      autoComplete="new-password"
+                      style={{
+                        width: '100%',
+                        padding: '11px 40px 11px 14px',
+                        borderRadius: 8,
+                        border: '1.5px solid #D1D5DB',
+                        background: '#FFFFFF',
+                        fontSize: 14,
+                        fontFamily: "'Nunito Sans', sans-serif",
+                        color: '#1F2937',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#205134'
+                        e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#D1D5DB'
+                        e.target.style.boxShadow = 'none'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: 12,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#9CA3AF',
+                        padding: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      aria-label="Ver u ocultar contraseña"
+                    >
+                      {showPassword ? (
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
                     </button>
                   </div>
-                </Field>
+                </div>
 
-                <Field label="Confirmar contraseña *" error={errors.confirmPassword}>
-                  <input placeholder="Repite tu contraseña" value={form.confirmPassword} onChange={(e) => setField('confirmPassword', e.target.value)} type="password" style={inputStyle(!!errors.confirmPassword)} />
-                </Field>
-
-                {form.password.length > 0 && (
-                  <div>
-                    <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-                      {[1, 2, 3, 4].map((i) => (
-                        <div key={i} style={{ flex: 1, height: 4, borderRadius: 2, background: getStrengthColor(form.password, i) }} />
-                      ))}
-                    </div>
-                    <p style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", margin: 0 }}>
-                      Seguridad: <strong>{getStrengthLabel(form.password)}</strong>
-                    </p>
+                {/* Campo: Confirmar Contraseña */}
+                <div style={{ marginBottom: 18 }}>
+                  <label
+                    htmlFor="register-confirm-password"
+                    style={{
+                      display: 'block',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#205134',
+                      marginBottom: 5,
+                    }}
+                  >
+                    CONFIRMAR CONTRASEÑA
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      id="register-confirm-password"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      style={{
+                        width: '100%',
+                        padding: '11px 40px 11px 14px',
+                        borderRadius: 8,
+                        border: '1.5px solid #D1D5DB',
+                        background: '#FFFFFF',
+                        fontSize: 14,
+                        fontFamily: "'Nunito Sans', sans-serif",
+                        color: '#1F2937',
+                        outline: 'none',
+                        boxSizing: 'border-box',
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                      }}
+                      onFocus={(e) => {
+                        e.target.style.borderColor = '#205134'
+                        e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
+                      }}
+                      onBlur={(e) => {
+                        e.target.style.borderColor = '#D1D5DB'
+                        e.target.style.boxShadow = 'none'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      style={{
+                        position: 'absolute',
+                        right: 12,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#9CA3AF',
+                        padding: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      aria-label="Ver u ocultar confirmación de contraseña"
+                    >
+                      {showConfirmPassword ? (
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                        </svg>
+                      )}
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
+                </div>
 
-            {step === 3 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                <Field label="Departamento *" error={errors.department}>
-                  <select value={form.department} onChange={(e) => setField('department', e.target.value)} style={{ ...inputStyle(!!errors.department), appearance: 'none', cursor: 'pointer' }}>
-                    <option value="">Selecciona tu departamento</option>
-                    {departments.map((d) => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                </Field>
+                {/* Checkbox: Términos y Condiciones */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 20 }}>
+                  <input
+                    id="register-terms"
+                    type="checkbox"
+                    checked={acceptTerms}
+                    onChange={(e) => setAcceptTerms(e.target.checked)}
+                    style={{
+                      marginTop: 3,
+                      width: 16,
+                      height: 16,
+                      accentColor: '#205134',
+                      cursor: 'pointer',
+                    }}
+                  />
+                  <label
+                    htmlFor="register-terms"
+                    style={{
+                      fontSize: 12.5,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#4B5563',
+                      lineHeight: 1.4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Acepto los{' '}
+                    <span style={{ color: '#9B4728', fontWeight: 700 }}>términos de servicio</span> y la{' '}
+                    <span style={{ color: '#9B4728', fontWeight: 700 }}>Política de privacidad</span>
+                  </label>
+                </div>
 
-                <Field label="Municipio *" error={errors.municipality}>
-                  <input placeholder="Ej: Salento, Pitalito, Popayán..." value={form.municipality} onChange={(e) => setField('municipality', e.target.value)} style={inputStyle(!!errors.municipality)} />
-                </Field>
-
-                {userType === 'asociacion' && (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 4 }}>
-                      Productos que comercializas *
-                    </div>
-                    <div style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 10 }}>
-                      Selecciona los rubros de tu Mercado Campesino
-                    </div>
-                    {errors.categories && (
-                      <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '8px 12px', color: '#C4622D', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600, marginBottom: 10 }}>
-                        ⚠️ {errors.categories}
-                      </div>
-                    )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      {productCategories.map((cat) => {
-                        const active = selectedCategories.includes(cat.label)
-                        return (
-                          <button
-                            key={cat.label}
-                            onClick={() => toggleCategory(cat.label)}
-                            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, border: active ? '2px solid #2A5C1A' : '1.5px solid #E8E0CF', background: active ? '#2A5C1A10' : '#fff', cursor: 'pointer' }}
-                          >
-                            <span style={{ fontSize: 20 }}>{cat.icon}</span>
-                            <span style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: active ? '#2A5C1A' : '#3D2B1A', fontFamily: "'Nunito Sans', sans-serif" }}>{cat.label}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
-
+                {/* Botón Principal: Registrarse (#205134 Verde Profundo) */}
                 <button
-                  onClick={() => setField('acceptTerms', !form.acceptTerms)}
-                  style={{ display: 'flex', alignItems: 'flex-start', gap: 12, background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', textAlign: 'left' }}
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '13px 16px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: loading ? '#3A6F4E' : '#205134',
+                    color: '#FFFFFF',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    cursor: loading ? 'wait' : 'pointer',
+                    boxShadow: '0 4px 14px rgba(32, 81, 52, 0.22)',
+                    transition: 'all 0.18s ease',
+                    marginBottom: 20,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!loading) e.currentTarget.style.background = '#174028'
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!loading) e.currentTarget.style.background = '#205134'
+                  }}
                 >
-                  <div style={{ width: 22, height: 22, borderRadius: 6, border: form.acceptTerms ? 'none' : '1.5px solid #E8E0CF', background: form.acceptTerms ? '#2A5C1A' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
-                    {form.acceptTerms && <span style={{ color: '#fff', fontSize: 13, fontWeight: 700 }}>✓</span>}
-                  </div>
-                  <span style={{ fontSize: 13, color: '#3D2B1A', fontFamily: "'Nunito Sans', sans-serif", lineHeight: 1.5 }}>
-                    Acepto los <span style={{ color: '#2A5C1A', fontWeight: 700 }}>Términos y Condiciones</span> y la <span style={{ color: '#2A5C1A', fontWeight: 700 }}>Política de Privacidad</span> de CampoConecta
-                  </span>
+                  {loading ? 'Creando cuenta...' : 'Registrarse'}
                 </button>
-              </div>
-            )}
+
+                {/* Separador "O REGISTRARSE CON" */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    marginBottom: 16,
+                  }}
+                >
+                  <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#9CA3AF',
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    O REGISTRARSE CON
+                  </span>
+                  <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
+                </div>
+
+                {/* Botones Sociales lado a lado */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
+                  {/* Google */}
+                  <button
+                    type="button"
+                    onClick={() => handleSocialAuth('google')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      border: '1.5px solid #E5E7EB',
+                      background: '#FFFFFF',
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#374151',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      transition: 'background-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <path
+                        fill="#EA4335"
+                        d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
+                      />
+                      <path
+                        fill="#4285F4"
+                        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
+                      />
+                      <path
+                        fill="#FBBC05"
+                        d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"
+                      />
+                      <path
+                        fill="#34A853"
+                        d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"
+                      />
+                    </svg>
+                    <span>Google</span>
+                  </button>
+
+                  {/* Apple */}
+                  <button
+                    type="button"
+                    onClick={() => handleSocialAuth('apple')}
+                    style={{
+                      padding: '10px 14px',
+                      borderRadius: 8,
+                      border: '1.5px solid #E5E7EB',
+                      background: '#FFFFFF',
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#374151',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                      transition: 'background-color 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#111827">
+                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.88c.64-.78 1.08-1.86.96-2.88-.93.04-2.05.62-2.72 1.4-.59.68-1.11 1.77-.97 2.83 1.04.08 2.09-.57 2.73-1.35z" />
+                    </svg>
+                    <span>Apple</span>
+                  </button>
+                </div>
+
+                {/* Switcher a Iniciar Sesión */}
+                <p
+                  style={{
+                    textAlign: 'center',
+                    fontSize: 13.5,
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    color: '#666666',
+                    margin: 0,
+                  }}
+                >
+                  ¿Ya tienes cuenta?{' '}
+                  <button
+                    type="button"
+                    onClick={onLogin}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: 0,
+                      color: '#9B4728',
+                      fontWeight: 700,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      cursor: 'pointer',
+                      fontSize: 13.5,
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                    onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+                  >
+                    Inicia sesión
+                  </button>
+                </p>
+              </form>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ===================== COLUMNA DERECHA: HERO FOTOGRÁFICO CON CITA ===================== */}
+      <div
+        className="hidden lg:flex"
+        style={{
+          flex: '1 1 50%',
+          minHeight: '100vh',
+          position: 'relative',
+          backgroundImage: 'url("https://images.unsplash.com/photo-1592417817098-8f3d69102a5e?q=80&w=1600&auto=format&fit=crop")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 40%',
+          backgroundRepeat: 'no-repeat',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: '48px 56px 64px',
+          boxSizing: 'border-box',
+          overflow: 'hidden',
+        }}
+      >
+        {/* Overlay verde oscuro característico del diseño (#1A3B22 a 40% - 60%) */}
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(180deg, rgba(26, 59, 34, 0.35) 0%, rgba(20, 45, 26, 0.55) 50%, rgba(13, 31, 18, 0.82) 100%)',
+            zIndex: 1,
+          }}
+        />
+
+        {/* Botón Volver al inicio (sobre hero) */}
+        {handleBack && (
+          <div style={{ position: 'relative', zIndex: 10, alignSelf: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={handleBack}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                background: 'rgba(255, 255, 255, 0.15)',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                borderRadius: 20,
+                padding: '8px 18px',
+                color: '#FFFFFF',
+                fontSize: 13,
+                fontWeight: 700,
+                fontFamily: "'Nunito Sans', sans-serif",
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.28)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)'
+              }}
+            >
+              <span>←</span> Volver al inicio
+            </button>
           </div>
+        )}
 
-          <div style={{ padding: '12px 20px 20px', background: '#f5efe6', borderTop: '1px solid rgba(39,74,35,0.08)' }}>
-            {step === 3 && !form.acceptTerms ? (
-              <button disabled style={{ width: '100%', padding: '15px', borderRadius: 16, border: 'none', background: '#E8E0CF', color: '#8A8070', fontSize: 16, fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif", cursor: 'not-allowed' }}>
-                Acepta los términos para continuar
-              </button>
-            ) : (
-              <button onClick={step === 3 ? handleSubmit : next} disabled={loading} style={{ width: '100%', padding: '15px', borderRadius: 16, border: 'none', background: 'linear-gradient(135deg, #2A5C1A, #3D7A28)', color: '#F5EEE6', fontSize: 16, fontWeight: 800, fontFamily: "'Nunito Sans', sans-serif", cursor: 'pointer', boxShadow: '0 6px 20px rgba(42,92,26,0.3)' }}>
-                {step === 3 ? 'Crear mi cuenta →' : 'Continuar →'}
-              </button>
-            )}
+        {/* Sección inferior con línea dorada, cita y subtítulo idénticos al manual */}
+        <div style={{ position: 'relative', zIndex: 10, maxWidth: 540, marginTop: 'auto' }}>
+          {/* Línea dorada (#CF9D35 / #E5AE30) de 80px x 3.5px */}
+          <div
+            style={{
+              width: 80,
+              height: 3.5,
+              backgroundColor: '#CF9D35',
+              borderRadius: 2,
+              marginBottom: 24,
+            }}
+          />
 
-            {step === 1 && (
-              <p style={{ textAlign: 'center', margin: '12px 0 0', fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
-                ¿Ya tienes cuenta? <span style={{ color: '#2A5C1A', fontWeight: 700, cursor: 'pointer' }} onClick={onLogin}>Inicia sesión</span>
-              </p>
-            )}
+          {/* Cita con tipografía del proyecto */}
+          <blockquote
+            style={{
+              margin: 0,
+              padding: 0,
+              fontFamily: "'Poppins', sans-serif",
+              fontStyle: 'italic',
+              fontWeight: 600,
+              fontSize: 'clamp(26px, 3vw, 36px)',
+              lineHeight: 1.3,
+              color: '#FFFFFF',
+              letterSpacing: '-0.02em',
+              textShadow: '0 2px 14px rgba(0, 0, 0, 0.45)',
+              marginBottom: 20,
+            }}
+          >
+            "Sembrando hoy la cooperación del mañana."
+          </blockquote>
 
-            {submitError && (
-              <div style={{ background: '#FEE9E1', borderRadius: 10, padding: '10px 14px', color: '#C4622D', fontSize: 13, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 600, marginTop: 12 }}>
-                ⚠️ {submitError}
-              </div>
-            )}
-          </div>
+          {/* Subtítulo institucional según manual */}
+          <p
+            style={{
+              margin: 0,
+              fontFamily: "'Poppins', sans-serif",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: '0.22em',
+              textTransform: 'uppercase',
+              color: 'rgba(255, 255, 255, 0.88)',
+            }}
+          >
+            CULTIVO INTELIGENTE & INTEGRADO • EL CAMPO NOS UNE
+          </p>
         </div>
       </div>
     </div>
   )
 }
-
-function Field({ label, error, children }: { label: string; error?: string; children: ReactNode }) {
-  return (
-    <div>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3F10', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 6 }}>
-        {label}
-      </div>
-      {children}
-      {error && (
-        <div style={{ fontSize: 12, color: '#C4622D', fontFamily: "'Nunito Sans', sans-serif", marginTop: 4, fontWeight: 600 }}>
-          ⚠️ {error}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function inputStyle(hasError: boolean): CSSProperties {
-  return {
-    width: '100%',
-    padding: '12px 14px',
-    borderRadius: 12,
-    border: `1.5px solid ${hasError ? '#C4622D' : '#E8E0CF'}`,
-    background: hasError ? '#FEF9F7' : '#fff',
-    fontSize: 14,
-    fontFamily: "'Nunito Sans', sans-serif",
-    color: '#1C3F10',
-    outline: 'none',
-    boxSizing: 'border-box',
-  }
-}
-
-function getStrength(pw: string): number {
-  let s = 0
-  if (pw.length >= 6) s++
-  if (pw.length >= 10) s++
-  if (/[A-Z]/.test(pw)) s++
-  if (/[0-9!@#$%^&*]/.test(pw)) s++
-  return s
-}
-
-function getStrengthColor(pw: string, bar: number): string {
-  const s = getStrength(pw)
-  if (s < bar) return '#E8E0CF'
-  if (s <= 1) return '#C4622D'
-  if (s <= 2) return '#D4870A'
-  if (s <= 3) return '#7FB069'
-  return '#2A5C1A'
-}
-
-function getStrengthLabel(pw: string): string {
-  const s = getStrength(pw)
-  if (s <= 1) return 'Débil'
-  if (s <= 2) return 'Regular'
-  if (s <= 3) return 'Buena'
-  return 'Muy segura'
-}
-
-
-

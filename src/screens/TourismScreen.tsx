@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
-import PaymentModal from '../components/PaymentModal'
+import ExperienceReservationModal from '../components/ExperienceReservationModal'
 import AuthRequiredModal from '../components/AuthRequiredModal'
 import ExperienceModal from '../components/ExperienceModal'
 import { supabase } from '../lib/supabase'
@@ -10,7 +10,7 @@ const tagColors: Record<string, string> = {
   Gastronomía: '#C4622D',
   Cultura: '#6B4C2A',
   Senderismo: '#205134',
-  Comunidad: '#D4870A',
+  Comunidad: '#6BAA3D',
   Alojamiento: '#7FB069',
 }
 
@@ -48,7 +48,13 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   const [saving, setSaving] = useState(false)
   const [reservingExperienceId, setReservingExperienceId] = useState<string | null>(null)
   const [submitMessage, setSubmitMessage] = useState('')
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false)
+  const [reservationModalOpen, setReservationModalOpen] = useState(false)
+  const [detailGuests, setDetailGuests] = useState(1)
+  const [detailDate, setDetailDate] = useState(() => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return tomorrow.toISOString().split('T')[0]
+  })
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingReservation, setPendingReservation] = useState<Experience | null>(null)
   const [userRole, setUserRole] = useState<'asociacion' | 'turismo' | 'comprador' | null>(null)
@@ -172,7 +178,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
 
   const formatPrice = (n: number) => `$${n.toLocaleString('es-CO')}`
 
-  const openReserveModal = async (exp: Experience) => {
+  const openReserveModal = async (exp: Experience, guests: number = detailGuests, date: string = detailDate) => {
     if (isTurismo) return
     const { data: userData } = await supabase.auth.getUser()
     if (!userData.user) {
@@ -181,7 +187,9 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       return
     }
     setPendingReservation(exp)
-    setPaymentModalOpen(true)
+    setDetailGuests(guests)
+    setDetailDate(date)
+    setReservationModalOpen(true)
   }
 
   const handleReserveExperience = async (exp: Experience) => {
@@ -305,21 +313,18 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   return (
     <>
       <AuthRequiredModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} onRequireAuth={(mode) => onRequireAuth?.(mode)} />
-      <PaymentModal
-        open={paymentModalOpen}
-        title="Reservar experiencia"
-        subtitle="Paga con seguridad para confirmar tu visita."
-        confirmLabel="Reservar ahora"
-        amount={pendingReservation?.price}
+      <ExperienceReservationModal
+        open={reservationModalOpen}
+        experience={pendingReservation || selectedExperience}
+        initialGuests={detailGuests}
+        initialDate={detailDate}
         onClose={() => {
-          setPaymentModalOpen(false)
+          setReservationModalOpen(false)
           setPendingReservation(null)
         }}
-        onConfirm={() => {
-          if (pendingReservation) {
-            return handleReserveExperience(pendingReservation)
-          }
-          return Promise.resolve(false)
+        onRequireAuth={(mode) => onRequireAuth?.(mode)}
+        onSuccess={() => {
+          loadExperiences()
         }}
       />
 
@@ -425,30 +430,143 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
 
             {submitMessage && <div style={{ marginBottom: 12, color: '#205134', fontSize: 12, fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif" }}>{submitMessage}</div>}
 
-            {!isTurismo && (
-              <button
-                onClick={() => openReserveModal(selectedExperience)}
-                disabled={reservingExperienceId === selectedExperience.id}
-                style={{
-                  width: '100%',
-                  padding: '15px',
-                  borderRadius: 16,
-                  border: 'none',
-                  background: reservingExperienceId === selectedExperience.id
-                    ? '#7FB069'
-                    : 'linear-gradient(135deg, #205134, #3D7A28)',
-                  color: '#F5EEE6',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  fontFamily: "'Nunito Sans', sans-serif",
-                  cursor: reservingExperienceId === selectedExperience.id ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 4px 16px rgba(42,92,26,0.35)',
-                  opacity: reservingExperienceId === selectedExperience.id ? 0.8 : 1,
-                }}
-              >
-                {reservingExperienceId === selectedExperience.id ? 'Reservando...' : `Reservar experiencia — ${formatPrice(selectedExperience.price)}`}
-              </button>
-            )}
+            {/* ══ MÓDULO INTERACTIVO DE RESERVA ══ */}
+            {!isTurismo && selectedExperience && (() => {
+              const maxCap = (() => {
+                if (!selectedExperience.capacity) return 20
+                if (typeof selectedExperience.capacity === 'number') return selectedExperience.capacity
+                const p = parseInt(String(selectedExperience.capacity).replace(/\D/g, ''), 10)
+                return isNaN(p) || p <= 0 ? 20 : p
+              })()
+
+              return (
+                <div
+                  style={{
+                    background: '#fff',
+                    border: '1.5px solid #EDE4D8',
+                    borderRadius: 20,
+                    padding: '20px 22px',
+                    marginBottom: 24,
+                    boxShadow: '0 8px 24px rgba(32, 81, 52, 0.07)',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                    <div>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: '#6BAA3D', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                        PLANIFICA TU VISITA
+                      </span>
+                      <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#205134', margin: '2px 0 0', fontWeight: 700 }}>
+                        Reserva tus cupos
+                      </h3>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: 18, fontWeight: 800, color: '#205134', fontFamily: "'Poppins', sans-serif" }}>
+                        {formatPrice(selectedExperience.price)}
+                      </div>
+                      <span style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>/ por persona</span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 16 }}>
+                    {/* Selector de personas */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#205134', marginBottom: 6, fontFamily: "'Nunito Sans', sans-serif" }}>
+                        👥 Cantidad de personas
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #EDE4D8', borderRadius: 12, overflow: 'hidden', height: 44, background: '#FAF7F0' }}>
+                        <button
+                          type="button"
+                          onClick={() => setDetailGuests(Math.max(1, detailGuests - 1))}
+                          disabled={detailGuests <= 1}
+                          style={{ width: 44, height: '100%', border: 'none', background: '#F0ECE1', fontSize: 18, fontWeight: 800, color: detailGuests <= 1 ? '#CCC' : '#205134', cursor: detailGuests <= 1 ? 'not-allowed' : 'pointer' }}
+                        >
+                          −
+                        </button>
+                        <span style={{ flex: 1, textAlign: 'center', fontWeight: 800, fontSize: 14, color: '#205134', fontFamily: "'Poppins', sans-serif" }}>
+                          {detailGuests} {detailGuests === 1 ? 'persona' : 'personas'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setDetailGuests(Math.min(maxCap, detailGuests + 1))}
+                          disabled={detailGuests >= maxCap}
+                          style={{ width: 44, height: '100%', border: 'none', background: '#F0ECE1', fontSize: 18, fontWeight: 800, color: detailGuests >= maxCap ? '#CCC' : '#205134', cursor: detailGuests >= maxCap ? 'not-allowed' : 'pointer' }}
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span style={{ fontSize: 11, color: '#8A8070', marginTop: 4, display: 'block' }}>
+                        Capacidad: {maxCap} cupos disponibles
+                      </span>
+                    </div>
+
+                    {/* Selector de fecha */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#205134', marginBottom: 6, fontFamily: "'Nunito Sans', sans-serif" }}>
+                        📅 Fecha de visita
+                      </label>
+                      <input
+                        type="date"
+                        min={new Date().toISOString().split('T')[0]}
+                        value={detailDate}
+                        onChange={(e) => setDetailDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          height: 44,
+                          borderRadius: 12,
+                          border: '1.5px solid #EDE4D8',
+                          padding: '0 12px',
+                          fontSize: 13,
+                          fontFamily: "'Nunito Sans', sans-serif",
+                          color: '#1C3A14',
+                          background: '#FAF7F0',
+                          boxSizing: 'border-box',
+                          outline: 'none',
+                        }}
+                      />
+                      <span style={{ fontSize: 11, color: '#8A8070', marginTop: 4, display: 'block' }}>
+                        Coordinable con el anfitrión
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Subtotal en vivo */}
+                  <div style={{ background: '#FAF7F0', borderRadius: 12, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <span style={{ fontSize: 13, color: '#5A5248', fontFamily: "'Nunito Sans', sans-serif" }}>
+                      Total ({detailGuests} {detailGuests === 1 ? 'persona' : 'personas'}):
+                    </span>
+                    <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, fontWeight: 800, color: '#205134' }}>
+                      {formatPrice(selectedExperience.price * detailGuests)}
+                    </span>
+                  </div>
+
+                  {/* Botón principal */}
+                  <button
+                    type="button"
+                    onClick={() => openReserveModal(selectedExperience, detailGuests, detailDate)}
+                    style={{
+                      width: '100%',
+                      padding: '14px',
+                      borderRadius: 14,
+                      border: 'none',
+                      background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
+                      color: '#fff',
+                      fontSize: 15,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(32,81,52,0.25)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <span>🌿</span>
+                    <span>Reservar {detailGuests} {detailGuests === 1 ? 'cupo' : 'cupos'} — {formatPrice(selectedExperience.price * detailGuests)}</span>
+                  </button>
+                </div>
+              )
+            })()}
           </div>
         </div>
       ) : (
@@ -459,10 +577,10 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
           userRole={userRole || propUserRole}
           contentStyle={{ paddingBottom: 20 }}
         >
-          {/* ══ BANNER TURISMO ══ */}
+          {/* ══ BANNER TURISMO — Verde para Experiencias según manual ══ */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #9B4728 0%, #BA5A30 100%)',
+              background: 'linear-gradient(135deg, #205134 0%, #2E6B42 100%)',
               borderRadius: '0 0 28px 28px',
               padding: '22px 20px 28px',
               margin: '0 -18px 20px',
@@ -470,8 +588,9 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
               overflow: 'hidden',
             }}
           >
-            <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(229,174,48,0.15)', pointerEvents: 'none' }} />
-            <p style={{ margin: 0, color: '#E5AE30', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>🌍 TURISMO COMUNITARIO</p>
+            <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(107,170,61,0.18)', pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: -20, left: 20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(229,174,48,0.10)', pointerEvents: 'none' }} />
+            <p style={{ margin: 0, color: '#A8D48A', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>🌿 TURISMO COMUNITARIO</p>
             <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#F5EEE6', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Experiencias del campo</h1>
             <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Vive el territorio con comunidades rurales colombianas</p>
           </div>
@@ -479,7 +598,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
           {/* ══ BARRA DE BÚSQUEDA ══ */}
           <div style={{ position: 'relative', marginBottom: 4 }}>
             <svg
-              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9B4728" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#205134" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
               style={{ position: 'absolute', left: 16, top: '50%', transform: 'translateY(-50%)', opacity: 0.6 }}
             >
               <circle cx="11" cy="11" r="8" />
@@ -565,8 +684,8 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       className="transition-transform duration-500 ease-out group-hover:scale-105"
                     />
-                    <span style={{ position: 'absolute', top: 8, left: 8, background: '#FFF3E8', color: '#9B4728', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
-                      📸 EXPERIENCIA
+                    <span style={{ position: 'absolute', top: 8, left: 8, background: '#EAF3EC', color: '#205134', fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, letterSpacing: 0.5 }}>
+                      🏞️ EXPERIENCIA
                     </span>
                     {(exp.reviews ?? 0) > 0 ? (
                       <span style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.92)', color: '#205134', fontSize: 10, fontWeight: 800, padding: '3px 7px', borderRadius: 20 }}>
@@ -621,7 +740,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
 
                     <div className="flex items-center justify-between pt-2 border-t border-[#F5EEE6]">
                       <div>
-                        <span style={{ fontSize: 16, fontWeight: 800, color: '#9B4728', fontFamily: "'Poppins', sans-serif" }}>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: '#205134', fontFamily: "'Poppins', sans-serif" }}>
                           {formatPrice(exp.price)}
                         </span>
                         <span style={{ fontSize: 11, color: '#666666', fontFamily: "'Nunito Sans', sans-serif" }}> /pers.</span>
@@ -658,7 +777,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                     padding: '11px 24px',
                     borderRadius: 12,
                     border: 'none',
-                    background: '#D4870A',
+                    background: '#6BAA3D',
                     color: '#fff',
                     fontSize: 14,
                     fontWeight: 700,

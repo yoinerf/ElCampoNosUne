@@ -88,7 +88,7 @@ export default function App() {
   const handleProfileClick = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      setFlow('auth')
+      setFlow('login')
     } else {
       setActiveTab('profile')
     }
@@ -160,20 +160,24 @@ export default function App() {
       <div className="min-h-screen w-full flex flex-col">
         <div className="flex-1">
           {flow === 'auth' && (
-            <RegisterScreen
-              onComplete={() => setFlow('app')}
-              onLogin={() => setFlow('login')}
-              onBackToStore={returnToStore}
-              onBackToHome={returnToHome}
-            />
+            <div key="register-flow" className="auth-screen-enter w-full min-h-screen">
+              <RegisterScreen
+                onComplete={() => setFlow('app')}
+                onLogin={() => setFlow('login')}
+                onBackToStore={returnToStore}
+                onBackToHome={returnToHome}
+              />
+            </div>
           )}
           {flow === 'login' && (
-            <LoginScreen
-              onLogin={() => setFlow('app')}
-              onRegister={() => setFlow('auth')}
-              onBackToStore={returnToStore}
-              onBackToHome={returnToHome}
-            />
+            <div key="login-flow" className="auth-screen-enter w-full min-h-screen">
+              <LoginScreen
+                onLogin={() => setFlow('app')}
+                onRegister={() => setFlow('auth')}
+                onBackToStore={returnToStore}
+                onBackToHome={returnToHome}
+              />
+            </div>
           )}
           {flow === 'app' && (checkoutConfirm ? (
             <CheckoutScreen

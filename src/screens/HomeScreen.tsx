@@ -170,42 +170,50 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       }
 
       try {
-        const [{ data: products }, { data: reviewsData }] = await Promise.all([
-          supabase.from('products').select('id, title, producer, rating, price, img').order('created_at', { ascending: false }).limit(10),
-          supabase.from('product_reviews').select('product_id, rating'),
-        ])
+        const { data: productAds } = await supabase
+          .from("advertisements")
+          .select("id, products (id, title, producer, rating, price, img)")
+          .eq("type", "product")
+          .eq("active", true)
+          .lte("starts_at", new Date().toISOString())
+          .gte("ends_at", new Date().toISOString())
+          .order("starts_at", { ascending: false })
+          .limit(6);
 
-        if (products) {
-          const reviewsMap: Record<string, number[]> = {}
-          if (reviewsData && Array.isArray(reviewsData)) {
-            for (const r of reviewsData) {
-              if (r.product_id) {
-                if (!reviewsMap[r.product_id]) reviewsMap[r.product_id] = []
-                reviewsMap[r.product_id].push(r.rating)
-              }
-            }
-          }
+        const featuredProducts = (productAds || [])
+          .map((ad: any) => ad.products)
+          .filter(Boolean);
 
-          const processed = products.map((p) => {
-            const ratings = reviewsMap[p.id] || []
-            const avg = ratings.length > 0
-              ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
-              : (p.rating ?? 5)
-            return { ...p, rating: avg }
-          }).sort((a, b) => b.rating - a.rating).slice(0, 3)
-
-          setFeatured(processed)
-        }
+        setFeatured(featuredProducts);
       } catch (e) {
-        console.error('Error cargando destacados con reseñas en HomeScreen:', e)
+        console.error(
+          "Error cargando productos patrocinados en HomeScreen:",
+          e,
+        );
       }
 
-      const { data: tourismData } = await supabase
-        .from('experiences')
-        .select('id, title, host, price, img, tags')
-        .order('created_at', { ascending: false })
-        .limit(3)
-      if (tourismData) setTourism(tourismData as TourismPreview[])
+      try {
+        const { data: experienceAds } = await supabase
+          .from("advertisements")
+          .select("id, experiences (id, title, host, price, img, tags)")
+          .eq("type", "experience")
+          .eq("active", true)
+          .lte("starts_at", new Date().toISOString())
+          .gte("ends_at", new Date().toISOString())
+          .order("starts_at", { ascending: false })
+          .limit(6);
+
+        const featuredExperiences = (experienceAds || [])
+          .map((ad: any) => ad.experiences)
+          .filter(Boolean);
+
+        setTourism(featuredExperiences as TourismPreview[]);
+      } catch (e) {
+        console.error(
+          "Error cargando experiencias patrocinadas en HomeScreen:",
+          e,
+        );
+      }
 
       setLoading(false)
     }

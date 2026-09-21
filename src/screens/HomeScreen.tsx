@@ -11,6 +11,7 @@ interface Props {
   activeNav?: Tab
   onProfileClick?: () => void
   userRole?: 'asociacion' | 'turismo' | 'comprador' | null
+  onSelectProduct?: (productId: string) => void
 }
 
 interface FeaturedProduct {
@@ -81,7 +82,7 @@ function getColombianGreeting(): { text: string; icon: string } {
   return { text: 'Buenas noches', icon: '🌙' }
 }
 
-export default function HomeScreen({ onNavigate, activeNav, onProfileClick, userRole: propUserRole }: Props) {
+export default function HomeScreen({ onNavigate, activeNav, onProfileClick, userRole: propUserRole, onSelectProduct }: Props) {
   const [firstName, setFirstName] = useState('')
   const [featured, setFeatured] = useState<FeaturedProduct[]>([])
   const [tourism, setTourism] = useState<TourismPreview[]>([])
@@ -172,7 +173,9 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       try {
         const { data: productAds } = await supabase
           .from("advertisements")
-          .select("id, products (id, title, producer, rating, price, img)")
+          .select(
+            "id, products (id, title, producer, rating, price, images (image_url, is_primary))",
+          )
           .eq("type", "product")
           .eq("active", true)
           .lte("starts_at", new Date().toISOString())
@@ -181,7 +184,14 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           .limit(6);
 
         const featuredProducts = (productAds || [])
-          .map((ad: any) => ad.products)
+          .map((ad: any) => {
+            const product = ad.products;
+            if (!product) return null;
+            const primaryImage =
+              product.images?.find((img: any) => img.is_primary) ||
+              product.images?.[0];
+            return { ...product, img: primaryImage?.image_url || "" };
+          })
           .filter(Boolean);
 
         setFeatured(featuredProducts);
@@ -192,28 +202,37 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         );
       }
 
-      try {
-        const { data: experienceAds } = await supabase
-          .from("advertisements")
-          .select("id, experiences (id, title, host, price, img, tags)")
-          .eq("type", "experience")
-          .eq("active", true)
-          .lte("starts_at", new Date().toISOString())
-          .gte("ends_at", new Date().toISOString())
-          .order("starts_at", { ascending: false })
-          .limit(6);
+     try {
+       const { data: experienceAds } = await supabase
+         .from("advertisements")
+         .select(
+           "id, experiences (id, title, host, price, tags, images (image_url, is_primary))",
+         )
+         .eq("type", "experience")
+         .eq("active", true)
+         .lte("starts_at", new Date().toISOString())
+         .gte("ends_at", new Date().toISOString())
+         .order("starts_at", { ascending: false })
+         .limit(6);
 
-        const featuredExperiences = (experienceAds || [])
-          .map((ad: any) => ad.experiences)
-          .filter(Boolean);
+       const featuredExperiences = (experienceAds || [])
+         .map((ad: any) => {
+           const experience = ad.experiences;
+           if (!experience) return null;
+           const primaryImage =
+             experience.images?.find((img: any) => img.is_primary) ||
+             experience.images?.[0];
+           return { ...experience, img: primaryImage?.image_url || "" };
+         })
+         .filter(Boolean);
 
-        setTourism(featuredExperiences as TourismPreview[]);
-      } catch (e) {
-        console.error(
-          "Error cargando experiencias patrocinadas en HomeScreen:",
-          e,
-        );
-      }
+       setTourism(featuredExperiences as TourismPreview[]);
+     } catch (e) {
+       console.error(
+         "Error cargando experiencias patrocinadas en HomeScreen:",
+         e,
+       );
+     }
 
       setLoading(false)
     }
@@ -686,19 +705,32 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             {featured.map((item) => (
               <div
                 key={item.id}
-                onClick={() => onNavigate("market")}
+                onClick={() =>
+                  onSelectProduct
+                    ? onSelectProduct(item.id)
+                    : onNavigate("market")
+                }
                 style={{
                   background: "#fff",
                   overflow: "hidden",
                   cursor: "pointer",
                   border: "1px solid #E8E0CF",
-                  borderRadius: 18,
-                  boxShadow: "0 2px 16px rgba(42,92,26,0.08)",
-                  maxWidth: 320,
-                  margin: "0 auto",
+                  borderRadius: 20,
+                  boxShadow: "0 4px 20px rgba(42,92,26,0.10)",
+                  transition: "transform 0.25s ease, box-shadow 0.25s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-4px)";
+                  e.currentTarget.style.boxShadow =
+                    "0 8px 28px rgba(42,92,26,0.18)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow =
+                    "0 4px 20px rgba(42,92,26,0.10)";
                 }}
               >
-                <div style={{ position: "relative", height: 220 }}>
+                <div style={{ position: "relative", height: 280 }}>
                   <img
                     src={item.img}
                     alt={item.title}

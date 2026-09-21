@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect, type JSX } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import MarketplaceScreen from './screens/MarketplaceScreen'
 import CheckoutScreen from './screens/CheckoutScreen'
@@ -90,6 +90,11 @@ export default function App() {
     setActiveTab('market')
   }
 
+  const goToProduct = (productId: string) => {
+  setInitialProduct(productId)
+  setActiveTab('market')
+}
+
   const returnToHome = () => {
     setFlow('app')
     setActiveTab('home')
@@ -101,7 +106,7 @@ export default function App() {
     home: isProducer ? (
       <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ) : (
-      <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+      <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} onSelectProduct={goToProduct} />
     ),
     market: (
       <MarketplaceScreen

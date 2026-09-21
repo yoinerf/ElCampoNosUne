@@ -4,18 +4,11 @@ import type { ReactNode } from 'react'
 interface AutoCarouselProps {
   children: ReactNode[]
   intervalMs?: number
-  itemsPerView?: number
 }
 
-export default function AutoCarousel({ children, intervalMs = 4500, itemsPerView = 2 }: AutoCarouselProps) {
+export default function AutoCarousel({ children, intervalMs = 4000 }: AutoCarouselProps) {
   const [index, setIndex] = useState(0)
-
-  // Agrupa las tarjetas en "páginas" de N elementos
-  const pages: ReactNode[][] = []
-  for (let i = 0; i < children.length; i += itemsPerView) {
-    pages.push(children.slice(i, i + itemsPerView))
-  }
-  const total = pages.length
+  const total = children.length
 
   useEffect(() => {
     if (total <= 1) return
@@ -29,45 +22,47 @@ export default function AutoCarousel({ children, intervalMs = 4500, itemsPerView
 
   return (
     <div style={{ position: 'relative' }}>
-      <div style={{ overflow: 'hidden' }}>
+      <div style={{ overflow: 'hidden', margin: '0 -6px' }}>
         <div
           style={{
             display: 'flex',
-            transition: 'transform 0.5s ease',
+            transition: 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
             transform: `translateX(-${index * 100}%)`,
           }}
         >
-          {pages.map((page, pageIndex) => (
+          {children.map((child, i) => (
             <div
-              key={pageIndex}
+              key={i}
               style={{
                 minWidth: '100%',
-                display: 'grid',
-                gridTemplateColumns: `repeat(${itemsPerView}, 1fr)`,
-                gap: 14,
+                padding: '0 6px',
+                boxSizing: 'border-box',
+                transition: 'transform 0.6s ease, opacity 0.6s ease',
+                transform: i === index ? 'scale(1)' : 'scale(0.96)',
+                opacity: i === index ? 1 : 0.6,
               }}
             >
-              {page}
+              {child}
             </div>
           ))}
         </div>
       </div>
 
       {total > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 12 }}>
-          {pages.map((_, i) => (
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 14 }}>
+          {children.map((_, i) => (
             <button
               key={i}
               onClick={() => setIndex(i)}
-              aria-label={`Ir a la página ${i + 1}`}
+              aria-label={`Ir a la diapositiva ${i + 1}`}
               style={{
-                width: i === index ? 18 : 8,
+                width: i === index ? 22 : 8,
                 height: 8,
                 borderRadius: 4,
                 border: 'none',
                 background: i === index ? '#205134' : '#D8CFC0',
                 cursor: 'pointer',
-                transition: 'all 0.3s ease',
+                transition: 'all 0.35s ease',
                 padding: 0,
               }}
             />

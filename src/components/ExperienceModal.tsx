@@ -329,17 +329,27 @@ export default function ExperienceModal({
             )}
 
             {images.length === 0 && existingImg && (
-              <div className="mt-2.5 flex items-center gap-3 p-2.5 rounded-xl border border-[#EDE4D8] bg-[#FAF7F3]">
-                <img
-                  src={existingImg}
-                  alt="actual"
-                  className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-[#EDE4D8] flex-shrink-0"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-[#205134] m-0 font-['Nunito_Sans']">Imagen actual de la experiencia</p>
-                  <p className="text-[11px] text-[#9B7D5A] m-0 font-['Nunito_Sans']">Sube imágenes arriba si deseas reemplazarla</p>
+              <div className="mt-2.5 flex items-center justify-between p-2.5 rounded-xl border border-[#EDE4D8] bg-[#FAF7F3]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={existingImg}
+                    alt="actual"
+                    className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-[#EDE4D8] flex-shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-[#205134] m-0 font-['Nunito_Sans']">Imagen actual de la experiencia</p>
+                    <p className="text-[11px] text-[#9B7D5A] m-0 font-['Nunito_Sans']">Sube imágenes arriba si deseas reemplazarla</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setExistingImg('')}
+                  className="px-2.5 py-1.5 text-[#9B4728] hover:bg-[#F3ECE2] rounded-lg border border-[#EDE4D8] cursor-pointer text-xs font-bold font-['Nunito_Sans'] flex-shrink-0 transition-colors"
+                  title="Quitar imagen actual"
+                >
+                  ✕ Quitar
+                </button>
               </div>
             )}
           </div>

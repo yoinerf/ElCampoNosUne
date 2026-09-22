@@ -8,6 +8,7 @@ export interface ProductModalProps {
   initialData?: any
   title?: string
   categories?: { id: string; name: string }[]
+  producers?: { id: string; name: string; org_name?: string }[]
 }
 
 const inputStyle: React.CSSProperties = {
@@ -51,11 +52,14 @@ export default function ProductModal({
   onSave,
   initialData,
   title = 'Nuevo producto',
-  categories = []
+  categories = [],
+  producers,
 }: ProductModalProps) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     title: '',
+    producer: '',
+    producer_id: '',
     category_id: '',
     price: '',
     stockNum: '0',
@@ -72,8 +76,18 @@ export default function ProductModal({
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
+        const matchedProducerId =
+          initialData.producer_id ||
+          producers?.find(
+            (p) =>
+              p.name === initialData.producer ||
+              (p.org_name && p.org_name === initialData.producer)
+          )?.id ||
+          ''
         setForm({
           title: initialData.title || '',
+          producer: initialData.producer || (producers?.find((p) => p.id === matchedProducerId)?.name ?? ''),
+          producer_id: matchedProducerId,
           category_id: initialData.category_id || initialData.category || '',
           price: initialData.price ? String(initialData.price) : '',
           stockNum: initialData.stockNum ? String(initialData.stockNum).replace(/\D/g, '') : (initialData.stock ? String(initialData.stock).replace(/\D/g, '') : '0'),
@@ -84,13 +98,23 @@ export default function ProductModal({
         setExistingImg(initialData.img || '')
       } else {
         const defaultCatId = categories.length > 0 ? categories[0].id : ''
-        setForm({ title: '', category_id: defaultCatId, price: '', stockNum: '10', unit: 'kg', description: '', certified: true })
+        setForm({
+          title: '',
+          producer: '',
+          producer_id: '',
+          category_id: defaultCatId,
+          price: '',
+          stockNum: '10',
+          unit: 'kg',
+          description: '',
+          certified: true,
+        })
         setExistingImg('')
       }
       setImages([])
       setUploadError('')
     }
-  }, [isOpen, initialData, categories])
+  }, [isOpen, initialData, categories, producers])
 
   if (!isOpen) return null
 
@@ -187,6 +211,32 @@ export default function ProductModal({
               style={inputStyle}
             />
           </div>
+
+          {producers && producers.length > 0 && (
+            <div>
+              <label style={labelStyle}>Productor / Asociación</label>
+              <select
+                value={form.producer_id}
+                onChange={(e) => {
+                  const selId = e.target.value
+                  const found = producers.find((p) => p.id === selId)
+                  setForm({
+                    ...form,
+                    producer_id: selId,
+                    producer: found ? found.name : '',
+                  })
+                }}
+                style={inputStyle}
+              >
+                <option value="">Seleccionar productor o asociación...</option>
+                {producers.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="modal-grid-2">
             {categories.length > 0 ? (

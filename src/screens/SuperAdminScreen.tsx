@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { clearPromoSession } from '../lib/promoSession'
 import {
   toColombiaInputString,
@@ -24,6 +25,7 @@ interface UserRow {
   user_type: string
   department: string
   municipality: string
+  email?: string
   created_at: string
 }
 
@@ -259,6 +261,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [experiences, setExperiences] = useState<ExperienceRow[]>([])
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
+  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, reservations: 0, income: 0 })
 
   const [search, setSearch] = useState('')
@@ -275,6 +278,19 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const [userEditModal, setUserEditModal] = useState<UserRow | null>(null)
   const [userSaving, setUserSaving] = useState(false)
+  const [userCreateModal, setUserCreateModal] = useState(false)
+  const [newUserData, setNewUserData] = useState({
+    first_name: '',
+    last_name: '',
+    org_name: '',
+    email: '',
+    password: '',
+    user_type: 'asociacion',
+    department: '',
+    municipality: '',
+  })
+  const [userCreating, setUserCreating] = useState(false)
+
   const [confirmDelete, setConfirmDelete] = useState<{ type: string; id: string; name: string } | null>(null)
   const [toast, setToast] = useState('')
 
@@ -290,22 +306,25 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: adsData },
         { data: catsData },
         { data: resData },
+        { data: deptsData },
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name, business_type').eq('active', true),
         supabase.from('reservations').select('id, total'),
+        supabase.from('departments').select('id, name').order('name', { ascending: true }),
       ])
 
       setUsers((usersData || []) as UserRow[])
+      setDepartments((deptsData || []) as { id: string; name: string }[])
 
       const userMap = new Map((usersData || []).map((u: any) => [u.id, u]))
 
       const mappedProds = (prodsData || []).map((p: any) => {
         const u = userMap.get(p.producer_id)
-        const producerName = u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || p.producer || 'Productor'
+        const producerName = p.producer?.trim() || u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || 'Productor'
         return {
           ...p,
           producer: producerName,
@@ -316,7 +335,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       const mappedExps = (expsData || []).map((e: any) => {
         const u = userMap.get(e.host_id)
-        const hostName = u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || e.host || 'Comunidad local'
+        const hostName = e.host?.trim() || u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || 'Comunidad local'
         return {
           ...e,
           host: hostName,
@@ -353,16 +372,101 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     let error: any = null
     if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
     else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
-    else if (type === 'user') ({ error } = await supabase.from('profiles').delete().eq('id', id))
+    else if (type === 'user') {
+      ({ error } = await supabase.from('profiles').delete().eq('id', id))
+      try {
+        await supabaseAdmin.auth.admin.deleteUser(id)
+      } catch (authDelErr) {
+        console.warn('Advertencia al eliminar usuario de auth:', authDelErr)
+      }
+    }
     else if (type === 'ad') ({ error } = await supabase.from('advertisements').delete().eq('id', id))
     if (!error) { showToast('✅ Eliminado correctamente'); setConfirmDelete(null); loadAll() }
     else showToast('❌ Error: ' + error.message)
   }
 
+  const handleCreateUser = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    if (!newUserData.first_name.trim()) {
+      showToast('⚠️ Por favor ingresa el nombre')
+      return
+    }
+    if (!newUserData.email.trim() || !newUserData.password.trim()) {
+      showToast('⚠️ Por favor ingresa correo y contraseña')
+      return
+    }
+    if (newUserData.password.length < 6) {
+      showToast('⚠️ La contraseña debe tener al menos 6 caracteres')
+      return
+    }
+
+    setUserCreating(true)
+    try {
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: newUserData.email.trim(),
+        password: newUserData.password.trim(),
+        email_confirm: true,
+        user_metadata: {
+          first_name: newUserData.first_name.trim(),
+          last_name: newUserData.last_name.trim(),
+          org_name: newUserData.org_name.trim(),
+          user_type: newUserData.user_type,
+        },
+      })
+
+      if (authError || !authData.user) {
+        showToast('❌ Error en Auth: ' + (authError?.message || 'No se pudo crear el usuario'))
+        setUserCreating(false)
+        return
+      }
+
+      const newUserId = authData.user.id
+
+      const { error: profError } = await supabaseAdmin.from('profiles').upsert({
+        id: newUserId,
+        first_name: newUserData.first_name.trim(),
+        last_name: newUserData.last_name.trim(),
+        org_name: newUserData.org_name.trim() || null,
+        user_type: newUserData.user_type,
+        department: newUserData.department.trim() || null,
+        municipality: newUserData.municipality.trim() || null,
+        email: newUserData.email.trim(),
+        created_at: new Date().toISOString(),
+      })
+
+      if (profError) {
+        showToast('⚠️ Usuario creado en Auth pero falló el perfil: ' + profError.message)
+      } else {
+        showToast('✅ Usuario creado exitosamente')
+      }
+
+      setUserCreateModal(false)
+      setNewUserData({
+        first_name: '',
+        last_name: '',
+        org_name: '',
+        email: '',
+        password: '',
+        user_type: 'asociacion',
+        department: '',
+        municipality: '',
+      })
+      loadAll()
+    } catch (err: any) {
+      showToast('❌ Excepción: ' + (err.message || String(err)))
+    } finally {
+      setUserCreating(false)
+    }
+  }
+
   const handleSaveProduct = async (formData: any) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const payload = {
+
+    const targetProducerId = formData.producer_id || user.id
+    const producerName = formData.producer?.trim() || 'Productor'
+
+    const payload: any = {
       title: formData.title.trim(),
       price: Number(formData.price),
       unit: formData.unit || 'uds',
@@ -370,7 +474,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       certified: formData.certified ?? true,
       stock: `${formData.stockNum || '0'}`,
       description: formData.description?.trim() || null,
+      producer: producerName,
+      producer_id: targetProducerId,
     }
+
     if (productModal.editId) {
       await supabase.from('products').update(payload).eq('id', productModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
@@ -389,9 +496,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         if (insErr) console.error('Error al registrar imágenes en SuperAdmin:', insErr.message)
       }
     } else {
-      const { data: pd } = await supabase.from('profiles').select('org_name, first_name, last_name').eq('id', user.id).single()
-      const orgName = pd?.org_name || `${pd?.first_name} ${pd?.last_name}`.trim() || 'Admin'
-      const { data: newProd } = await supabase.from('products').insert([{ ...payload, producer_id: user.id, producer: orgName, rating: 5, reviews: 0 }]).select('id').single()
+      const { data: newProd, error: prodErr } = await supabase.from('products').insert([{ ...payload, rating: 5, reviews: 0 }]).select('id').single()
+      if (prodErr) {
+        showToast('❌ Error creando producto: ' + prodErr.message)
+        return
+      }
       if (newProd && formData.uploadedImages?.length > 0) {
         const rows = formData.uploadedImages.map((img: any) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
@@ -405,7 +514,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const handleSaveExperience = async (formData: any) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const payload = {
+
+    const targetHostId = formData.host_id || user.id
+    const hostName = formData.host?.trim() || 'Comunidad local'
+
+    const payload: any = {
       title: formData.title.trim(),
       price: Number(formData.price),
       capacity: `${formData.capacity || '10'} personas`,
@@ -413,7 +526,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       description: formData.description?.trim() || null,
       tags: formData.tags ? formData.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : ['Experiencia'],
       featured: true,
+      host: hostName,
+      host_id: targetHostId,
     }
+
     if (expModal.editId) {
       await supabase.from('experiences').update(payload).eq('id', expModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
@@ -432,9 +548,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         if (insErr) console.error('Error al registrar imágenes de experiencia en SuperAdmin:', insErr.message)
       }
     } else {
-      const { data: pd } = await supabase.from('profiles').select('org_name, first_name, last_name').eq('id', user.id).single()
-      const orgName = pd?.org_name || `${pd?.first_name} ${pd?.last_name}`.trim() || 'Admin'
-      const { data: newExp } = await supabase.from('experiences').insert([{ ...payload, host_id: user.id, host: orgName, rating: 5, reviews: 0 }]).select('id').single()
+      const { data: newExp, error: expErr } = await supabase.from('experiences').insert([{ ...payload, rating: 5, reviews: 0 }]).select('id').single()
+      if (expErr) {
+        showToast('❌ Error creando experiencia: ' + expErr.message)
+        return
+      }
       if (newExp && formData.uploadedImages?.length > 0) {
         const rows = formData.uploadedImages.map((img: any) => ({ product_id: null, experience_id: newExp.id, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
@@ -453,6 +571,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       last_name: userEditModal.last_name,
       org_name: userEditModal.org_name,
       user_type: userEditModal.user_type,
+      department: userEditModal.department || null,
+      municipality: userEditModal.municipality || null,
     }).eq('id', userEditModal.id)
 
     if (!error) {
@@ -532,10 +652,29 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   // Filtered data
   const q = search.trim().toLowerCase()
-  const filteredUsers = users.filter(u => !q || `${u.first_name} ${u.last_name} ${u.org_name} ${u.user_type}`.toLowerCase().includes(q))
+  const filteredUsers = users.filter(u => !q || `${u.first_name} ${u.last_name} ${u.org_name || ''} ${u.user_type} ${u.email || ''}`.toLowerCase().includes(q))
   const filteredProds = products.filter(p => !q || p.title.toLowerCase().includes(q) || p.producer.toLowerCase().includes(q))
   const filteredExps = experiences.filter(e => !q || e.title.toLowerCase().includes(q) || e.host.toLowerCase().includes(q))
   const filteredAds = ads.filter(a => !q || a.title.toLowerCase().includes(q))
+
+  // Opciones para asignación en modales
+  const producerOptions = users
+    .filter(u => u.user_type === 'asociacion')
+    .concat(users.filter(u => u.user_type !== 'asociacion'))
+    .map(u => ({
+      id: u.id,
+      name: `${u.org_name ? u.org_name + ' — ' : ''}${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || `Usuario ${u.id.slice(0, 6)}`,
+      org_name: u.org_name,
+    }))
+
+  const hostOptions = users
+    .filter(u => u.user_type === 'turismo')
+    .concat(users.filter(u => u.user_type !== 'turismo'))
+    .map(u => ({
+      id: u.id,
+      name: `${u.org_name ? u.org_name + ' — ' : ''}${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || `Usuario ${u.id.slice(0, 6)}`,
+      org_name: u.org_name,
+    }))
 
   const getPagedData = (data: any[]) => {
     const total = Math.max(1, Math.ceil(data.length / PAGE))
@@ -892,6 +1031,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <span className="hidden sm:inline">Ver Tienda</span>
             </button>
 
+            {section === 'users' && (
+              <button type="button" onClick={() => setUserCreateModal(true)} style={btnPrimary}>
+                {I.plus} <span>Nuevo Usuario</span>
+              </button>
+            )}
             {section === 'products' && (
               <button type="button" onClick={() => setProductModal({ open: true, editId: null })} style={btnPrimary}>
                 {I.plus} <span>Nuevo Producto</span>
@@ -1047,7 +1191,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                       </div>
                                       <div>
                                         <div style={{ fontWeight: 700, color: B.text, fontSize: 14 }}>{u.first_name} {u.last_name}</div>
-                                        <div style={{ fontSize: 11, color: B.textFaint }}>ID: {u.id.slice(0, 8)}…</div>
+                                        <div style={{ fontSize: 11, color: B.textFaint }}>{u.email ? `${u.email} • ` : ''}ID: {u.id.slice(0, 8)}…</div>
                                       </div>
                                     </div>
                                   </TD>
@@ -1150,6 +1294,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                           editId: p.id,
                                           initialData: {
                                             title: p.title,
+                                            producer: p.producer || '',
+                                            producer_id: p.producer_id || '',
                                             category_id: p.category_id || '',
                                             price: String(p.price),
                                             unit: p.unit || 'uds',
@@ -1233,6 +1379,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                           editId: e.id,
                                           initialData: {
                                             title: e.title,
+                                            host: e.host || '',
+                                            host_id: e.host_id || '',
                                             price: String(e.price),
                                             capacity: String(parseInt(e.capacity) || 10),
                                             duration: e.duration,
@@ -1436,6 +1584,32 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <label style={lbl}>Organización / Emprendimiento</label>
               <input style={inp} value={userEditModal.org_name || ''} onChange={e => setUserEditModal({ ...userEditModal, org_name: e.target.value })} />
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={lbl}>Departamento</label>
+                <select
+                  style={inp}
+                  value={userEditModal.department || ''}
+                  onChange={e => setUserEditModal({ ...userEditModal, department: e.target.value })}
+                >
+                  <option value="">Seleccionar departamento...</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Municipio</label>
+                <input
+                  style={inp}
+                  placeholder="Ej: Pitalito, Pasto"
+                  value={userEditModal.municipality || ''}
+                  onChange={e => setUserEditModal({ ...userEditModal, municipality: e.target.value })}
+                />
+              </div>
+            </div>
             <div style={{ marginBottom: 24 }}>
               <label style={lbl}>Rol en el ecosistema</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1483,6 +1657,161 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 {userSaving ? 'Guardando…' : '✅ Guardar Cambios'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL CREAR USUARIO ── */}
+      {userCreateModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.15)', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: 0, fontWeight: 700 }}>
+                👤 Crear Nuevo Usuario
+              </h3>
+              <button
+                type="button"
+                onClick={() => setUserCreateModal(false)}
+                style={{ background: 'none', border: 'none', fontSize: 22, color: B.textFaint, cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={lbl}>Nombre *</label>
+                  <input
+                    style={inp}
+                    placeholder="Ej: Carlos"
+                    required
+                    value={newUserData.first_name}
+                    onChange={e => setNewUserData({ ...newUserData, first_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label style={lbl}>Apellido</label>
+                  <input
+                    style={inp}
+                    placeholder="Ej: Pérez"
+                    value={newUserData.last_name}
+                    onChange={e => setNewUserData({ ...newUserData, last_name: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={lbl}>Organización / Productor / Anfitrión</label>
+                <input
+                  style={inp}
+                  placeholder="Ej: Lemongust, Finca La Esperanza..."
+                  value={newUserData.org_name}
+                  onChange={e => setNewUserData({ ...newUserData, org_name: e.target.value })}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={lbl}>Correo Electrónico *</label>
+                  <input
+                    type="email"
+                    style={inp}
+                    placeholder="usuario@ejemplo.com"
+                    required
+                    value={newUserData.email}
+                    onChange={e => setNewUserData({ ...newUserData, email: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label style={lbl}>Contraseña Temporal *</label>
+                  <input
+                    type="password"
+                    style={inp}
+                    placeholder="Mínimo 6 caracteres"
+                    required
+                    minLength={6}
+                    value={newUserData.password}
+                    onChange={e => setNewUserData({ ...newUserData, password: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={lbl}>Rol en el ecosistema</label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {['asociacion', 'turismo', 'comprador', 'admin'].map(r => {
+                    const sel = newUserData.user_type === r
+                    const st = ROLE_STYLES[r]
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setNewUserData({ ...newUserData, user_type: r })}
+                        style={{
+                          flex: '1 1 90px',
+                          padding: '10px 8px',
+                          borderRadius: 10,
+                          border: sel ? `2px solid ${st.color}` : `1.5px solid ${B.border}`,
+                          background: sel ? st.bg : '#FFFFFF',
+                          color: sel ? st.color : B.textMuted,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          fontFamily: B.fontBody,
+                        }}
+                      >
+                        {ROLE_LABELS[r]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={lbl}>Departamento</label>
+                  <select
+                    style={inp}
+                    value={newUserData.department}
+                    onChange={e => setNewUserData({ ...newUserData, department: e.target.value })}
+                  >
+                    <option value="">Seleccionar departamento...</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Municipio</label>
+                  <input
+                    style={inp}
+                    placeholder="Ej: Pitalito, Pasto"
+                    value={newUserData.municipality}
+                    onChange={e => setNewUserData({ ...newUserData, municipality: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setUserCreateModal(false)}
+                  style={{ flex: 1, padding: 12, borderRadius: 12, border: `1px solid ${B.borderStrong}`, background: '#FFFFFF', color: B.textMuted, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={userCreating}
+                  style={{ ...btnPrimary, flex: 1, justifyContent: 'center', padding: 12, fontSize: 14, opacity: userCreating ? 0.7 : 1 }}
+                >
+                  {userCreating ? 'Creando…' : '✨ Crear Usuario'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1803,6 +2132,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
           title={productModal.editId ? 'Editar Producto' : 'Nuevo Producto'}
           categories={categories.filter(c => c.business_type === 'asociacion')}
           initialData={productModal.initialData}
+          producers={producerOptions}
         />
       )}
 
@@ -1815,6 +2145,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
           title={expModal.editId ? 'Editar Experiencia' : 'Nueva Experiencia'}
           categories={categories.filter(c => c.business_type === 'turismo')}
           initialData={expModal.initialData}
+          hosts={hostOptions}
         />
       )}
     </div>

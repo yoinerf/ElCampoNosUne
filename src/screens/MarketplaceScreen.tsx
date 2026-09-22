@@ -1,7 +1,9 @@
-import { useRef, useState, useEffect } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import ProductModal from '../components/ProductModal'
 import { supabase } from '../lib/supabase'
+import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
+import { isAdvertisementActive } from '../lib/dateColombia'
 
 export interface Product {
   id: string
@@ -28,8 +30,8 @@ export interface CartItem {
 
 interface MarketplaceScreenProps {
   onOpenCheckout?: (items: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => void
-  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'superadmin' | any) => void
+  activeNav?: string
   onProfileClick?: () => void
   initialSelectedProduct?: string | null
   onClearInitialProduct?: () => void
@@ -1082,7 +1084,7 @@ export default function MarketplaceScreen({
   const loadProducts = async () => {
     try {
       const [{ data: productsData, error: prodErr }, { data: reviewsData }, { data: categoriesData }] = await Promise.all([
-        supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
+        supabase.from('products').select('*, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }),
         supabase.from('product_reviews').select('product_id, rating'),
         supabase.from('categories').select('id, name')
       ])
@@ -1115,8 +1117,15 @@ export default function MarketplaceScreen({
           || p.images?.[0]?.image_url
           || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
 
+        // Usar el nombre actual del perfil si está disponible (para reflejar cambios de organización)
+        const profile = p.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+        const producerName = profile
+          ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || p.producer || 'Productor')
+          : (p.producer || 'Productor')
+
         return {
           ...p,
+          producer: producerName,
           img: primaryImg,
           images: p.images || [],
           description: p.description || '',
@@ -1138,6 +1147,10 @@ export default function MarketplaceScreen({
     }
   }
 
+
+  const [allAds, setAllAds] = useState<any[]>([])
+  const [activeAds, setActiveAds] = useState<any[]>([])
+
   useEffect(() => {
     loadProducts()
 
@@ -1152,12 +1165,98 @@ export default function MarketplaceScreen({
         .eq('id', user.id)
         .single()
 
-      setUserRole((data?.user_type as 'asociacion' | 'turismo' | 'comprador' | null) ?? null)
+      setUserRole((data?.user_type as any) ?? null)
+    }
+
+    const loadAds = async () => {
+      try {
+        const { data } = await supabase
+          .from('advertisements')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (data) {
+          setAllAds(data)
+          const validAds = data.filter(isAdvertisementActive)
+          setActiveAds(validAds)
+        }
+      } catch (err) {
+        console.error('Error loading ads:', err)
+      }
     }
 
     loadRole()
+    loadAds()
   }, [])
 
+  const [dismissedCategories, setDismissedCategories] = useState<Record<string, boolean>>({})
+  const [featuredIndex, setFeaturedIndex] = useState(0)
+  const [featuredSlideDir, setFeaturedSlideDir] = useState<'left' | 'right' | null>(null)
+  const [featuredAnimating, setFeaturedAnimating] = useState(false)
+
+
+
+  // Obtener TODOS los destacados de la categoría actual (o Todos)
+  // La ventana flotante promocional SOLO debe aparecer si existe un anuncio activo y vigente en la tabla advertisements
+  // Valida que no se haya visto en la sesión y valida estrictamente fechas de activación con hora Colombia
+  const categoryFeaturedList = (() => {
+    if (loading || selectedProduct || dismissedCategories[activeFilter]) return []
+
+    const validAds = activeAds.filter((ad) => {
+      if (ad.type !== 'product' || !ad.product_id) return false
+      if (!isAdvertisementActive(ad)) return false
+      const p = products.find((prod) => prod.id === ad.product_id)
+      if (!p) return false
+      if (hasSeenPromoInSession(ad.id)) return false
+      return activeFilter === 'Todos' || p.category === activeFilter
+    })
+
+    return validAds.flatMap((ad) => {
+      const p = products.find((prod) => prod.id === ad.product_id)
+      if (!p) return []
+      return [{ adId: ad.id, product: p, title: ad.title || p.title, img: ad.image_url || p.img }]
+    })
+  })()
+
+  const categoryFeatured = categoryFeaturedList.length > 0 ? categoryFeaturedList[Math.min(featuredIndex, categoryFeaturedList.length - 1)] : null
+
+  const categoryFeaturedListRef = useRef<typeof categoryFeaturedList>([])
+  categoryFeaturedListRef.current = categoryFeaturedList
+
+  // Auto-avance cada 5 segundos — dependencias estables, sin riesgo de bucle
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const list = categoryFeaturedListRef.current
+      if (list.length <= 1) return
+      setFeaturedSlideDir('left')
+      setFeaturedAnimating(true)
+      setTimeout(() => {
+        setFeaturedIndex((prev) => (prev + 1) % list.length)
+        setFeaturedSlideDir(null)
+        setFeaturedAnimating(false)
+      }, 320)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const navigateFeatured = (dir: 'prev' | 'next') => {
+    if (featuredAnimating || categoryFeaturedListRef.current.length <= 1) return
+    setFeaturedSlideDir(dir === 'next' ? 'left' : 'right')
+    setFeaturedAnimating(true)
+    setTimeout(() => {
+      const len = categoryFeaturedListRef.current.length
+      setFeaturedIndex((prev) => {
+        if (dir === 'next') return (prev + 1) % len
+        return (prev - 1 + len) % len
+      })
+      setFeaturedSlideDir(null)
+      setFeaturedAnimating(false)
+    }, 320)
+  }
+
+
+
+
+  const isAdmin = (userRole || propUserRole) === 'admin'
   const isProducer = (userRole || propUserRole) === 'asociacion'
   const canCreateProduct = isProducer
   const filters = ['Todos', ...Array.from(new Set(products.map((product) => product.category?.trim()).filter(Boolean)))]
@@ -1210,6 +1309,11 @@ export default function MarketplaceScreen({
   }
 
   const filtered = products.filter((p) => {
+    // Ocultar productos/experiencias sin stock (stock = 0)
+    if (p.stock !== undefined && p.stock !== null && p.stock !== '') {
+      const stockNum = parseInt(String(p.stock).replace(/\D/g, ''), 10)
+      if (!isNaN(stockNum) && stockNum <= 0) return false
+    }
     const matchesFilter = activeFilter === 'Todos' || p.category === activeFilter
     const q = searchVal.trim().toLowerCase()
     const matchesSearch = !q || p.title.toLowerCase().includes(q) || p.producer.toLowerCase().includes(q)
@@ -1574,7 +1678,10 @@ export default function MarketplaceScreen({
     )
   }
 
-  const outstandingProducts = products.filter(p => p.outstanding)
+  const outstandingProducts = products.filter((p) => {
+    const ad = allAds.find((a) => a.product_id === p.id)
+    return ad ? isAdvertisementActive(ad) : false
+  })
 
   return (
     <ScreenShell
@@ -1610,6 +1717,376 @@ export default function MarketplaceScreen({
         )
       })() : (
         <>
+          {/* ══ VENTANA FLOTANTE CENTRADA: CARRUSEL DE PRODUCTOS DESTACADOS ══ */}
+          {categoryFeatured && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 99,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20,
+                background: 'rgba(21, 56, 35, 0.5)',
+                backdropFilter: 'blur(8px)',
+              }}
+              onClick={() => {
+                categoryFeaturedList.forEach((f) => markPromoAsSeenInSession(f.adId))
+                setDismissedCategories((prev) => ({ ...prev, [activeFilter]: true }))
+              }}
+            >
+              {/* ── Flecha Izquierda ── */}
+              {categoryFeaturedList.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigateFeatured('prev') }}
+                  style={{
+                    position: 'absolute',
+                    left: 'max(12px, calc(50% - 222px))',
+                    zIndex: 110,
+                    width: 44,
+                    height: 44,
+                    background: 'none',
+                    border: 'none',
+                    color: '#FFF',
+                    fontSize: 32,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                    transition: 'transform 0.15s',
+                  }}
+                  className="hover:scale-125"
+                  aria-label="Producto anterior"
+                >
+                  ‹
+                </button>
+              )}
+
+              {/* ── Tarjeta del producto ── */}
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 380,
+                  height: 520,
+                  maxHeight: '85vh',
+                  borderRadius: 28,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  boxShadow: '0 25px 60px rgba(0, 0, 0, 0.45)',
+                  cursor: 'pointer',
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
+                  animation: 'popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  markPromoAsSeenInSession(categoryFeatured.adId)
+                  handleSelectProduct(categoryFeatured.product.id)
+                }}
+              >
+                {/* Imagen de fondo con transición de deslizamiento */}
+                <img
+                  key={categoryFeatured.adId}
+                  src={categoryFeatured.img}
+                  alt={categoryFeatured.title}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    position: 'absolute',
+                    inset: 0,
+                    animation: featuredSlideDir
+                      ? `slideOut${featuredSlideDir === 'left' ? 'Left' : 'Right'} 0.32s cubic-bezier(0.4,0,0.2,1) forwards`
+                      : 'slideInFade 0.32s cubic-bezier(0.4,0,0.2,1) forwards',
+                  }}
+                />
+
+                {/* Gradiente */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.05) 35%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.92) 100%)',
+                    pointerEvents: 'none',
+                  }}
+                />
+
+                {/* Tag destacado */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 20,
+                    left: 20,
+                    background: 'linear-gradient(135deg, #E5AE30 0%, #BA5A30 100%)',
+                    color: '#FFFFFF',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '7px 15px',
+                    borderRadius: 20,
+                    letterSpacing: 0.8,
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    zIndex: 5,
+                  }}
+                >
+                  <span>⭐</span>
+                  <span>Destacado</span>
+                </div>
+
+                {/* Contador de anuncios (ej: 2 / 3) — solo si hay más de uno */}
+                {categoryFeaturedList.length > 1 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 20,
+                      right: 66,
+                      background: 'rgba(0,0,0,0.5)',
+                      backdropFilter: 'blur(6px)',
+                      color: '#FFF',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: '5px 12px',
+                      borderRadius: 20,
+                      zIndex: 10,
+                      border: '1px solid rgba(255,255,255,0.2)',
+                    }}
+                  >
+                    {Math.min(featuredIndex, categoryFeaturedList.length - 1) + 1} / {categoryFeaturedList.length}
+                  </div>
+                )}
+
+                {/* Botón cerrar */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    categoryFeaturedList.forEach((f) => markPromoAsSeenInSession(f.adId))
+                    setDismissedCategories((prev) => ({ ...prev, [activeFilter]: true }))
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 18,
+                    right: 18,
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    background: 'rgba(0, 0, 0, 0.55)',
+                    color: '#FFFFFF',
+                    border: '1.5px solid rgba(255, 255, 255, 0.3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                    fontWeight: 800,
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 10,
+                    transition: 'all 0.2s ease',
+                  }}
+                  className="hover:scale-110"
+                  aria-label="Cerrar producto destacado"
+                >
+                  ✕
+                </button>
+
+                {/* Contenido inferior */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    padding: '24px 22px 22px',
+                    zIndex: 5,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.22)',
+                        backdropFilter: 'blur(6px)',
+                        color: '#FFF8EE',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        padding: '3px 10px',
+                        borderRadius: 12,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {categoryFeatured.product.category}
+                    </span>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 12, fontWeight: 600 }}>
+                      {categoryFeatured.product.producer}
+                    </span>
+                  </div>
+
+                  <h2
+                    style={{
+                      margin: 0,
+                      fontFamily: "'Poppins', sans-serif",
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: '#FFFFFF',
+                      lineHeight: 1.25,
+                      textShadow: '0 2px 10px rgba(0,0,0,0.6)',
+                    }}
+                  >
+                    {categoryFeatured.title}
+                  </h2>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span style={{ color: '#E5AE30', fontSize: 20, fontWeight: 800, fontFamily: "'Poppins', sans-serif" }}>
+                      {formatPrice(categoryFeatured.product.price)}
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginLeft: 4 }}>
+                        / {categoryFeatured.product.unit || 'ud'}
+                      </span>
+                    </span>
+
+                    <span
+                      style={{
+                        background: 'linear-gradient(135deg, #205134 0%, #2A6542 100%)',
+                        color: '#FFFFFF',
+                        padding: '8px 16px',
+                        borderRadius: 12,
+                        fontSize: 13,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                      }}
+                    >
+                      Ver producto →
+                    </span>
+                  </div>
+
+                  {/* Puntos indicadores */}
+                  {categoryFeaturedList.length > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+                      {categoryFeaturedList.map((_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!featuredAnimating) {
+                              setFeaturedSlideDir(i > featuredIndex ? 'left' : 'right')
+                              setFeaturedAnimating(true)
+                              setTimeout(() => {
+                                setFeaturedIndex(i)
+                                setFeaturedSlideDir(null)
+                                setFeaturedAnimating(false)
+                              }, 320)
+                            }
+                          }}
+                          style={{
+                            width: i === featuredIndex ? 20 : 8,
+                            height: 8,
+                            borderRadius: 4,
+                            background: i === featuredIndex ? '#E5AE30' : 'rgba(255,255,255,0.45)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 0,
+                            transition: 'width 0.3s ease, background 0.3s ease',
+                          }}
+                          aria-label={`Ir al anuncio ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Flecha Derecha ── */}
+              {categoryFeaturedList.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigateFeatured('next') }}
+                  style={{
+                    position: 'absolute',
+                    right: 'max(12px, calc(50% - 222px))',
+                    zIndex: 110,
+                    width: 44,
+                    height: 44,
+                    background: 'none',
+                    border: 'none',
+                    color: '#FFF',
+                    fontSize: 32,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                    transition: 'transform 0.15s',
+                  }}
+                  className="hover:scale-125"
+                  aria-label="Producto siguiente"
+                >
+                  ›
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ══ BARRA SUPER ADMIN (Si el usuario es admin) ══ */}
+          {isAdmin && (
+            <div
+              style={{
+                background: 'linear-gradient(90deg, #183B27 0%, #205134 100%)',
+                color: '#fff',
+                padding: '10px 18px',
+                margin: '0 -18px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                boxShadow: '0 4px 12px rgba(32,81,52,0.2)',
+                borderRadius: '0 0 14px 14px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⚡</span>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 13, fontFamily: "'Poppins', sans-serif" }}>Modo Super Administrador</span>
+                  <span style={{ opacity: 0.85, fontSize: 12, marginLeft: 8, display: 'inline-block' }}>Vista previa de la tienda</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate?.('superadmin')}
+                style={{
+                  background: '#E5AE30',
+                  color: '#153823',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '7px 16px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                  transition: 'all 0.2s ease',
+                }}
+                className="hover:scale-105"
+              >
+                <span>← Volver al Dashboard</span>
+              </button>
+            </div>
+          )}
+
           {/* ══ BANNER TIENDA ══ */}
           <div
             style={{
@@ -1627,6 +2104,89 @@ export default function MarketplaceScreen({
             <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#FFFFFF', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Productos del campo</h1>
             <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Frescos y directos de productores colombianos</p>
           </div>
+
+          {/* ══ ANUNCIOS DESTACADOS ACTIVOS (Valida fechas de activación y tipo producto) ══ */}
+          {activeAds.filter(isAdvertisementActive).filter((a) => a.type === 'product' && a.product_id).length > 0 && (
+            <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {activeAds.filter(isAdvertisementActive).filter((a) => a.type === 'product' && a.product_id).map((ad) => (
+                <div
+                  key={ad.id}
+                  onClick={() => {
+                    if (ad.product_id) {
+                      handleSelectProduct(ad.product_id)
+                    }
+                  }}
+                  style={{
+                    cursor: ad.product_id ? 'pointer' : 'default',
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                    background: '#FFFFFF',
+                    border: '1.5px solid #EDE6DD',
+                    boxShadow: '0 4px 18px rgba(32,81,52,0.06)',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 16,
+                    padding: 14,
+                    position: 'relative',
+                    transition: 'all 0.2s ease',
+                  }}
+                  className="hover:border-[#205134] hover:shadow-md"
+                >
+                  {ad.image_url && (
+                    <img
+                      src={ad.image_url}
+                      alt={ad.title}
+                      style={{
+                        width: 84,
+                        height: 84,
+                        borderRadius: 14,
+                        objectFit: 'cover',
+                        flexShrink: 0,
+                        border: '1px solid #E8DED0',
+                      }}
+                    />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <span
+                        style={{
+                          background: '#EAF4ED',
+                          color: '#205134',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: 20,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        📢 Destacado
+                      </span>
+                      <span style={{ fontSize: 11, color: '#8C827A', fontWeight: 600 }}>El Campo Nos Une</span>
+                    </div>
+                    <h3
+                      style={{
+                        margin: '0 0 6px 0',
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: '#205134',
+                        fontFamily: "'Poppins', sans-serif",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {ad.title}
+                    </h3>
+                    {ad.product_id && (
+                      <p style={{ margin: 0, fontSize: 12, color: '#BA5A30', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span>Ver producto en catálogo</span>
+                        <span>→</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ══ BARRA DE BÚSQUEDA ══ */}
           <div style={{ position: 'relative', marginBottom: 4 }}>
@@ -1688,12 +2248,7 @@ export default function MarketplaceScreen({
                 <p style={{ margin: 0, color: '#C8860A', fontSize: 11, fontFamily: "'Poppins', sans-serif", fontWeight: 800, letterSpacing: 0.2 }}>
                   PRODUCTOS GENUINOS.
                 </p>
-                <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#205134', margin: '0 0 16px', fontWeight: 700 }}>
-                  Los favoritos del mes
-                </h2>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
-                  {outstandingProducts.slice(0, 6).map(renderProductCard)}
-                </div>
+
               </div>
             )}
 

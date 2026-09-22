@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import ExperienceReservationModal from '../components/ExperienceReservationModal'
 import AuthRequiredModal from '../components/AuthRequiredModal'
 import ExperienceModal from '../components/ExperienceModal'
 import { supabase } from '../lib/supabase'
+import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
+import { isAdvertisementActive } from '../lib/dateColombia'
 
 const tagColors: Record<string, string> = {
   Naturaleza: '#3D7A28',
@@ -29,14 +31,14 @@ interface Experience {
   featured: boolean
 }
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'superadmin' | 'admin'
 
 interface TourismScreenProps {
   onRequireAuth?: (mode: 'auth' | 'login') => void
-  onNavigate: (tab: Tab) => void
-  activeNav?: Tab
+  onNavigate: (tab: Tab | any) => void
+  activeNav?: Tab | any
   onProfileClick?: () => void
-  userRole?: 'asociacion' | 'turismo' | 'comprador' | null
+  userRole?: 'asociacion' | 'turismo' | 'comprador' | 'admin' | null
 }
 
 export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick, userRole: propUserRole }: TourismScreenProps) {
@@ -80,12 +82,18 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   })
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingReservation, setPendingReservation] = useState<Experience | null>(null)
-  const [userRole, setUserRole] = useState<'asociacion' | 'turismo' | 'comprador' | null>(null)
+  const [userRole, setUserRole] = useState<'asociacion' | 'turismo' | 'comprador' | 'admin' | null>(null)
+  const [allAds, setAllAds] = useState<any[]>([])
+  const [activeAds, setActiveAds] = useState<any[]>([])
+  const [dismissedPromo, setDismissedPromo] = useState(false)
+  const [featuredIndex, setFeaturedIndex] = useState(0)
+  const [featuredSlideDir, setFeaturedSlideDir] = useState<'left' | 'right' | null>(null)
+  const [featuredAnimating, setFeaturedAnimating] = useState(false)
 
   const loadExperiences = async () => {
     try {
       const [{ data: experiencesData, error: expErr }, { data: reviewsData }] = await Promise.all([
-        supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
+        supabase.from('experiences').select('*, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }),
         supabase.from('experience_reviews').select('experience_id, rating'),
       ])
 
@@ -116,8 +124,14 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
           || exp.images?.[0]?.image_url 
           || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
 
+        const profile = exp.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+        const hostName = profile
+          ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || exp.host || 'Comunidad local')
+          : (exp.host || 'Comunidad local')
+
         return {
           ...exp,
+          host: hostName,
           img: primaryImg,
           description: exp.description || '',
           rating: avg,
@@ -147,12 +161,94 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         .eq('id', user.id)
         .single()
 
-      setUserRole((data?.user_type as 'asociacion' | 'turismo' | 'comprador' | null) ?? null)
+      setUserRole((data?.user_type as any) ?? null)
+    }
+
+    const loadAds = async () => {
+      try {
+        const { data } = await supabase
+          .from('advertisements')
+          .select('*')
+          .order('created_at', { ascending: false })
+        if (data) {
+          setAllAds(data)
+          const validAds = data.filter(isAdvertisementActive)
+          setActiveAds(validAds)
+        }
+      } catch (err) {
+        console.error('Error loading ads in tourism:', err)
+      }
     }
 
     loadRole()
+    loadAds()
   }, [])
 
+  // Obtener anuncios destacados de experiencias activos y vigentes en Colombia
+  // Valida que no se haya visto en la sesión y valida estrictamente fechas de activación con hora Colombia
+  const experienceFeaturedList = (() => {
+    if (loading || selected || dismissedPromo) return []
+
+    const validAds = activeAds.filter((ad) => {
+      if (ad.type !== 'experience' || !ad.experience_id) return false
+      if (!isAdvertisementActive(ad)) return false
+      const exp = experiences.find((e) => e.id === ad.experience_id)
+      if (!exp) return false
+      if (hasSeenPromoInSession(ad.id)) return false
+      return true
+    })
+
+    return validAds.flatMap((ad) => {
+      const exp = experiences.find((e) => e.id === ad.experience_id)
+      if (!exp) return []
+      return [{
+        adId: ad.id,
+        experience: exp,
+        title: ad.title || exp.title,
+        img: ad.image_url || exp.img,
+      }]
+    })
+  })()
+
+  const experienceFeatured = experienceFeaturedList.length > 0
+    ? experienceFeaturedList[Math.min(featuredIndex, experienceFeaturedList.length - 1)]
+    : null
+
+  const experienceFeaturedListRef = useRef<typeof experienceFeaturedList>([])
+  experienceFeaturedListRef.current = experienceFeaturedList
+
+  // Auto-avance cada 5 segundos
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const list = experienceFeaturedListRef.current
+      if (list.length <= 1) return
+      setFeaturedSlideDir('left')
+      setFeaturedAnimating(true)
+      setTimeout(() => {
+        setFeaturedIndex((prev) => (prev + 1) % list.length)
+        setFeaturedSlideDir(null)
+        setFeaturedAnimating(false)
+      }, 320)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const navigateFeatured = (dir: 'prev' | 'next') => {
+    if (featuredAnimating || experienceFeaturedListRef.current.length <= 1) return
+    setFeaturedSlideDir(dir === 'next' ? 'left' : 'right')
+    setFeaturedAnimating(true)
+    setTimeout(() => {
+      const len = experienceFeaturedListRef.current.length
+      setFeaturedIndex((prev) => {
+        if (dir === 'next') return (prev + 1) % len
+        return (prev - 1 + len) % len
+      })
+      setFeaturedSlideDir(null)
+      setFeaturedAnimating(false)
+    }, 320)
+  }
+
+  const isAdmin = (userRole || propUserRole) === 'admin'
   const isTurismo = (userRole || propUserRole) === 'turismo'
   const canCreateExperience = isTurismo
   const filteredExperiences = experiences.filter((experience) => {
@@ -357,7 +453,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       <AuthRequiredModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} onRequireAuth={(mode) => onRequireAuth?.(mode)} />
       <ExperienceReservationModal
         open={reservationModalOpen}
-        experience={pendingReservation || selectedExperience}
+        experience={pendingReservation || selectedExperience || null}
         initialGuests={detailGuests}
         initialDate={detailDate}
         onClose={() => {
@@ -370,8 +466,15 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         }}
       />
 
-      {selectedExperience ? (
-        <div className="h-full overflow-y-auto" style={{ background: '#F5EEE6' }}>
+      <ScreenShell
+        activeNav={activeNav ?? 'tourism'}
+        onNavigate={onNavigate}
+        onProfileClick={onProfileClick}
+        userRole={userRole || propUserRole}
+        contentStyle={{ paddingBottom: 20 }}
+      >
+        {selectedExperience ? (
+          <div style={{ margin: '0 -18px', background: '#F5EEE6' }}>
           <div style={{ position: 'relative', height: 240 }}>
             <img src={selectedExperience.img} alt={selectedExperience.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(28,63,16,0.7) 0%, transparent 50%)' }} />
@@ -636,13 +739,377 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
           </div>
         </div>
       ) : (
-        <ScreenShell
-          activeNav={activeNav ?? 'tourism'}
-          onNavigate={onNavigate}
-          onProfileClick={onProfileClick}
-          userRole={userRole || propUserRole}
-          contentStyle={{ paddingBottom: 20 }}
-        >
+        <>
+          {/* ══ VENTANA FLOTANTE CENTRADA: CARRUSEL DE EXPERIENCIAS DESTACADAS ══ */}
+          {experienceFeatured && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 99,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: 20,
+                background: 'rgba(21, 56, 35, 0.5)',
+                backdropFilter: 'blur(8px)',
+              }}
+              onClick={() => {
+                experienceFeaturedList.forEach((f) => markPromoAsSeenInSession(f.adId))
+                setDismissedPromo(true)
+              }}
+            >
+              {/* ── Flecha Izquierda ── */}
+              {experienceFeaturedList.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigateFeatured('prev') }}
+                  style={{
+                    position: 'absolute',
+                    left: 'max(12px, calc(50% - 222px))',
+                    zIndex: 110,
+                    width: 44,
+                    height: 44,
+                    background: 'none',
+                    border: 'none',
+                    color: '#FFF',
+                    fontSize: 32,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                    transition: 'transform 0.15s',
+                  }}
+                  className="hover:scale-125"
+                  aria-label="Experiencia anterior"
+                >
+                  ‹
+                </button>
+              )}
+
+              {/* ── Tarjeta de la experiencia ── */}
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 380,
+                  height: 520,
+                  maxHeight: '85vh',
+                  borderRadius: 28,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  boxShadow: '0 25px 60px rgba(0, 0, 0, 0.45)',
+                  cursor: 'pointer',
+                  border: '2px solid rgba(255, 255, 255, 0.3)',
+                  animation: 'popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  markPromoAsSeenInSession(experienceFeatured.adId)
+                  handleSelectExperience(experienceFeatured.experience.id)
+                }}
+              >
+                {/* Imagen de fondo con transición de deslizamiento */}
+                <img
+                  key={experienceFeatured.adId}
+                  src={experienceFeatured.img}
+                  alt={experienceFeatured.title}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    objectFit: 'cover',
+                    position: 'absolute',
+                    inset: 0,
+                    animation: featuredSlideDir
+                      ? `slideOut${featuredSlideDir === 'left' ? 'Left' : 'Right'} 0.32s cubic-bezier(0.4,0,0.2,1) forwards`
+                      : 'slideInFade 0.32s cubic-bezier(0.4,0,0.2,1) forwards',
+                  }}
+                />
+
+                {/* Gradiente */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.05) 35%, rgba(0,0,0,0.2) 55%, rgba(0,0,0,0.92) 100%)',
+                    pointerEvents: 'none',
+                  }}
+                />
+
+                {/* Tag destacado */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: 20,
+                    left: 20,
+                    background: 'linear-gradient(135deg, #6BAA3D 0%, #205134 100%)',
+                    color: '#FFFFFF',
+                    fontSize: 12,
+                    fontWeight: 800,
+                    padding: '7px 15px',
+                    borderRadius: 20,
+                    letterSpacing: 0.8,
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                    fontFamily: "'Nunito Sans', sans-serif",
+                    zIndex: 5,
+                  }}
+                >
+                  <span>⭐</span>
+                  <span>Experiencia Destacada</span>
+                </div>
+
+                {/* Contador de anuncios (ej: 2 / 3) */}
+                {experienceFeaturedList.length > 1 && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 20,
+                      right: 66,
+                      background: 'rgba(0,0,0,0.5)',
+                      backdropFilter: 'blur(6px)',
+                      color: '#FFF',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      padding: '5px 12px',
+                      borderRadius: 20,
+                      zIndex: 10,
+                      border: '1px solid rgba(255,255,255,0.2)',
+                    }}
+                  >
+                    {Math.min(featuredIndex, experienceFeaturedList.length - 1) + 1} / {experienceFeaturedList.length}
+                  </div>
+                )}
+
+                {/* Botón cerrar */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    experienceFeaturedList.forEach((f) => markPromoAsSeenInSession(f.adId))
+                    setDismissedPromo(true)
+                  }}
+                  style={{
+                    position: 'absolute',
+                    top: 18,
+                    right: 18,
+                    width: 38,
+                    height: 38,
+                    borderRadius: '50%',
+                    background: 'rgba(0, 0, 0, 0.55)',
+                    color: '#FFFFFF',
+                    border: '1.5px solid rgba(255, 255, 255, 0.3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                    fontWeight: 800,
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 10,
+                    transition: 'all 0.2s ease',
+                  }}
+                  className="hover:scale-110"
+                  aria-label="Cerrar experiencia destacada"
+                >
+                  ✕
+                </button>
+
+                {/* Contenido inferior */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    padding: '24px 22px 22px',
+                    zIndex: 5,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.22)',
+                        backdropFilter: 'blur(6px)',
+                        color: '#FFF8EE',
+                        fontSize: 11,
+                        fontWeight: 800,
+                        padding: '3px 10px',
+                        borderRadius: 12,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      🌿 {experienceFeatured.experience.tags?.[0] || 'Experiencia'}
+                    </span>
+                    <span style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: 12, fontWeight: 600 }}>
+                      {experienceFeatured.experience.host}
+                    </span>
+                  </div>
+
+                  <h2
+                    style={{
+                      margin: 0,
+                      fontFamily: "'Poppins', sans-serif",
+                      fontSize: 24,
+                      fontWeight: 800,
+                      color: '#FFFFFF',
+                      lineHeight: 1.25,
+                      textShadow: '0 2px 10px rgba(0,0,0,0.6)',
+                    }}
+                  >
+                    {experienceFeatured.title}
+                  </h2>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                    <span style={{ color: '#E5AE30', fontSize: 20, fontWeight: 800, fontFamily: "'Poppins', sans-serif" }}>
+                      {formatPrice(experienceFeatured.experience.price)}
+                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginLeft: 4 }}>
+                        / persona
+                      </span>
+                    </span>
+
+                    <span
+                      style={{
+                        background: 'linear-gradient(135deg, #205134 0%, #2A6542 100%)',
+                        color: '#FFFFFF',
+                        padding: '8px 16px',
+                        borderRadius: 12,
+                        fontSize: 13,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                      }}
+                    >
+                      Ver experiencia →
+                    </span>
+                  </div>
+
+                  {/* Puntos indicadores */}
+                  {experienceFeaturedList.length > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: 6, marginTop: 10 }}>
+                      {experienceFeaturedList.map((_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            if (!featuredAnimating) {
+                              setFeaturedSlideDir(i > featuredIndex ? 'left' : 'right')
+                              setFeaturedAnimating(true)
+                              setTimeout(() => {
+                                setFeaturedIndex(i)
+                                setFeaturedSlideDir(null)
+                                setFeaturedAnimating(false)
+                              }, 320)
+                            }
+                          }}
+                          style={{
+                            width: i === featuredIndex ? 20 : 8,
+                            height: 8,
+                            borderRadius: 4,
+                            background: i === featuredIndex ? '#E5AE30' : 'rgba(255,255,255,0.45)',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 0,
+                            transition: 'width 0.3s ease, background 0.3s ease',
+                          }}
+                          aria-label={`Ir al anuncio ${i + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Flecha Derecha ── */}
+              {experienceFeaturedList.length > 1 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); navigateFeatured('next') }}
+                  style={{
+                    position: 'absolute',
+                    right: 'max(12px, calc(50% - 222px))',
+                    zIndex: 110,
+                    width: 44,
+                    height: 44,
+                    background: 'none',
+                    border: 'none',
+                    color: '#FFF',
+                    fontSize: 32,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textShadow: '0 2px 8px rgba(0,0,0,0.6)',
+                    transition: 'transform 0.15s',
+                  }}
+                  className="hover:scale-125"
+                  aria-label="Experiencia siguiente"
+                >
+                  ›
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ══ BARRA SUPER ADMIN (Si el usuario es admin) ══ */}
+          {isAdmin && (
+            <div
+              style={{
+                background: 'linear-gradient(90deg, #183B27 0%, #205134 100%)',
+                color: '#fff',
+                padding: '10px 18px',
+                margin: '0 -18px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                boxShadow: '0 4px 12px rgba(32,81,52,0.2)',
+                borderRadius: '0 0 14px 14px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⚡</span>
+                <div>
+                  <span style={{ fontWeight: 800, fontSize: 13, fontFamily: "'Poppins', sans-serif" }}>Modo Super Administrador</span>
+                  <span style={{ opacity: 0.85, fontSize: 12, marginLeft: 8, display: 'inline-block' }}>Vista previa de experiencias</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onNavigate?.('superadmin')}
+                style={{
+                  background: '#E5AE30',
+                  color: '#153823',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '7px 16px',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
+                  transition: 'all 0.2s ease',
+                }}
+                className="hover:scale-105"
+              >
+                <span>← Volver al Dashboard</span>
+              </button>
+            </div>
+          )}
+
           {/* ══ BANNER TURISMO — Verde para Experiencias según manual ══ */}
           <div
             style={{
@@ -660,6 +1127,89 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
             <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#F5EEE6', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Experiencias del campo</h1>
             <p style={{ margin: 0, color: 'rgba(245,238,230,0.75)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Vive el territorio con comunidades rurales colombianas</p>
           </div>
+
+          {/* ══ ANUNCIOS DESTACADOS ACTIVOS (Valida fechas de activación) ══ */}
+          {activeAds.filter(isAdvertisementActive).filter(a => a.type === 'experience' && a.experience_id).length > 0 && (
+            <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {activeAds.filter(isAdvertisementActive).filter(a => a.type === 'experience' && a.experience_id).map((ad) => (
+                <div
+                  key={ad.id}
+                  onClick={() => {
+                    if (ad.experience_id) {
+                      handleSelectExperience(ad.experience_id)
+                    }
+                  }}
+                  style={{
+                    cursor: ad.experience_id ? 'pointer' : 'default',
+                    borderRadius: 18,
+                    overflow: 'hidden',
+                    background: '#FFFFFF',
+                    border: '1.5px solid #EDE6DD',
+                    boxShadow: '0 4px 18px rgba(32,81,52,0.06)',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 16,
+                    padding: 14,
+                    position: 'relative',
+                    transition: 'all 0.2s ease',
+                  }}
+                  className="hover:border-[#205134] hover:shadow-md"
+                >
+                  {ad.image_url && (
+                    <img
+                      src={ad.image_url}
+                      alt={ad.title}
+                      style={{
+                        width: 84,
+                        height: 84,
+                        borderRadius: 14,
+                        objectFit: 'cover',
+                        flexShrink: 0,
+                        border: '1px solid #E8DED0',
+                      }}
+                    />
+                  )}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <span
+                        style={{
+                          background: '#EAF4ED',
+                          color: '#205134',
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: '2px 8px',
+                          borderRadius: 20,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        📢 Destacado
+                      </span>
+                      <span style={{ fontSize: 11, color: '#8C827A', fontWeight: 600 }}>El Campo Nos Une</span>
+                    </div>
+                    <h3
+                      style={{
+                        margin: '0 0 6px 0',
+                        fontSize: 15,
+                        fontWeight: 700,
+                        color: '#205134',
+                        fontFamily: "'Poppins', sans-serif",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      {ad.title}
+                    </h3>
+                    {ad.experience_id && (
+                      <p style={{ margin: 0, fontSize: 12, color: '#6BAA3D', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span>Explorar experiencia</span>
+                        <span>→</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* ══ BARRA DE BÚSQUEDA ══ */}
           <div style={{ position: 'relative', marginBottom: 4 }}>
@@ -878,9 +1428,10 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
               </div>
             )}
           </div>
-        </ScreenShell>
+        </>
       )}
-    </>
-  )
+    </ScreenShell>
+  </>
+)
 }
 

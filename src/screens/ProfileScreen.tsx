@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
+import { clearPromoSession } from '../lib/promoSession'
 
 const certifications = [
   { label: 'Productor Orgánico', icon: '🌱', active: true },
@@ -685,6 +686,7 @@ export default function ProfileScreen({ userRole: propRole, onNavigate, activeNa
         {/* Logout */}
         <button
           onClick={async () => {
+            clearPromoSession()
             await supabase.auth.signOut()
             window.location.href = '/'
           }}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
+import { isAdvertisementActive } from '../lib/dateColombia'
 import bannerImg from '../assets/banner-campo.webp'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile'
@@ -169,9 +170,10 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       }
 
       try {
-        const [{ data: products }, { data: reviewsData }] = await Promise.all([
-          supabase.from('products').select('id, title, producer, rating, price, images(*)').order('created_at', { ascending: false }).limit(10),
+        const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
+          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }).limit(30),
           supabase.from('product_reviews').select('product_id, rating'),
+          supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         ])
 
         if (products) {
@@ -185,6 +187,9 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             }
           }
 
+          // Filtrar anuncios activos según la hora oficial de Colombia
+          const activeProductAds = (adsData || []).filter(ad => ad.type === 'product' && isAdvertisementActive(ad))
+
           const processed = (products as any[]).map((p) => {
             const ratings = reviewsMap[p.id] || []
             const avg = ratings.length > 0
@@ -193,10 +198,79 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url 
               || p.images?.[0]?.image_url 
               || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
-            return { ...p, img: primaryImg, rating: avg }
-          }).sort((a, b) => b.rating - a.rating).slice(0, 3)
 
-          setFeatured(processed)
+            // Comprobar si el producto tiene un anuncio activo vigente
+            const matchingAd = activeProductAds.find((ad) => ad.product_id === p.id)
+            const isAdFeatured = !!matchingAd
+
+            // Comprobar si tiene algún anuncio en adsData que esté expirado o desactivado
+            const existingAd = (adsData || []).find((ad) => ad.product_id === p.id)
+            const isAdExpiredOrInactive = existingAd ? !isAdvertisementActive(existingAd) : false
+
+            // Un producto con outstanding=true es válido si NO tiene un anuncio expirado
+            const isOutstandingValid = p.outstanding === true && !isAdExpiredOrInactive
+
+            const profile = p.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+            const producerName = profile
+              ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || p.producer || 'Productor')
+              : (p.producer || 'Productor')
+
+            return {
+              ...p,
+              producer: producerName,
+              title: matchingAd?.title || p.title,
+              img: matchingAd?.image_url || primaryImg,
+              rating: avg,
+              isAdFeatured,
+              isOutstandingValid,
+            }
+          })
+
+          // Si hay algún producto en un anuncio activo que no vino en los primeros 30, consultarlo
+          const existingIds = new Set(processed.map((p) => p.id))
+          for (const ad of activeProductAds) {
+            if (ad.product_id && !existingIds.has(ad.product_id)) {
+              const { data: missingProd } = await supabase
+                .from('products')
+                .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
+                .eq('id', ad.product_id)
+                .single()
+              if (missingProd) {
+                const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url 
+                  || missingProd.images?.[0]?.image_url 
+                  || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
+                const profile = (missingProd as any).profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+                const producerName = profile
+                  ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || missingProd.producer || 'Productor')
+                  : (missingProd.producer || 'Productor')
+
+                processed.unshift({
+                  ...missingProd,
+                  producer: producerName,
+                  title: ad.title || missingProd.title,
+                  img: ad.image_url || primaryImg,
+                  rating: missingProd.rating ?? 5,
+                  isAdFeatured: true,
+                  isOutstandingValid: true,
+                })
+                existingIds.add(missingProd.id)
+              }
+            }
+          }
+
+          // Priorización de visualización en destacados:
+          // 1. Productos con anuncio publicitario activo (vigencia hora Colombia)
+          // 2. Productos destacados válidos (outstanding=true sin anuncio vencido)
+          // 3. Mejor calificados
+          processed.sort((a, b) => {
+            if (a.isAdFeatured && !b.isAdFeatured) return -1
+            if (!a.isAdFeatured && b.isAdFeatured) return 1
+            if (a.isOutstandingValid && !b.isOutstandingValid) return -1
+            if (!a.isOutstandingValid && b.isOutstandingValid) return 1
+            return b.rating - a.rating
+          })
+
+          setFeatured(processed.slice(0, 3))
         }
       } catch (e) {
         console.error('Error cargando destacados con reseñas en HomeScreen:', e)
@@ -204,7 +278,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
       const { data: tourismData } = await supabase
         .from('experiences')
-        .select('id, title, host, price, tags, images(*)')
+        .select('id, title, host, price, tags, images(*), profiles(org_name, first_name, last_name)')
         .order('created_at', { ascending: false })
         .limit(3)
       if (tourismData) {
@@ -212,7 +286,11 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           const primaryImg = e.images?.find((i: any) => i.is_primary)?.image_url 
             || e.images?.[0]?.image_url 
             || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
-          return { ...e, img: primaryImg }
+          const profile = e.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+          const hostName = profile
+            ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || e.host || 'Anfitrión')
+            : (e.host || 'Anfitrión')
+          return { ...e, host: hostName, img: primaryImg }
         })
         setTourism(mappedTourism as TourismPreview[])
       }

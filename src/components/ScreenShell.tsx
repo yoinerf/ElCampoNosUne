@@ -1,8 +1,9 @@
 import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
+import { clearPromoSession } from '../lib/promoSession'
 import logoSrc from '../assets/logo-nofond.png'
 
-type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin'
+type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
 
 interface NavItem {
   id: NavTab
@@ -17,10 +18,10 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 interface ScreenShellProps {
-  activeNav?: NavTab
-  onNavigate?: (tab: NavTab) => void
+  activeNav?: NavTab | string
+  onNavigate?: (tab: any) => void
   onProfileClick?: () => void
-  userRole?: 'asociacion' | 'turismo' | 'comprador' | null
+  userRole?: 'asociacion' | 'turismo' | 'comprador' | 'admin' | string | null
   children: ReactNode
   contentStyle?: CSSProperties
   contentClassName?: string
@@ -213,6 +214,33 @@ export default function ScreenShell({
               </button>
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {userRole === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => onNavigate?.('superadmin')}
+                    style={{
+                      background: 'linear-gradient(135deg, #205134 0%, #173E26 100%)',
+                      color: '#fff',
+                      border: '1px solid rgba(229,174,48,0.5)',
+                      borderRadius: 10,
+                      padding: '8px 16px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      boxShadow: '0 2px 10px rgba(32,81,52,0.25)',
+                      transition: 'all 0.2s ease',
+                    }}
+                    className="hover:scale-105 active:scale-95"
+                    title="Volver al panel Super Admin"
+                  >
+                    <span style={{ fontSize: 13 }}>⚡</span>
+                    <span>Super Admin</span>
+                  </button>
+                )}
                 {(userRole === 'asociacion' || userRole === 'turismo') && (
                   <button
                     type="button"
@@ -290,6 +318,31 @@ export default function ScreenShell({
                         gap: 4,
                       }}
                     >
+                      {userRole === 'admin' && (
+                        <button
+                          onClick={() => { setIsProfileMenuOpen(false); onNavigate?.('superadmin'); }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '10px 14px',
+                            background: '#EAF4ED',
+                            border: '1px solid rgba(32,81,52,0.2)',
+                            cursor: 'pointer',
+                            borderRadius: 8,
+                            fontSize: 14,
+                            fontWeight: 700,
+                            fontFamily: "'Nunito Sans', sans-serif",
+                            color: '#205134',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                          className="hover:bg-[#DCEDE0]"
+                        >
+                          <span>⚡</span>
+                          <span>Panel Super Admin</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => { setIsProfileMenuOpen(false); handleProfileClick(); }}
                         style={{
@@ -312,6 +365,7 @@ export default function ScreenShell({
                       <div style={{ height: 1, background: '#EDE4D8', margin: '4px 0' }} />
                       <button
                         onClick={async () => {
+                          clearPromoSession()
                           await supabase.auth.signOut()
                           window.location.href = '/'
                         }}
@@ -420,6 +474,31 @@ export default function ScreenShell({
         {/* Mobile Menu Dropdown */}
         {isMenuOpen && (
           <div className="md:hidden" style={{ background: '#FAF7F0', borderTop: '1px solid #EDE4D8', padding: '8px 24px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {userRole === 'admin' && (
+              <button
+                type="button"
+                onClick={() => { onNavigate?.('superadmin'); setIsMenuOpen(false); }}
+                style={{
+                  background: 'linear-gradient(135deg, #205134 0%, #173E26 100%)',
+                  color: '#fff',
+                  border: '1px solid rgba(229,174,48,0.5)',
+                  textAlign: 'left',
+                  padding: '12px 16px',
+                  fontSize: 15,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  fontWeight: 700,
+                  borderRadius: 12,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginBottom: 6,
+                }}
+              >
+                <span>⚡</span>
+                <span>Panel Super Admin</span>
+              </button>
+            )}
             {navItems.map((item) => {
               const isActive = activeNav === item.id
               return (

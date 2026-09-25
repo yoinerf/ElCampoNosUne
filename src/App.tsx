@@ -9,20 +9,21 @@ import RegisterScreen from './screens/RegisterScreen'
 import LoginScreen from './screens/LoginScreen'
 import AdminPanelScreen from './screens/AdminPanelScreen'
 import { supabase } from './lib/supabase'
+import logoImg from './assets/logo-nofond.png'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin'
 type UserRole = 'asociacion' | 'turismo' | 'comprador'
 type AppFlow = 'auth' | 'login' | 'app'
 
-const getVisibleTabs = (role?: UserRole) => {
+const getVisibleTabs = (role?: UserRole): Tab[] => {
   switch (role) {
     case 'asociacion':
-      return ['home', 'market', 'profile'] as Tab[]
+      return ['admin', 'market']
     case 'turismo':
-      return ['home', 'market', 'tourism', 'profile'] as Tab[]
+      return ['admin', 'tourism']
     case 'comprador':
     default:
-      return ['home', 'market', 'tourism', 'profile'] as Tab[]
+      return ['home', 'market', 'tourism', 'profile']
   }
 }
 
@@ -50,11 +51,19 @@ export default function App() {
 
       const role = data?.user_type as UserRole | undefined
       setUserRole(role)
+
+      if (role === 'asociacion' || role === 'turismo') {
+        setActiveTab((prev) => {
+          if (role === 'asociacion' && prev === 'market') return 'market'
+          if (role === 'turismo' && prev === 'tourism') return 'tourism'
+          return 'admin'
+        })
+      }
     }
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setFlow('app')
-      loadRole(session)
+      await loadRole(session)
       setCheckingSession(false)
     })
 
@@ -79,7 +88,7 @@ export default function App() {
   const handleProfileClick = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
-      setFlow('auth')
+      setFlow('login')
     } else {
       setActiveTab('profile')
     }
@@ -87,7 +96,13 @@ export default function App() {
 
   const returnToStore = () => {
     setFlow('app')
-    setActiveTab('market')
+    if (userRole === 'turismo') {
+      setActiveTab('tourism')
+    } else if (userRole === 'asociacion') {
+      setActiveTab('market')
+    } else {
+      setActiveTab('market')
+    }
   }
 
   const goToProduct = (productId: string) => {
@@ -97,16 +112,47 @@ export default function App() {
 
   const returnToHome = () => {
     setFlow('app')
-    setActiveTab('home')
+    if (userRole === 'asociacion' || userRole === 'turismo') {
+      setActiveTab('admin')
+    } else {
+      setActiveTab('home')
+    }
   }
 
-  const isProducer = userRole === 'asociacion' || userRole === 'turismo'
+  const handleOpenCheckout = (products: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => {
+    window.history.pushState({ modal: 'checkout' }, '', window.location.href)
+    setCheckoutItems(products)
+    setCheckoutConfirm(() => onConfirm)
+  }
+
+  const handleCloseCheckout = () => {
+    // Only go back in history; the popstate listener will clear checkoutConfirm
+    window.history.back()
+  }
+
+  useEffect(() => {
+    const handlePopState = () => {
+      // If the browser goes back, close whatever modal is open
+      if (checkoutConfirm) {
+        setCheckoutConfirm(null)
+      } else if (flow !== 'app') {
+        setFlow('app')
+      }
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [checkoutConfirm, flow])
 
   const mainScreens: Record<Tab, JSX.Element> = {
-    home: isProducer ? (
-      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
-    ) : (
+
+
+    home: (
       <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} onSelectProduct={goToProduct} />
+    ),
+
+
+    admin: (
+      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
     market: (
       <MarketplaceScreen
@@ -114,10 +160,7 @@ export default function App() {
         activeNav={activeTab}
         onProfileClick={handleProfileClick}
         userRole={userRole}
-        onOpenCheckout={(products, onConfirm) => {
-          setCheckoutItems(products)
-          setCheckoutConfirm(() => onConfirm)
-        }}
+        onOpenCheckout={handleOpenCheckout}
       />
     ),
     tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
@@ -132,7 +175,7 @@ export default function App() {
       >
         <div style={{ textAlign: 'center' }}>
           <img
-            src="/src/assets/logo-nofond.png"
+            src={logoImg}
             alt="El Campo Nos Une"
             style={{ height: 60, margin: '0 auto 16px', display: 'block' }}
           />
@@ -147,20 +190,24 @@ export default function App() {
       <div className="min-h-screen w-full flex flex-col">
         <div className="flex-1">
           {flow === 'auth' && (
-            <RegisterScreen
-              onComplete={() => setFlow('app')}
-              onLogin={() => setFlow('login')}
-              onBackToStore={returnToStore}
-              onBackToHome={returnToHome}
-            />
+            <div key="register-flow" className="auth-screen-enter w-full min-h-screen">
+              <RegisterScreen
+                onComplete={() => setFlow('app')}
+                onLogin={() => setFlow('login')}
+                onBackToStore={returnToStore}
+                onBackToHome={returnToHome}
+              />
+            </div>
           )}
           {flow === 'login' && (
-            <LoginScreen
-              onLogin={() => setFlow('app')}
-              onRegister={() => setFlow('auth')}
-              onBackToStore={returnToStore}
-              onBackToHome={returnToHome}
-            />
+            <div key="login-flow" className="auth-screen-enter w-full min-h-screen">
+              <LoginScreen
+                onLogin={() => setFlow('app')}
+                onRegister={() => setFlow('auth')}
+                onBackToStore={returnToStore}
+                onBackToHome={returnToHome}
+              />
+            </div>
           )}
           {flow === 'app' && (checkoutConfirm ? (
             <CheckoutScreen
@@ -173,7 +220,7 @@ export default function App() {
                 }, {} as Record<string, number>)
                 localStorage.setItem('campoconecta_cart', JSON.stringify(newCart))
               }}
-              onBack={() => setCheckoutConfirm(null)}
+              onBack={handleCloseCheckout}
               onConfirm={checkoutConfirm}
               onRequireAuth={(mode) => setFlow(mode)}
               onViewProduct={(productId) => {
@@ -183,15 +230,13 @@ export default function App() {
             />
           ) : activeTab === 'market' ? (
             <MarketplaceScreen
-              onOpenCheckout={(items, confirmFn) => {
-                setCheckoutItems(items)
-                setCheckoutConfirm(() => confirmFn)
-              }}
+              onOpenCheckout={handleOpenCheckout}
               onNavigate={setActiveTab}
               activeNav={activeTab}
               onProfileClick={handleProfileClick}
               initialSelectedProduct={initialProduct}
               onClearInitialProduct={() => setInitialProduct(null)}
+              userRole={userRole}
             />
           ) : mainScreens[activeTab])}
         </div>

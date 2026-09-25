@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
 
 export interface ProductModalProps {
   isOpen: boolean
@@ -9,25 +10,39 @@ export interface ProductModalProps {
   categories?: { id: string; name: string }[]
 }
 
-const inputStyle = {
+const inputStyle: React.CSSProperties = {
   width: '100%',
-  padding: '12px 14px',
+  minWidth: 0,
+  padding: '10px 12px',
   borderRadius: 12,
   border: '1.5px solid #EDE4D8',
   fontSize: 14,
   fontFamily: "'Nunito Sans', sans-serif",
-  boxSizing: 'border-box' as const,
+  boxSizing: 'border-box',
   background: '#fff',
   color: '#3D2B1A',
+  outline: 'none',
 }
 
-const labelStyle = {
+const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 13,
   fontWeight: 700,
   color: '#205134',
-  marginBottom: 6,
+  marginBottom: 5,
   fontFamily: "'Nunito Sans', sans-serif",
+}
+
+const ACCEPTED = ['image/jpeg', 'image/jpg', 'image/png']
+const MAX_BYTES = 6 * 1024 * 1024
+
+interface UploadedImage {
+  file: File
+  preview: string
+  uploading: boolean
+  storagePath?: string
+  publicUrl?: string
+  error?: string
 }
 
 export default function ProductModal({
@@ -45,10 +60,14 @@ export default function ProductModal({
     price: '',
     stockNum: '0',
     unit: 'kg',
-    img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format',
     description: '',
     certified: true,
   })
+  const [images, setImages] = useState<UploadedImage[]>([])
+  const [existingImg, setExistingImg] = useState('')
+  const [dragOver, setDragOver] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -59,94 +78,299 @@ export default function ProductModal({
           price: initialData.price ? String(initialData.price) : '',
           stockNum: initialData.stockNum ? String(initialData.stockNum).replace(/\D/g, '') : (initialData.stock ? String(initialData.stock).replace(/\D/g, '') : '0'),
           unit: initialData.unit || 'kg',
-          img: initialData.img || '',
           description: initialData.description || '',
           certified: initialData.certified ?? true,
         })
+        setExistingImg(initialData.img || '')
       } else {
         const defaultCatId = categories.length > 0 ? categories[0].id : ''
-        setForm({
-          title: '',
-          category_id: defaultCatId,
-          price: '',
-          stockNum: '10',
-          unit: 'kg',
-          img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format',
-          description: '',
-          certified: true,
-        })
+        setForm({ title: '', category_id: defaultCatId, price: '', stockNum: '10', unit: 'kg', description: '', certified: true })
+        setExistingImg('')
       }
+      setImages([])
+      setUploadError('')
     }
   }, [isOpen, initialData, categories])
 
   if (!isOpen) return null
 
+  const validateFile = (file: File): string | null => {
+    if (!ACCEPTED.includes(file.type)) return 'Solo se permiten JPG y PNG'
+    if (file.size > MAX_BYTES) return 'El archivo supera los 6 MB'
+    return null
+  }
+
+  const uploadFile = async (file: File, idx: number) => {
+    setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: true, error: undefined } : img))
+    const { data: { user } } = await supabase.auth.getUser()
+    const ext = file.name.split('.').pop()
+    const storagePath = `${user?.id ?? 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error: upErr } = await supabase.storage.from('product-images').upload(storagePath, file, { contentType: file.type, upsert: false })
+    if (upErr) {
+      setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, error: upErr.message } : img))
+      return
+    }
+    const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(storagePath)
+    setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, storagePath, publicUrl } : img))
+  }
+
+  const addFiles = (files: FileList | File[]) => {
+    setUploadError('')
+    const arr = Array.from(files)
+    const valid: UploadedImage[] = []
+    for (const file of arr) {
+      const err = validateFile(file)
+      if (err) { setUploadError(err); continue }
+      valid.push({ file, preview: URL.createObjectURL(file), uploading: false })
+    }
+    if (valid.length === 0) return
+    setImages(prev => {
+      const baseIdx = prev.length
+      valid.forEach((v, i) => { setTimeout(() => uploadFile(v.file, baseIdx + i), 0) })
+      return [...prev, ...valid]
+    })
+  }
+
+  const removeImage = (idx: number) => {
+    setImages(prev => {
+      const removed = prev[idx]
+      if (removed.preview) URL.revokeObjectURL(removed.preview)
+      return prev.filter((_, i) => i !== idx)
+    })
+  }
+
   const handleSave = async () => {
     if (!form.title.trim() || !form.price) return
+    if (images.some(i => i.uploading)) { setUploadError('Espera a que terminen de subir las imágenes'); return }
+    const primaryUploaded = images.find(i => i.publicUrl)
+    const imgUrl = primaryUploaded?.publicUrl || existingImg || ''
     setSaving(true)
-    await onSave(form)
+    await onSave({
+      ...form,
+      img: imgUrl,
+      uploadedImages: images.filter(i => i.publicUrl).map((img, idx) => ({
+        storagePath: img.storagePath!,
+        imageUrl: img.publicUrl!,
+        isPrimary: idx === 0,
+        sortOrder: idx,
+      })),
+    })
     setSaving(false)
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 520, padding: 28, boxShadow: '0 20px 50px rgba(0,0,0,0.2)', boxSizing: 'border-box', maxHeight: '90vh', overflowY: 'auto' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h3 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 20, color: '#205134', margin: 0, fontWeight: 700 }}>
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-6">
+      <div className="w-full sm:max-w-[660px] bg-white rounded-2xl sm:rounded-3xl shadow-2xl box-border max-h-[96vh] sm:max-h-[88vh] flex flex-col overflow-hidden">
+        {/* ── Header fijo ── */}
+        <div className="flex-shrink-0 flex items-center justify-between px-5 sm:px-7 py-4 border-b border-[#F0EAE1] bg-white">
+          <h3 className="font-['Poppins'] text-lg sm:text-xl text-[#205134] m-0 font-bold truncate pr-3">
             {title}
           </h3>
-          <button type="button" onClick={onClose} style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: '#F3ECE2', cursor: 'pointer', fontSize: 18, color: '#9B4728', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>x</button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#F3ECE2] text-[#9B4728] hover:bg-[#EADDCB] transition-colors flex items-center justify-center text-base sm:text-lg border-0 cursor-pointer shrink-0 font-bold"
+            aria-label="Cerrar modal"
+          >
+            ✕
+          </button>
         </div>
-        <div style={{ display: 'grid', gap: 14 }}>
+
+        {/* ── Cuerpo scrolleable ── */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-4 sm:py-5 space-y-4">
           <div>
-            <label style={labelStyle}>Nombre</label>
-            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ej: Café Especial Nariño" style={inputStyle} />
+            <label style={labelStyle}>Nombre del producto</label>
+            <input
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              placeholder="Ej: Café Especial Nariño"
+              style={inputStyle}
+            />
           </div>
-          
-          <div style={{ display: 'grid', gridTemplateColumns: categories.length > 0 ? '1fr 1fr' : '1fr', gap: 10 }}>
-            {categories.length > 0 && (
-              <div>
+
+          <div className="modal-grid-2">
+            {categories.length > 0 ? (
+              <div className="min-w-0">
                 <label style={labelStyle}>Categoría</label>
-                <select value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })} style={inputStyle}>
+                <select
+                  value={form.category_id}
+                  onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+                  style={inputStyle}
+                >
                   <option value="">Seleccionar...</option>
-                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
                 </select>
               </div>
-            )}
-            <div>
+            ) : null}
+            <div className="min-w-0">
               <label style={labelStyle}>Precio ($ COP)</label>
-              <input type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="28000" style={inputStyle} />
+              <input
+                type="number"
+                value={form.price}
+                onChange={(e) => setForm({ ...form, price: e.target.value })}
+                placeholder="28000"
+                style={inputStyle}
+              />
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <div>
+          <div className="modal-grid-2">
+            <div className="min-w-0">
               <label style={labelStyle}>Cantidad en Stock</label>
-              <input type="number" value={form.stockNum} onChange={(e) => setForm({ ...form, stockNum: e.target.value })} placeholder="45" style={inputStyle} />
+              <input
+                type="number"
+                value={form.stockNum}
+                onChange={(e) => setForm({ ...form, stockNum: e.target.value })}
+                placeholder="45"
+                style={inputStyle}
+              />
             </div>
-            <div>
+            <div className="min-w-0">
               <label style={labelStyle}>Unidad de medida</label>
-              <input value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} placeholder="kg, lb, uds..." style={inputStyle} />
+              <input
+                value={form.unit}
+                onChange={(e) => setForm({ ...form, unit: e.target.value })}
+                placeholder="kg, lb, uds..."
+                style={inputStyle}
+              />
             </div>
           </div>
+
+          {/* ── Subida de imágenes ── */}
           <div>
-            <label style={labelStyle}>URL de imagen</label>
-            <input value={form.img} onChange={(e) => setForm({ ...form, img: e.target.value })} placeholder="https://..." style={inputStyle} />
-            {form.img && <img src={form.img} alt="preview" style={{ marginTop: 8, width: '100%', height: 120, objectFit: 'cover', borderRadius: 12 }} onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
+            <label style={labelStyle}>
+              Imágenes del producto{' '}
+              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. 6 MB c/u)</span>
+            </label>
+
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files) }}
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full box-border rounded-xl p-3.5 sm:p-4 text-center cursor-pointer transition-all border-2 border-dashed"
+              style={{
+                borderColor: dragOver ? '#205134' : '#C8B9A8',
+                background: dragOver ? '#EAF3EC' : '#FAF7F3',
+              }}
+            >
+              <div className="text-2xl mb-1">📷</div>
+              <p className="m-0 text-xs sm:text-[13px] text-[#7A6A5A] font-['Nunito_Sans']">
+                Arrastra imágenes aquí o{' '}
+                <span className="text-[#205134] font-bold">haz clic para seleccionar</span>
+              </p>
+              <p className="mt-0.5 mb-0 text-[11px] text-[#B0A090] font-['Nunito_Sans']">
+                JPG, PNG · máx. 6 MB por imagen
+              </p>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".jpg,.jpeg,.png"
+              multiple
+              style={{ display: 'none' }}
+              onChange={(e) => e.target.files && addFiles(e.target.files)}
+            />
+
+            {uploadError && (
+              <p className="text-[#C0392B] text-xs mt-1.5 mb-0 font-['Nunito_Sans']">{uploadError}</p>
+            )}
+
+            {images.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 mt-3">
+                {images.map((img, idx) => (
+                  <div
+                    key={idx}
+                    className="relative rounded-xl overflow-hidden border-2 h-20 sm:h-22"
+                    style={{ borderColor: img.error ? '#E74C3C' : img.publicUrl ? '#205134' : '#EDE4D8' }}
+                  >
+                    <img src={img.preview} alt="" className="w-full h-full object-cover block" />
+                    {idx === 0 && (
+                      <span className="absolute top-1 left-1 bg-[#CF9D35] text-white text-[9px] sm:text-[10px] py-0.5 px-1.5 rounded font-bold font-['Nunito_Sans']">
+                        Principal
+                      </span>
+                    )}
+                    {img.uploading && (
+                      <div className="absolute inset-0 bg-[#205134]/70 flex items-center justify-center">
+                        <span className="text-white text-xs font-['Nunito_Sans']">Subiendo…</span>
+                      </div>
+                    )}
+                    {img.error && (
+                      <div className="absolute bottom-0 inset-x-0 bg-[#E74C3C]/90 p-1">
+                        <span className="text-white text-[10px] font-['Nunito_Sans'] block truncate">{img.error}</span>
+                      </div>
+                    )}
+                    {!img.uploading && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); removeImage(idx) }}
+                        className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 text-white border-0 cursor-pointer text-xs flex items-center justify-center hover:bg-black/80"
+                        aria-label="Eliminar imagen"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {images.length === 0 && existingImg && (
+              <div className="mt-2.5 flex items-center gap-3 p-2.5 rounded-xl border border-[#EDE4D8] bg-[#FAF7F3]">
+                <img
+                  src={existingImg}
+                  alt="actual"
+                  className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-[#EDE4D8] flex-shrink-0"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-[#205134] m-0 font-['Nunito_Sans']">Imagen actual del producto</p>
+                  <p className="text-[11px] text-[#9B7D5A] m-0 font-['Nunito_Sans']">Sube imágenes arriba si deseas reemplazarla</p>
+                </div>
+              </div>
+            )}
           </div>
+
           <div>
             <label style={labelStyle}>Descripción</label>
-            <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Descripción detallada..." rows={3} style={{ ...inputStyle, resize: 'vertical' }} />
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Descripción detallada del producto, origen y proceso..."
+              rows={3}
+              style={{ ...inputStyle, resize: 'vertical' }}
+            />
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#3D2B1A', fontSize: 14 }}>
-            <input type="checkbox" checked={form.certified} onChange={(e) => setForm({ ...form, certified: e.target.checked })} />
+
+          <label className="flex items-center gap-2 text-[#3D2B1A] text-xs sm:text-sm font-['Nunito_Sans'] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={form.certified}
+              onChange={(e) => setForm({ ...form, certified: e.target.checked })}
+              className="w-4 h-4 rounded text-[#205134] accent-[#205134] cursor-pointer"
+            />
             Producto certificado orgánico o de calidad
           </label>
         </div>
-        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-          <button type="button" onClick={onClose} style={{ flex: 1, padding: 12, borderRadius: 14, border: 'none', background: '#F3ECE2', color: '#205134', fontWeight: 700, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif" }}>Cancelar</button>
-          <button type="button" onClick={handleSave} disabled={saving} style={{ flex: 1, padding: 12, borderRadius: 14, border: 'none', background: '#205134', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", opacity: saving ? 0.7 : 1 }}>
-            {saving ? 'Guardando...' : 'Guardar'}
+
+        {/* ── Footer fijo ── */}
+        <div className="flex-shrink-0 flex items-center justify-end gap-3 px-5 sm:px-7 py-3.5 border-t border-[#F0EAE1] bg-[#FAF7F2]">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-xl bg-[#F3ECE2] text-[#205134] font-bold text-sm sm:text-base border-0 cursor-pointer hover:bg-[#EADBCA] transition-colors font-['Nunito_Sans']"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || images.some(i => i.uploading)}
+            className="px-6 py-2.5 rounded-xl bg-[#205134] text-white font-extrabold text-sm sm:text-base border-0 cursor-pointer hover:bg-[#183F28] transition-colors font-['Nunito_Sans'] disabled:opacity-60 shadow-md shadow-[#205134]/20"
+          >
+            {images.some(i => i.uploading) ? 'Subiendo imágenes…' : saving ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
       </div>

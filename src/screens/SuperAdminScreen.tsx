@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { adminCreateUser, adminDeleteUser } from '../lib/adminUsers'
 import { clearPromoSession } from '../lib/promoSession'
 import {
   toColombiaInputString,
@@ -12,10 +12,16 @@ import {
 import logoSrc from '../assets/logo-nofond.png'
 import ProductModal from '../components/ProductModal'
 import ExperienceModal from '../components/ExperienceModal'
+import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
+import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
+import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
+import ChangePasswordCard from '../components/ChangePasswordCard'
+import TempPasswordModal from '../components/TempPasswordModal'
+import { fetchAllTickets, type SupportTicket } from '../lib/buyer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'ads' | 'settings'
+type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'settings'
 
 interface UserRow {
   id: string
@@ -26,6 +32,7 @@ interface UserRow {
   department: string
   municipality: string
   email?: string
+  phone?: string | null
   created_at: string
 }
 
@@ -259,6 +266,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [users, setUsers] = useState<UserRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [experiences, setExperiences] = useState<ExperienceRow[]>([])
+  const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
+  const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
+  const [tickets, setTickets] = useState<SupportTicket[]>([])
+  const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
@@ -283,6 +294,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     first_name: '',
     last_name: '',
     org_name: '',
+    phone: '',
     email: '',
     password: '',
     user_type: 'asociacion',
@@ -296,8 +308,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
-  const loadAll = async () => {
-    setLoading(true)
+  // silent: recarga sin mostrar el esqueleto de carga (ej. tras cambiar el estado de un pedido)
+  const loadAll = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [
         { data: usersData },
@@ -307,16 +320,25 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: catsData },
         { data: resData },
         { data: deptsData },
+        statusesData,
+        itemsData,
+        ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name, business_type').eq('active', true),
         supabase.from('reservations').select('id, total'),
         supabase.from('departments').select('id, name').order('name', { ascending: true }),
+        fetchOrderStatuses(),
+        fetchOrderItems(),
+        fetchAllTickets(),
       ])
 
+      setOrderStatuses(statusesData)
+      setOrderItems(itemsData)
+      setTickets(ticketsData)
       setUsers((usersData || []) as UserRow[])
       setDepartments((deptsData || []) as { id: string; name: string }[])
 
@@ -373,12 +395,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
     else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
     else if (type === 'user') {
-      ({ error } = await supabase.from('profiles').delete().eq('id', id))
-      try {
-        await supabaseAdmin.auth.admin.deleteUser(id)
-      } catch (authDelErr) {
-        console.warn('Advertencia al eliminar usuario de auth:', authDelErr)
-      }
+      // Edge Function: borra el usuario de Auth y su perfil (cascade)
+      const result = await adminDeleteUser(id)
+      if (!result.ok) error = { message: result.error }
     }
     else if (type === 'ad') ({ error } = await supabase.from('advertisements').delete().eq('id', id))
     if (!error) { showToast('✅ Eliminado correctamente'); setConfirmDelete(null); loadAll() }
@@ -395,56 +414,42 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       showToast('⚠️ Por favor ingresa correo y contraseña')
       return
     }
-    if (newUserData.password.length < 6) {
-      showToast('⚠️ La contraseña debe tener al menos 6 caracteres')
+    const pw = newUserData.password.trim()
+    if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) {
+      showToast('⚠️ La contraseña debe tener al menos 8 caracteres, con letras y números')
       return
     }
 
     setUserCreating(true)
     try {
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      // Edge Function: crea el usuario en Auth + su perfil. Deberá cambiar la contraseña al primer ingreso.
+      const result = await adminCreateUser({
         email: newUserData.email.trim(),
-        password: newUserData.password.trim(),
-        email_confirm: true,
-        user_metadata: {
-          first_name: newUserData.first_name.trim(),
-          last_name: newUserData.last_name.trim(),
-          org_name: newUserData.org_name.trim(),
-          user_type: newUserData.user_type,
-        },
+        password: pw,
+        first_name: newUserData.first_name.trim(),
+        last_name: newUserData.last_name.trim(),
+        org_name: newUserData.org_name.trim(),
+        phone: newUserData.phone.trim(),
+        user_type: newUserData.user_type,
+        department: newUserData.department.trim(),
+        municipality: newUserData.municipality.trim(),
+        must_change_password: true,
       })
 
-      if (authError || !authData.user) {
-        showToast('❌ Error en Auth: ' + (authError?.message || 'No se pudo crear el usuario'))
+      if (!result.ok) {
+        showToast('❌ ' + result.error)
         setUserCreating(false)
         return
       }
 
-      const newUserId = authData.user.id
-
-      const { error: profError } = await supabaseAdmin.from('profiles').upsert({
-        id: newUserId,
-        first_name: newUserData.first_name.trim(),
-        last_name: newUserData.last_name.trim(),
-        org_name: newUserData.org_name.trim() || null,
-        user_type: newUserData.user_type,
-        department: newUserData.department.trim() || null,
-        municipality: newUserData.municipality.trim() || null,
-        email: newUserData.email.trim(),
-        created_at: new Date().toISOString(),
-      })
-
-      if (profError) {
-        showToast('⚠️ Usuario creado en Auth pero falló el perfil: ' + profError.message)
-      } else {
-        showToast('✅ Usuario creado exitosamente')
-      }
+      showToast('✅ Usuario creado. Al ingresar deberá crear su propia contraseña.')
 
       setUserCreateModal(false)
       setNewUserData({
         first_name: '',
         last_name: '',
         org_name: '',
+        phone: '',
         email: '',
         password: '',
         user_type: 'asociacion',
@@ -570,6 +575,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       first_name: userEditModal.first_name,
       last_name: userEditModal.last_name,
       org_name: userEditModal.org_name,
+      phone: userEditModal.phone?.trim() || null,
       user_type: userEditModal.user_type,
       department: userEditModal.department || null,
       municipality: userEditModal.municipality || null,
@@ -757,15 +763,21 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     { id: 'users' as SuperSection, label: 'Usuarios', icon: I.users, count: stats.users },
     { id: 'products' as SuperSection, label: 'Productos', icon: I.box, count: stats.products },
     { id: 'experiences' as SuperSection, label: 'Experiencias', icon: I.exp, count: stats.experiences },
+    { id: 'orders' as SuperSection, label: 'Pedidos', icon: I.store, count: orderItems.length },
+    { id: 'tickets' as SuperSection, label: 'Solicitudes', icon: I.users, count: tickets.filter(t => t.status === 'abierto' || t.status === 'en_revision').length },
     { id: 'ads' as SuperSection, label: 'Anuncios', icon: I.ads, count: ads.length },
     { id: 'settings' as SuperSection, label: 'Configuración', icon: I.cog },
   ]
+
+  const orderSummary = summarizeStatusesByItem(orderItems, orderStatuses)
 
   const sectionLabels: Record<SuperSection, string> = {
     dashboard: 'Dashboard General',
     users: 'Gestión de Usuarios',
     products: 'Catálogo de Productos',
     experiences: 'Catálogo de Experiencias',
+    orders: 'Gestión de Pedidos',
+    tickets: 'Solicitudes y Reportes',
     ads: 'Gestión de Anuncios',
     settings: 'Configuración del Sistema',
   }
@@ -1206,6 +1218,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                   <TD>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                       <button type="button" style={btnEdit} onClick={() => setUserEditModal({ ...u })}>✏️ Editar</button>
+                                      <button type="button" style={btnEdit} title="Asignar contraseña temporal" onClick={() => setTempPasswordUser({ id: u.id, name: `${u.first_name} ${u.last_name}`.trim(), email: u.email })}>🔑</button>
                                       <button type="button" style={btnDanger} onClick={() => setConfirmDelete({ type: 'user', id: u.id, name: `${u.first_name} ${u.last_name}` })}>{I.trash}</button>
                                     </div>
                                   </TD>
@@ -1242,12 +1255,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                             <TH>Precio</TH>
                             <TH>Stock</TH>
                             <TH>Estado</TH>
+                            <TH>Pedidos</TH>
                             <TH>Acciones</TH>
                           </tr>
                         </thead>
                         <tbody>
                           {items.length === 0 ? (
-                            <tr><td colSpan={6} style={{ padding: 48, textAlign: 'center', color: B.textMuted, fontSize: 14 }}>Sin productos registrados</td></tr>
+                            <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: B.textMuted, fontSize: 14 }}>Sin productos registrados</td></tr>
                           ) : (
                             items.map(p => {
                               const stock = parseInt(p.stock) || 0
@@ -1283,6 +1297,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                     >
                                       {isOut ? 'Agotado' : isLow ? 'Stock Bajo' : 'Activo'}
                                     </span>
+                                  </TD>
+                                  <TD>
+                                    <OrderStatusSummary entries={orderSummary[p.id]} />
                                   </TD>
                                   <TD>
                                     <div style={{ display: 'flex', gap: 6 }}>
@@ -1325,6 +1342,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 </div>
               )
             })()}
+
+            {/* ═══ PEDIDOS: estados de todos los pedidos ═══ */}
+            {section === 'orders' && (
+              <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadAll(true)} showSeller allowOverride />
+            )}
+
+            {/* ═══ SOLICITUDES Y REPORTES DE COMPRADORES (solo admin) ═══ */}
+            {section === 'tickets' && (
+              <SupportTicketsAdmin tickets={tickets} onTicketsChange={setTickets} />
+            )}
 
             {/* ═══ 4. EXPERIENCES MANAGEMENT ═══ */}
             {section === 'experiences' && (() => {
@@ -1553,6 +1580,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     ))}
                   </div>
                 </div>
+                <ChangePasswordCard style={{ marginTop: 18 }} />
               </div>
             )}
           </>}
@@ -1562,6 +1590,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       {/* ══════════════════════════════════════════════════════════════════════════
           MODALES
       ══════════════════════════════════════════════════════════════════════════ */}
+
+      {/* ── MODAL CONTRASEÑA TEMPORAL ── */}
+      {tempPasswordUser && <TempPasswordModal user={tempPasswordUser} onClose={() => setTempPasswordUser(null)} />}
 
       {/* ── MODAL EDITAR USUARIO ── */}
       {userEditModal && (
@@ -1583,6 +1614,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
             <div style={{ marginBottom: 16 }}>
               <label style={lbl}>Organización / Emprendimiento</label>
               <input style={inp} value={userEditModal.org_name || ''} onChange={e => setUserEditModal({ ...userEditModal, org_name: e.target.value })} />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
+              <input style={inp} inputMode="tel" placeholder="Ej: 300 123 4567" value={userEditModal.phone || ''} onChange={e => setUserEditModal({ ...userEditModal, phone: e.target.value })} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
@@ -1708,6 +1743,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   placeholder="Ej: Lemongust, Finca La Esperanza..."
                   value={newUserData.org_name}
                   onChange={e => setNewUserData({ ...newUserData, org_name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
+                <input
+                  style={inp}
+                  inputMode="tel"
+                  placeholder="Ej: 300 123 4567"
+                  value={newUserData.phone}
+                  onChange={e => setNewUserData({ ...newUserData, phone: e.target.value })}
                 />
               </div>
 

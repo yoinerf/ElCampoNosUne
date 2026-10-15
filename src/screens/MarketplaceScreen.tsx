@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import ProductModal from '../components/ProductModal'
+import FavoriteButton from '../components/FavoriteButton'
 import { supabase } from '../lib/supabase'
 import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
 import { isAdvertisementActive } from '../lib/dateColombia'
@@ -432,6 +433,9 @@ function ProductDetail({
                   🌄 Reservar experiencia &middot; {cart[product.id] || 1} persona{(cart[product.id] || 1) > 1 ? 's' : ''}
                 </button>
               )}
+
+              {/* Guardar en favoritos (compradores) */}
+              {!isProducer && !isExperience && <FavoriteButton productId={product.id} />}
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {[
                   { icon: '📍', text: product.category, isRed: false },
@@ -1413,7 +1417,7 @@ export default function MarketplaceScreen({
       return true
     } catch (err: any) {
       console.error('Error al comunicarse con el backend de pagos:', err)
-      setSubmitMessage(`Error al conectar con el backend de pagos (${backendUrl}).`)
+      setSubmitMessage(`Error al conectar con el servicio de pagos.`)
       return false
     }
   }

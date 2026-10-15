@@ -491,7 +491,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Mínimo 6 caracteres"
+                      placeholder="Mínimo 8 caracteres"
                       autoComplete="new-password"
                       style={{
                         width: '100%',

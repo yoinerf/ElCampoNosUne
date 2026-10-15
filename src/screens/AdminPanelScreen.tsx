@@ -3,8 +3,11 @@ import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 import ExperienceModal from '../components/ExperienceModal'
 import ProductModal from '../components/ProductModal'
+import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
+import ChangePasswordCard from '../components/ChangePasswordCard'
+import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 
-type AdminSection = 'dashboard' | 'products' | 'experiences' | 'inventory' | 'reports' | 'settings'
+type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
 
 interface ProductItem {
   id: string
@@ -109,7 +112,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', category_id: '', price: '', unit: 'uds', stockNum: '45', origin: '', description: '', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format' })
 
-  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', department: '', municipality: '', user_type: 'asociacion' })
+  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '', user_type: 'asociacion' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
 
@@ -138,24 +141,32 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   // Datos dinámicos desde Supabase
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
+  const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
 
   const isTurismo = userRole === 'turismo'
 
-  const loadData = async () => {
-    setLoading(true)
+  // silent: recarga sin mostrar el esqueleto de carga (ej. tras cambiar el estado de un pedido)
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, org_name, department, municipality, user_type').eq('id', user.id).single(),
+    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }, statusesData, itemsData] = await Promise.all([
+      supabase.from('profiles').select('id, first_name, last_name, org_name, phone, department, municipality, user_type').eq('id', user.id).single(),
       supabase.from('activities').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(8),
       supabase.from('categories').select('id, name, business_type').eq('active', true).eq('business_type', userRole === 'turismo' ? 'turismo' : 'asociacion'),
       supabase.from('departments').select('id, name').order('name', { ascending: true }),
+      fetchOrderStatuses(),
+      fetchOrderItems(user.id),
     ])
+
+    setOrderStatuses(statusesData)
+    setOrderItems(itemsData)
 
     if (profileData) {
       setProfile(profileData as ProfileData)
-      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', user_type: profileData.user_type ?? 'asociacion' })
+      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', user_type: profileData.user_type ?? 'asociacion' })
     }
 
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
@@ -361,6 +372,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
       first_name: profileForm.first_name,
       last_name: profileForm.last_name,
       org_name: profileForm.org_name,
+      phone: profileForm.phone.trim() || null,
       department: profileForm.department,
       municipality: profileForm.municipality,
       user_type: profileForm.user_type,
@@ -403,12 +415,14 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     ...(!isTurismo ? [{ id: 'products' as AdminSection, label: 'Productos', icon: <ProdIcon /> }] : []),
     ...(isTurismo ? [{ id: 'experiences' as AdminSection, label: 'Experiencias', icon: <ExpIcon /> }] : []),
     // Inventario para todos los roles
+    { id: 'orders' as AdminSection, label: isTurismo ? 'Reservas / Pedidos' : 'Pedidos', icon: <ProdIcon /> },
     { id: 'inventory' as AdminSection, label: isTurismo ? 'Cupos / Stock' : 'Inventario', icon: <InvIcon /> },
     { id: 'reports' as AdminSection, label: 'Reportes y Ventas', icon: <RepIcon /> },
     { id: 'settings' as AdminSection, label: 'Configuracion', icon: <CogIcon /> },
   ]
-  const sectionLabel: Record<AdminSection, string> = { dashboard: 'Panel Principal', products: 'Productos', experiences: 'Experiencias', inventory: 'Inventario', reports: 'Reportes y Ventas', settings: 'Configuracion de Perfil' }
+  const sectionLabel: Record<AdminSection, string> = { dashboard: 'Panel Principal', products: 'Productos', experiences: 'Experiencias', orders: 'Pedidos', inventory: 'Inventario', reports: 'Reportes y Ventas', settings: 'Configuracion de Perfil' }
   const isTableSection = section === 'products' || section === 'experiences'
+  const orderSummary = summarizeStatusesByItem(orderItems, orderStatuses)
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F5EEE6', fontFamily: "'Nunito Sans', sans-serif" }}>
@@ -568,14 +582,14 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ background: '#FDFAF6', borderBottom: '1px solid #EDE4D8' }}>
-                            {['Miniatura', 'Nombre / Descripcion', 'Categoria', 'Precio', 'Stock / Cupos', 'Estado', 'Acciones'].map((h) => (
+                            {['Miniatura', 'Nombre / Descripcion', 'Categoria', 'Precio', 'Stock / Cupos', 'Estado', 'Pedidos', 'Acciones'].map((h) => (
                               <th key={h} style={{ padding: '14px 18px', fontSize: 12, fontWeight: 700, color: '#8A8070', fontFamily: "'Poppins', sans-serif", whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {paginated.length === 0 ? (
-                            <tr><td colSpan={7} style={{ padding: 36, textAlign: 'center', color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", fontSize: 14 }}>
+                            <tr><td colSpan={8} style={{ padding: 36, textAlign: 'center', color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", fontSize: 14 }}>
                               {searchVal || catFilter !== 'Todas' ? 'Sin resultados para la busqueda.' : `Aun no tienes ${section === 'experiences' ? 'experiencias' : 'productos'} registrados.`}
                             </td></tr>
                           ) : paginated.map((p) => {
@@ -608,6 +622,9 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                                   </span>
                                 </td>
                                 <td style={{ padding: '12px 18px' }}>
+                                  <OrderStatusSummary entries={orderSummary[p.id]} />
+                                </td>
+                                <td style={{ padding: '12px 18px' }}>
                                   <div style={{ display: 'flex', gap: 6 }}>
                                     <button type="button" onClick={() => handleOpenEdit(p)} title="Editar" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: '#EAF3EC', color: '#205134', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -635,6 +652,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* PEDIDOS - estados de los pedidos del productor */}
+              {section === 'orders' && (
+                <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadData(true)} />
               )}
 
               {/* INVENTARIO - para todos los roles */}
@@ -744,6 +766,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       <label style={labelStyle}>Nombre de organizacion / asociacion</label>
                       <input value={profileForm.org_name} onChange={(e) => setProfileForm({ ...profileForm, org_name: e.target.value })} placeholder="Ej: Cooperativa El Roble" style={inputStyle} />
                     </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>WhatsApp para notificaciones de pedidos</label>
+                      <input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} inputMode="tel" placeholder="Ej: 300 123 4567" style={inputStyle} />
+                      <div style={{ fontSize: 12, color: '#8A8070', marginTop: 4 }}>Te avisaremos por WhatsApp cuando recibas un pedido nuevo.</div>
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                       <div>
                         <label style={labelStyle}>Departamento</label>
@@ -787,6 +814,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       {savingProfile ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   </div>
+                  <ChangePasswordCard style={{ marginTop: 20, borderRadius: 24, padding: 36 }} />
                 </div>
               )}
             </>

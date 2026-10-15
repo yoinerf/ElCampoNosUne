@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { adminCreateUser, adminDeleteUser } from '../lib/adminUsers'
 import { clearPromoSession } from '../lib/promoSession'
 import {
   toColombiaInputString,
@@ -393,12 +393,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
     else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
     else if (type === 'user') {
-      ({ error } = await supabase.from('profiles').delete().eq('id', id))
-      try {
-        await supabaseAdmin.auth.admin.deleteUser(id)
-      } catch (authDelErr) {
-        console.warn('Advertencia al eliminar usuario de auth:', authDelErr)
-      }
+      // Edge Function: borra el usuario de Auth y su perfil (cascade)
+      const result = await adminDeleteUser(id)
+      if (!result.ok) error = { message: result.error }
     }
     else if (type === 'ad') ({ error } = await supabase.from('advertisements').delete().eq('id', id))
     if (!error) { showToast('✅ Eliminado correctamente'); setConfirmDelete(null); loadAll() }
@@ -415,50 +412,34 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       showToast('⚠️ Por favor ingresa correo y contraseña')
       return
     }
-    if (newUserData.password.length < 6) {
-      showToast('⚠️ La contraseña debe tener al menos 6 caracteres')
+    const pw = newUserData.password.trim()
+    if (pw.length < 8 || !/[A-Za-z]/.test(pw) || !/\d/.test(pw)) {
+      showToast('⚠️ La contraseña debe tener al menos 8 caracteres, con letras y números')
       return
     }
 
     setUserCreating(true)
     try {
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+      // Edge Function: crea el usuario en Auth + su perfil. Deberá cambiar la contraseña al primer ingreso.
+      const result = await adminCreateUser({
         email: newUserData.email.trim(),
-        password: newUserData.password.trim(),
-        email_confirm: true,
-        user_metadata: {
-          first_name: newUserData.first_name.trim(),
-          last_name: newUserData.last_name.trim(),
-          org_name: newUserData.org_name.trim(),
-          user_type: newUserData.user_type,
-        },
+        password: pw,
+        first_name: newUserData.first_name.trim(),
+        last_name: newUserData.last_name.trim(),
+        org_name: newUserData.org_name.trim(),
+        user_type: newUserData.user_type,
+        department: newUserData.department.trim(),
+        municipality: newUserData.municipality.trim(),
+        must_change_password: true,
       })
 
-      if (authError || !authData.user) {
-        showToast('❌ Error en Auth: ' + (authError?.message || 'No se pudo crear el usuario'))
+      if (!result.ok) {
+        showToast('❌ ' + result.error)
         setUserCreating(false)
         return
       }
 
-      const newUserId = authData.user.id
-
-      const { error: profError } = await supabaseAdmin.from('profiles').upsert({
-        id: newUserId,
-        first_name: newUserData.first_name.trim(),
-        last_name: newUserData.last_name.trim(),
-        org_name: newUserData.org_name.trim() || null,
-        user_type: newUserData.user_type,
-        department: newUserData.department.trim() || null,
-        municipality: newUserData.municipality.trim() || null,
-        email: newUserData.email.trim(),
-        created_at: new Date().toISOString(),
-      })
-
-      if (profError) {
-        showToast('⚠️ Usuario creado en Auth pero falló el perfil: ' + profError.message)
-      } else {
-        showToast('✅ Usuario creado exitosamente')
-      }
+      showToast('✅ Usuario creado. Al ingresar deberá crear su propia contraseña.')
 
       setUserCreateModal(false)
       setNewUserData({

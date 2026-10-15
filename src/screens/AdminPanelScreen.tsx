@@ -4,6 +4,7 @@ import logoSrc from '../assets/logo-nofond.png'
 import ExperienceModal from '../components/ExperienceModal'
 import ProductModal from '../components/ProductModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
+import ChangePasswordCard from '../components/ChangePasswordCard'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 
 type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
@@ -807,6 +808,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       {savingProfile ? 'Guardando...' : 'Guardar cambios'}
                     </button>
                   </div>
+                  <ChangePasswordCard style={{ marginTop: 20, borderRadius: 24, padding: 36 }} />
                 </div>
               )}
             </>

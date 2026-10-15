@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { StatusBadge } from '../components/OrdersTable'
+import ChangePasswordCard from '../components/ChangePasswordCard'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
 import { fetchOrderStatuses, fetchStatusHistory, type OrderStatus, type StatusHistoryRow } from '../lib/orders'
@@ -799,7 +800,8 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
 
             {/* ═══ MIS DATOS ═══ */}
             {section === 'profile' && (
-              <div style={{ ...card, maxWidth: 720 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 720 }}>
+              <div style={card}>
                 <SectionTitle title="Mis datos" subtitle="Tu dirección se usará para precargar tus próximos pedidos." />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
                   <div>
@@ -841,6 +843,8 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
                   <button type="button" style={{ ...btnPrimary, opacity: savingProfile ? 0.6 : 1 }} disabled={savingProfile} onClick={saveProfile}>{savingProfile ? 'Guardando...' : 'Guardar cambios'}</button>
                 </div>
+              </div>
+              <ChangePasswordCard />
               </div>
             )}
           </>

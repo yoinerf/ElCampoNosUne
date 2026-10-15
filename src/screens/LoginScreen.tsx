@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, authRedirectInfo, authRedirectUrl } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 
 interface Props {
@@ -13,8 +13,40 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
-  const [error, setError] = useState('')
+  // Si el usuario llega desde un enlace de recuperación vencido, se lo indicamos
+  const [error, setError] = useState(
+    authRedirectInfo.error ? `El enlace para restablecer la contraseña no es válido o expiró. Solicita uno nuevo.` : ''
+  )
   const [loading, setLoading] = useState(false)
+
+  // Recuperación de contraseña por correo
+  const [forgotOpen, setForgotOpen] = useState(!!authRedirectInfo.error)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotMsg, setForgotMsg] = useState('')
+
+  const handleForgotPassword = async () => {
+    const target = (forgotEmail || email).trim()
+    if (!/^\S+@\S+\.\S+$/.test(target)) {
+      setForgotMsg('')
+      setError('Ingresa un correo electrónico válido para enviarte el enlace.')
+      return
+    }
+    setError('')
+    setForgotLoading(true)
+    const { error: resetError } = await supabase.auth.resetPasswordForEmail(target, { redirectTo: authRedirectUrl })
+    setForgotLoading(false)
+    if (resetError) {
+      setError(
+        resetError.status === 429
+          ? 'Ya se enviaron varios correos. Espera unos minutos antes de intentarlo de nuevo.'
+          : `No se pudo enviar el correo: ${resetError.message}`
+      )
+      return
+    }
+    // Mensaje neutro: no revelamos si el correo está registrado o no
+    setForgotMsg(`Si ${target} está registrado, te enviamos un enlace para crear una nueva contraseña. Revisa tu bandeja de entrada y la carpeta de spam.`)
+  }
 
   const handleBack = onBackToHome || onBackToStore
 
@@ -438,7 +470,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
             <div style={{ textAlign: 'right', marginBottom: 20 }}>
               <button
                 type="button"
-                onClick={() => alert('Para restablecer tu contraseña, por favor contacta al administrador o ingresa tu correo registrado.')}
+                onClick={() => { setForgotOpen(!forgotOpen); setForgotMsg(''); setForgotEmail(email) }}
                 style={{
                   background: 'none',
                   border: 'none',
@@ -456,6 +488,38 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
                 ¿Olvidaste tu contraseña?
               </button>
             </div>
+
+            {forgotOpen && (
+              <div style={{ background: '#FDFAF6', border: '1px solid #EDE4D8', borderRadius: 12, padding: 14, marginBottom: 20, fontFamily: "'Nunito Sans', sans-serif" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#205134', marginBottom: 4 }}>Restablecer contraseña</div>
+                <p style={{ margin: '0 0 10px', fontSize: 12.5, color: '#5A5248' }}>
+                  Te enviaremos un enlace a tu correo para crear una nueva contraseña.
+                </p>
+                {forgotMsg ? (
+                  <div style={{ background: '#EAF3EC', color: '#205134', borderRadius: 8, padding: '10px 12px', fontSize: 12.5, fontWeight: 600 }}>✉️ {forgotMsg}</div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleForgotPassword() } }}
+                      placeholder="tu@correo.com"
+                      autoComplete="email"
+                      style={{ flex: '1 1 180px', padding: '10px 12px', borderRadius: 8, border: '1.5px solid #E8DED0', fontSize: 14, outline: 'none', background: '#fff', color: '#1C3A14', boxSizing: 'border-box' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      disabled={forgotLoading}
+                      style={{ padding: '10px 14px', borderRadius: 8, border: 'none', background: '#9B4728', color: '#fff', fontSize: 13, fontWeight: 700, cursor: forgotLoading ? 'default' : 'pointer', opacity: forgotLoading ? 0.6 : 1 }}
+                    >
+                      {forgotLoading ? 'Enviando...' : 'Enviar enlace'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Botón Principal "Entrar" (#205134 Verde Profundo) */}
             <button
@@ -487,6 +551,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
             </button>
 
             {/* Separador "O CONTINUAR CON" */}
+            {/*
             <div
               style={{
                 display: 'flex',
@@ -510,10 +575,13 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               </span>
               <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
             </div>
+            */}
 
             {/* Botones Sociales */}
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 26 }}>
               {/* Botón Google */}
+              {/*
               <button
                 type="button"
                 onClick={() => handleSocialAuth('google')}
@@ -557,8 +625,10 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
                 </svg>
                 <span>Acceder con Google</span>
               </button>
+              */}
 
               {/* Botón Apple */}
+              {/*
               <button
                 type="button"
                 onClick={() => handleSocialAuth('apple')}
@@ -587,7 +657,9 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
                 </svg>
                 <span>Acceder con Apple</span>
               </button>
+              */}
             </div>
+
 
             {/* Footer switcher */}
             <p

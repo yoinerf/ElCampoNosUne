@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { adminSetTempPassword } from '../lib/adminUsers'
 import { MIN_PASSWORD_LENGTH } from './PasswordFields'
 
 interface TempPasswordModalProps {
@@ -35,14 +35,11 @@ export default function TempPasswordModal({ user, onClose }: TempPasswordModalPr
     }
     setSaving(true)
     setError('')
-    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
-      password,
-      // App.tsx detecta esta marca al iniciar sesión y obliga a crear una contraseña personal
-      user_metadata: { must_change_password: true },
-    })
+    // La Edge Function marca must_change_password: App.tsx obliga a cambiarla al ingresar
+    const result = await adminSetTempPassword(user.id, password)
     setSaving(false)
-    if (updateError) {
-      setError(`No se pudo asignar la contraseña: ${updateError.message}`)
+    if (!result.ok) {
+      setError(result.error)
       return
     }
     setDone(true)

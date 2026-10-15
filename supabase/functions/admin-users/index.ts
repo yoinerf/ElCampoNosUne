@@ -3,7 +3,7 @@
 // aquí (Supabase la inyecta como variable de entorno); nunca llega al navegador.
 //
 // Acciones (POST con JSON { action, ... }):
-//   - create_user        { email, password, first_name, last_name?, org_name?, user_type, department?, municipality?, must_change_password? }
+//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, department?, municipality?, must_change_password? }
 //   - delete_user        { user_id }
 //   - set_temp_password  { user_id, password }
 //
@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
           first_name: firstName,
           last_name: clean(body.last_name) ?? '',
           org_name: clean(body.org_name),
+          phone: clean(body.phone),
           user_type: userType,
           department: clean(body.department),
           municipality: clean(body.municipality),

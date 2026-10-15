@@ -5,6 +5,7 @@ import CheckoutScreen from './screens/CheckoutScreen'
 import type { CartItem } from './screens/MarketplaceScreen'
 import TourismScreen from './screens/TourismScreen'
 import ProfileScreen from './screens/ProfileScreen'
+import BuyerPanelScreen from './screens/BuyerPanelScreen'
 import RegisterScreen from './screens/RegisterScreen'
 import LoginScreen from './screens/LoginScreen'
 import AdminPanelScreen from './screens/AdminPanelScreen'
@@ -168,7 +169,21 @@ export default function App() {
       />
     ),
     tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} />,
-    profile: <ProfileScreen userRole={userRole as any} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} />,
+    // El comprador tiene su propio panel (pedidos, pagos, reseñas, favoritos, solicitudes, datos)
+    profile: userRole === 'comprador' ? (
+      <BuyerPanelScreen
+        userRole={userRole}
+        onNavigate={(t) => setActiveTab(t as Tab)}
+        activeNav={activeTab}
+        onProfileClick={handleProfileClick}
+        onViewProduct={(productId) => {
+          setInitialProduct(productId)
+          setActiveTab('market')
+        }}
+      />
+    ) : (
+      <ProfileScreen userRole={userRole as any} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} />
+    ),
   }
 
   if (checkingSession) {

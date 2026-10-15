@@ -112,7 +112,8 @@ export default function ScreenShell({
             boxSizing: 'border-box',
           }}
         >
-          {/* Logo */}
+          {/* Logo (oculto en la página de inicio) */}
+          {activeNav !== 'home' && (
           <div
             style={{
               flexShrink: 0,
@@ -136,6 +137,7 @@ export default function ScreenShell({
               }}
             />
           </div>
+          )}
           {/* Nav central (Desktop) */}
           <nav
             className="hidden md:flex"
@@ -262,138 +264,138 @@ export default function ScreenShell({
                     Admin
                   </button>
                 )}
-              <div style={{ position: 'relative' }}>
-                <button
-                  type="button"
-                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                  aria-label="Mi perfil"
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 12,
-                    border: 'none',
-                    background: activeNav === 'profile' || isProfileMenuOpen ? '#EAF3EC' : 'transparent',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: activeNav === 'profile' || isProfileMenuOpen ? '#205134' : '#4A5248',
-                    transition: 'all 180ms ease',
-                  }}
-                  className="hover:bg-[#20513410]"
-                >
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
+                <div style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                    aria-label="Mi perfil"
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 12,
+                      border: 'none',
+                      background: activeNav === 'profile' || isProfileMenuOpen ? '#EAF3EC' : 'transparent',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: activeNav === 'profile' || isProfileMenuOpen ? '#205134' : '#4A5248',
+                      transition: 'all 180ms ease',
+                    }}
+                    className="hover:bg-[#20513410]"
                   >
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                    <circle cx="12" cy="7" r="4" />
-                  </svg>
-                </button>
-
-                {isProfileMenuOpen && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setIsProfileMenuOpen(false)} />
-                    <div
-                      style={{
-                        position: 'absolute',
-                        top: '100%',
-                        right: 0,
-                        marginTop: 8,
-                        background: '#fff',
-                        borderRadius: 16,
-                        boxShadow: '0 8px 30px rgba(32,81,52,0.12)',
-                        border: '1px solid #EDE4D8',
-                        padding: 8,
-                        minWidth: 180,
-                        zIndex: 100,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 4,
-                      }}
+                    <svg
+                      width="22"
+                      height="22"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      {userRole === 'admin' && (
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  </button>
+
+                  {isProfileMenuOpen && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setIsProfileMenuOpen(false)} />
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '100%',
+                          right: 0,
+                          marginTop: 8,
+                          background: '#fff',
+                          borderRadius: 16,
+                          boxShadow: '0 8px 30px rgba(32,81,52,0.12)',
+                          border: '1px solid #EDE4D8',
+                          padding: 8,
+                          minWidth: 180,
+                          zIndex: 100,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 4,
+                        }}
+                      >
+                        {userRole === 'admin' && (
+                          <button
+                            onClick={() => { setIsProfileMenuOpen(false); onNavigate?.('superadmin'); }}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '10px 14px',
+                              background: '#EAF4ED',
+                              border: '1px solid rgba(32,81,52,0.2)',
+                              cursor: 'pointer',
+                              borderRadius: 8,
+                              fontSize: 14,
+                              fontWeight: 700,
+                              fontFamily: "'Nunito Sans', sans-serif",
+                              color: '#205134',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8,
+                            }}
+                            className="hover:bg-[#DCEDE0]"
+                          >
+                            <span>⚡</span>
+                            <span>Panel Super Admin</span>
+                          </button>
+                        )}
                         <button
-                          onClick={() => { setIsProfileMenuOpen(false); onNavigate?.('superadmin'); }}
+                          onClick={() => { setIsProfileMenuOpen(false); handleProfileClick(); }}
                           style={{
                             width: '100%',
                             textAlign: 'left',
                             padding: '10px 14px',
-                            background: '#EAF4ED',
-                            border: '1px solid rgba(32,81,52,0.2)',
+                            background: 'transparent',
+                            border: 'none',
+                            cursor: 'pointer',
+                            borderRadius: 8,
+                            fontSize: 14,
+                            fontWeight: 600,
+                            fontFamily: "'Nunito Sans', sans-serif",
+                            color: '#205134',
+                          }}
+                          className="hover:bg-[#F5EEE6]"
+                        >
+                          {userRole === 'comprador' ? 'Mi panel' : 'Mi Perfil'}
+                        </button>
+                        <div style={{ height: 1, background: '#EDE4D8', margin: '4px 0' }} />
+                        <button
+                          onClick={async () => {
+                            clearPromoSession()
+                            await supabase.auth.signOut()
+                            window.location.href = '/'
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '10px 14px',
+                            background: 'transparent',
+                            border: 'none',
                             cursor: 'pointer',
                             borderRadius: 8,
                             fontSize: 14,
                             fontWeight: 700,
                             fontFamily: "'Nunito Sans', sans-serif",
-                            color: '#205134',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
+                            color: '#D06050',
                           }}
-                          className="hover:bg-[#DCEDE0]"
+                          className="hover:bg-[#FFF5F3]"
                         >
-                          <span>⚡</span>
-                          <span>Panel Super Admin</span>
+                          Cerrar sesión
                         </button>
-                      )}
-                      <button
-                        onClick={() => { setIsProfileMenuOpen(false); handleProfileClick(); }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '10px 14px',
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          borderRadius: 8,
-                          fontSize: 14,
-                          fontWeight: 600,
-                          fontFamily: "'Nunito Sans', sans-serif",
-                          color: '#205134',
-                        }}
-                        className="hover:bg-[#F5EEE6]"
-                      >
-                        Mi Perfil
-                      </button>
-                      <div style={{ height: 1, background: '#EDE4D8', margin: '4px 0' }} />
-                      <button
-                        onClick={async () => {
-                          clearPromoSession()
-                          await supabase.auth.signOut()
-                          window.location.href = '/'
-                        }}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '10px 14px',
-                          background: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          borderRadius: 8,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          fontFamily: "'Nunito Sans', sans-serif",
-                          color: '#D06050',
-                        }}
-                        className="hover:bg-[#FFF5F3]"
-                      >
-                        Cerrar sesión
-                      </button>
-                    </div>
-                  </>
-                )}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Botón Carrito - Oculto en Experiencias y para rol Asociacion */}
+            {/* Botón Carrito - Oculto en Experiencias y para rol Asociacion */}
             {activeNav !== 'tourism' && userRole !== 'asociacion' && (
               <button
                 type="button"
@@ -470,7 +472,7 @@ export default function ScreenShell({
             </button>
           </div>
         </div>
-        
+
         {/* Mobile Menu Dropdown */}
         {isMenuOpen && (
           <div className="md:hidden" style={{ background: '#FAF7F0', borderTop: '1px solid #EDE4D8', padding: '8px 24px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>

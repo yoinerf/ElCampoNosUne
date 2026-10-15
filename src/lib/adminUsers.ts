@@ -29,6 +29,7 @@ export function adminCreateUser(user: {
   first_name: string
   last_name?: string
   org_name?: string
+  phone?: string
   user_type: string
   department?: string
   municipality?: string

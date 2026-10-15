@@ -32,6 +32,7 @@ interface UserRow {
   department: string
   municipality: string
   email?: string
+  phone?: string | null
   created_at: string
 }
 
@@ -293,6 +294,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     first_name: '',
     last_name: '',
     org_name: '',
+    phone: '',
     email: '',
     password: '',
     user_type: 'asociacion',
@@ -322,7 +324,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
@@ -427,6 +429,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         first_name: newUserData.first_name.trim(),
         last_name: newUserData.last_name.trim(),
         org_name: newUserData.org_name.trim(),
+        phone: newUserData.phone.trim(),
         user_type: newUserData.user_type,
         department: newUserData.department.trim(),
         municipality: newUserData.municipality.trim(),
@@ -446,6 +449,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         first_name: '',
         last_name: '',
         org_name: '',
+        phone: '',
         email: '',
         password: '',
         user_type: 'asociacion',
@@ -571,6 +575,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       first_name: userEditModal.first_name,
       last_name: userEditModal.last_name,
       org_name: userEditModal.org_name,
+      phone: userEditModal.phone?.trim() || null,
       user_type: userEditModal.user_type,
       department: userEditModal.department || null,
       municipality: userEditModal.municipality || null,
@@ -1610,6 +1615,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <label style={lbl}>Organización / Emprendimiento</label>
               <input style={inp} value={userEditModal.org_name || ''} onChange={e => setUserEditModal({ ...userEditModal, org_name: e.target.value })} />
             </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
+              <input style={inp} inputMode="tel" placeholder="Ej: 300 123 4567" value={userEditModal.phone || ''} onChange={e => setUserEditModal({ ...userEditModal, phone: e.target.value })} />
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
               <div>
                 <label style={lbl}>Departamento</label>
@@ -1734,6 +1743,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   placeholder="Ej: Lemongust, Finca La Esperanza..."
                   value={newUserData.org_name}
                   onChange={e => setNewUserData({ ...newUserData, org_name: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
+                <input
+                  style={inp}
+                  inputMode="tel"
+                  placeholder="Ej: 300 123 4567"
+                  value={newUserData.phone}
+                  onChange={e => setNewUserData({ ...newUserData, phone: e.target.value })}
                 />
               </div>
 

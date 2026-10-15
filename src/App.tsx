@@ -1,11 +1,11 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react'
 import HomeScreen from './screens/HomeScreen'
-import MarketplaceScreen from './screens/MarketplaceScreen'
 import type { CartItem } from './screens/MarketplaceScreen'
 import { supabase, authRedirectInfo } from './lib/supabase'
 
 // Pantallas cargadas bajo demanda: no se descargan hasta que se necesitan
 // (los paneles de admin, por ejemplo, no llegan al navegador de un comprador)
+const MarketplaceScreen = lazy(() => import('./screens/MarketplaceScreen'))
 const CheckoutScreen = lazy(() => import('./screens/CheckoutScreen'))
 const TourismScreen = lazy(() => import('./screens/TourismScreen'))
 const ProfileScreen = lazy(() => import('./screens/ProfileScreen'))

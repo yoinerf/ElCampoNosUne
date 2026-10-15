@@ -21,6 +21,8 @@ export interface OrderItemRow {
   unit_price: number
   total: number
   status_id: number
+  // Pago de este ítem (contraentrega: cada vendedor cobra lo suyo). Puede faltar si no se ha migrado.
+  payment_status?: string
   created_at: string
   order: {
     id: string

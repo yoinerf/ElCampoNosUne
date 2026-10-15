@@ -211,9 +211,15 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                       <td style={{ ...td, fontWeight: 700, color: '#9B4728', fontFamily: "'Poppins', sans-serif", whiteSpace: 'nowrap' }}>{formatPrice(Number(it.total))}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
                         <div>{it.order?.payment_method === 'CashOnDelivery' ? 'Contraentrega' : it.order?.payment_method || '—'}</div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: it.order?.payment_status === 'Paid' ? '#205134' : '#C4622D' }}>
-                          {it.order?.payment_status === 'Paid' ? 'Pagado' : it.order?.payment_status === 'Refunded' ? 'Reembolsado' : it.order?.payment_status === 'Failed' ? 'Fallido' : 'Pendiente'}
-                        </div>
+                        {(() => {
+                          // Pago del ítem (lo que cobra este vendedor); si no existe aún, el del pedido
+                          const pay = it.payment_status ?? it.order?.payment_status
+                          return (
+                            <div style={{ fontSize: 12, fontWeight: 700, color: pay === 'Paid' ? '#205134' : '#C4622D' }}>
+                              {pay === 'Paid' ? 'Pagado' : pay === 'Refunded' ? 'Reembolsado' : pay === 'Failed' ? 'Fallido' : 'Pendiente'}
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td style={{ ...td, minWidth: 210 }}>
                         <div style={{ marginBottom: 8 }}><StatusBadge status={statusById.get(it.status_id)} /></div>

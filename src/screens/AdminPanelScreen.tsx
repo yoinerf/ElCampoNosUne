@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 import ExperienceModal from '../components/ExperienceModal'
 import ProductModal from '../components/ProductModal'
+import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
+import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 
-type AdminSection = 'dashboard' | 'products' | 'experiences' | 'inventory' | 'reports' | 'settings'
+type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
 
 interface ProductItem {
   id: string
@@ -138,20 +140,28 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   // Datos dinámicos desde Supabase
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
+  const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
 
   const isTurismo = userRole === 'turismo'
 
-  const loadData = async () => {
-    setLoading(true)
+  // silent: recarga sin mostrar el esqueleto de carga (ej. tras cambiar el estado de un pedido)
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }] = await Promise.all([
+    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }, statusesData, itemsData] = await Promise.all([
       supabase.from('profiles').select('id, first_name, last_name, org_name, department, municipality, user_type').eq('id', user.id).single(),
       supabase.from('activities').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(8),
       supabase.from('categories').select('id, name, business_type').eq('active', true).eq('business_type', userRole === 'turismo' ? 'turismo' : 'asociacion'),
       supabase.from('departments').select('id, name').order('name', { ascending: true }),
+      fetchOrderStatuses(),
+      fetchOrderItems(user.id),
     ])
+
+    setOrderStatuses(statusesData)
+    setOrderItems(itemsData)
 
     if (profileData) {
       setProfile(profileData as ProfileData)
@@ -403,12 +413,14 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     ...(!isTurismo ? [{ id: 'products' as AdminSection, label: 'Productos', icon: <ProdIcon /> }] : []),
     ...(isTurismo ? [{ id: 'experiences' as AdminSection, label: 'Experiencias', icon: <ExpIcon /> }] : []),
     // Inventario para todos los roles
+    { id: 'orders' as AdminSection, label: isTurismo ? 'Reservas / Pedidos' : 'Pedidos', icon: <ProdIcon /> },
     { id: 'inventory' as AdminSection, label: isTurismo ? 'Cupos / Stock' : 'Inventario', icon: <InvIcon /> },
     { id: 'reports' as AdminSection, label: 'Reportes y Ventas', icon: <RepIcon /> },
     { id: 'settings' as AdminSection, label: 'Configuracion', icon: <CogIcon /> },
   ]
-  const sectionLabel: Record<AdminSection, string> = { dashboard: 'Panel Principal', products: 'Productos', experiences: 'Experiencias', inventory: 'Inventario', reports: 'Reportes y Ventas', settings: 'Configuracion de Perfil' }
+  const sectionLabel: Record<AdminSection, string> = { dashboard: 'Panel Principal', products: 'Productos', experiences: 'Experiencias', orders: 'Pedidos', inventory: 'Inventario', reports: 'Reportes y Ventas', settings: 'Configuracion de Perfil' }
   const isTableSection = section === 'products' || section === 'experiences'
+  const orderSummary = summarizeStatusesByItem(orderItems, orderStatuses)
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F5EEE6', fontFamily: "'Nunito Sans', sans-serif" }}>
@@ -568,14 +580,14 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                         <thead>
                           <tr style={{ background: '#FDFAF6', borderBottom: '1px solid #EDE4D8' }}>
-                            {['Miniatura', 'Nombre / Descripcion', 'Categoria', 'Precio', 'Stock / Cupos', 'Estado', 'Acciones'].map((h) => (
+                            {['Miniatura', 'Nombre / Descripcion', 'Categoria', 'Precio', 'Stock / Cupos', 'Estado', 'Pedidos', 'Acciones'].map((h) => (
                               <th key={h} style={{ padding: '14px 18px', fontSize: 12, fontWeight: 700, color: '#8A8070', fontFamily: "'Poppins', sans-serif", whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: 0.4 }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {paginated.length === 0 ? (
-                            <tr><td colSpan={7} style={{ padding: 36, textAlign: 'center', color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", fontSize: 14 }}>
+                            <tr><td colSpan={8} style={{ padding: 36, textAlign: 'center', color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", fontSize: 14 }}>
                               {searchVal || catFilter !== 'Todas' ? 'Sin resultados para la busqueda.' : `Aun no tienes ${section === 'experiences' ? 'experiencias' : 'productos'} registrados.`}
                             </td></tr>
                           ) : paginated.map((p) => {
@@ -608,6 +620,9 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                                   </span>
                                 </td>
                                 <td style={{ padding: '12px 18px' }}>
+                                  <OrderStatusSummary entries={orderSummary[p.id]} />
+                                </td>
+                                <td style={{ padding: '12px 18px' }}>
                                   <div style={{ display: 'flex', gap: 6 }}>
                                     <button type="button" onClick={() => handleOpenEdit(p)} title="Editar" style={{ width: 34, height: 34, borderRadius: 10, border: 'none', background: '#EAF3EC', color: '#205134', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -635,6 +650,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                     </div>
                   </div>
                 </div>
+              )}
+
+              {/* PEDIDOS - estados de los pedidos del productor */}
+              {section === 'orders' && (
+                <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadData(true)} />
               )}
 
               {/* INVENTARIO - para todos los roles */}

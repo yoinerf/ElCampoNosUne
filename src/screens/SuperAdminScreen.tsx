@@ -12,10 +12,14 @@ import {
 import logoSrc from '../assets/logo-nofond.png'
 import ProductModal from '../components/ProductModal'
 import ExperienceModal from '../components/ExperienceModal'
+import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
+import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
+import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
+import { fetchAllTickets, type SupportTicket } from '../lib/buyer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'ads' | 'settings'
+type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'settings'
 
 interface UserRow {
   id: string
@@ -259,6 +263,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [users, setUsers] = useState<UserRow[]>([])
   const [products, setProducts] = useState<ProductRow[]>([])
   const [experiences, setExperiences] = useState<ExperienceRow[]>([])
+  const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
+  const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
+  const [tickets, setTickets] = useState<SupportTicket[]>([])
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
@@ -296,8 +303,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
-  const loadAll = async () => {
-    setLoading(true)
+  // silent: recarga sin mostrar el esqueleto de carga (ej. tras cambiar el estado de un pedido)
+  const loadAll = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const [
         { data: usersData },
@@ -307,6 +315,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: catsData },
         { data: resData },
         { data: deptsData },
+        statusesData,
+        itemsData,
+        ticketsData,
       ] = await Promise.all([
         supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
@@ -315,8 +326,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         supabase.from('categories').select('id, name, business_type').eq('active', true),
         supabase.from('reservations').select('id, total'),
         supabase.from('departments').select('id, name').order('name', { ascending: true }),
+        fetchOrderStatuses(),
+        fetchOrderItems(),
+        fetchAllTickets(),
       ])
 
+      setOrderStatuses(statusesData)
+      setOrderItems(itemsData)
+      setTickets(ticketsData)
       setUsers((usersData || []) as UserRow[])
       setDepartments((deptsData || []) as { id: string; name: string }[])
 
@@ -757,15 +774,21 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     { id: 'users' as SuperSection, label: 'Usuarios', icon: I.users, count: stats.users },
     { id: 'products' as SuperSection, label: 'Productos', icon: I.box, count: stats.products },
     { id: 'experiences' as SuperSection, label: 'Experiencias', icon: I.exp, count: stats.experiences },
+    { id: 'orders' as SuperSection, label: 'Pedidos', icon: I.store, count: orderItems.length },
+    { id: 'tickets' as SuperSection, label: 'Solicitudes', icon: I.users, count: tickets.filter(t => t.status === 'abierto' || t.status === 'en_revision').length },
     { id: 'ads' as SuperSection, label: 'Anuncios', icon: I.ads, count: ads.length },
     { id: 'settings' as SuperSection, label: 'Configuración', icon: I.cog },
   ]
+
+  const orderSummary = summarizeStatusesByItem(orderItems, orderStatuses)
 
   const sectionLabels: Record<SuperSection, string> = {
     dashboard: 'Dashboard General',
     users: 'Gestión de Usuarios',
     products: 'Catálogo de Productos',
     experiences: 'Catálogo de Experiencias',
+    orders: 'Gestión de Pedidos',
+    tickets: 'Solicitudes y Reportes',
     ads: 'Gestión de Anuncios',
     settings: 'Configuración del Sistema',
   }
@@ -1242,12 +1265,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                             <TH>Precio</TH>
                             <TH>Stock</TH>
                             <TH>Estado</TH>
+                            <TH>Pedidos</TH>
                             <TH>Acciones</TH>
                           </tr>
                         </thead>
                         <tbody>
                           {items.length === 0 ? (
-                            <tr><td colSpan={6} style={{ padding: 48, textAlign: 'center', color: B.textMuted, fontSize: 14 }}>Sin productos registrados</td></tr>
+                            <tr><td colSpan={7} style={{ padding: 48, textAlign: 'center', color: B.textMuted, fontSize: 14 }}>Sin productos registrados</td></tr>
                           ) : (
                             items.map(p => {
                               const stock = parseInt(p.stock) || 0
@@ -1283,6 +1307,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                     >
                                       {isOut ? 'Agotado' : isLow ? 'Stock Bajo' : 'Activo'}
                                     </span>
+                                  </TD>
+                                  <TD>
+                                    <OrderStatusSummary entries={orderSummary[p.id]} />
                                   </TD>
                                   <TD>
                                     <div style={{ display: 'flex', gap: 6 }}>
@@ -1325,6 +1352,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 </div>
               )
             })()}
+
+            {/* ═══ PEDIDOS: estados de todos los pedidos ═══ */}
+            {section === 'orders' && (
+              <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadAll(true)} showSeller allowOverride />
+            )}
+
+            {/* ═══ SOLICITUDES Y REPORTES DE COMPRADORES (solo admin) ═══ */}
+            {section === 'tickets' && (
+              <SupportTicketsAdmin tickets={tickets} onTicketsChange={setTickets} />
+            )}
 
             {/* ═══ 4. EXPERIENCES MANAGEMENT ═══ */}
             {section === 'experiences' && (() => {

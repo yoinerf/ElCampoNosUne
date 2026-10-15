@@ -282,8 +282,8 @@ export default function ExperienceReservationModal({
                 {step === 'success'
                   ? '¡Reserva Registrada!'
                   : step === 'payment'
-                  ? 'Confirmación y Pago'
-                  : 'Reserva tu Experiencia'}
+                    ? 'Confirmación y Pago'
+                    : 'Reserva tu Experiencia'}
               </h3>
               <p style={{ margin: 0, fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
                 {experience.title}
@@ -856,7 +856,7 @@ export default function ExperienceReservationModal({
                   </div>
 
                   {/* Transferencia */}
-                  <div
+                  {/* <div
                     onClick={() => setPaymentMethod('transferencia')}
                     style={{
                       border: paymentMethod === 'transferencia' ? '2px solid #205134' : '1.5px solid #EDE4D8',
@@ -896,7 +896,7 @@ export default function ExperienceReservationModal({
                     <p style={{ margin: '4px 0 0 24px', fontSize: 12, color: '#666', lineHeight: 1.4 }}>
                       Transfiere directamente a la cuenta comunitaria por Bancolombia, Nequi o Daviplata sin costo extra.
                     </p>
-                  </div>
+                  </div>*/}
                 </div>
               </div>
 
@@ -1002,8 +1002,8 @@ export default function ExperienceReservationModal({
                   {loadingPayment
                     ? 'Procesando reserva...'
                     : paymentMethod === 'wompi'
-                    ? `Pagar con Wompi (${formatPrice(grandTotal)})`
-                    : `Confirmar Reserva (${formatPrice(grandTotal)})`}
+                      ? `Pagar con Wompi (${formatPrice(grandTotal)})`
+                      : `Confirmar Reserva (${formatPrice(grandTotal)})`}
                 </button>
               </div>
             </div>

@@ -1,6 +1,8 @@
 
 import ScreenShell from '../components/ScreenShell'
+import { useState } from 'react'
 import bannerImg from '../assets/banner-campo.webp'
+
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'about'
 
@@ -11,7 +13,78 @@ interface Props {
   userRole?: string | null
 }
 
+
+interface Service {
+  key: string
+  icon: string
+  title: string
+  desc: string
+  detail: string
+  includes: string[]
+  grad: string
+  img?: string // opcional: si pones una foto real aquí, reemplaza el degradado
+}
+
+const SERVICES: Service[] = [
+  {
+    key: 'digitalizacion',
+    icon: '📱',
+    title: 'Digitalización',
+    desc: 'Llevamos emprendimientos y servicios al entorno digital.',
+    detail: 'Acompañamos a productores y emprendedores para que su oferta tenga presencia en línea, sin que necesiten conocimientos técnicos.',
+    includes: ['Creación del perfil en la plataforma', 'Carga de productos con fotos y descripciones', 'Acompañamiento en el uso del panel'],
+    grad: 'linear-gradient(135deg, #205134 0%, #6BAA3D 100%)',
+  },
+  {
+    key: 'promocion',
+    icon: '📣',
+    title: 'Promoción',
+    desc: 'Creamos estrategias para aumentar su visibilidad.',
+    detail: 'Diseñamos acciones para que más personas conozcan lo que produces u ofreces, dentro y fuera de la plataforma.',
+    includes: ['Espacios destacados en la página de inicio', 'Difusión en redes sociales', 'Campañas por temporada'],
+    grad: 'linear-gradient(135deg, #C8860A 0%, #E5AE30 100%)',
+  },
+  {
+    key: 'contenidos',
+    icon: '🎥',
+    title: 'Contenidos',
+    desc: 'Fotografía, video, reels y narrativas digitales.',
+    detail: 'Producimos material visual que cuenta la historia detrás de cada producto y de cada persona.',
+    includes: ['Fotografía de producto', 'Video corto y reels', 'Historias de productores y comunidades'],
+    grad: 'linear-gradient(135deg, #9B4728 0%, #C4622D 100%)',
+  },
+  {
+    key: 'innovacion',
+    icon: '💡',
+    title: 'Innovación',
+    desc: 'Talleres de creatividad, tecnología e inteligencia artificial.',
+    detail: 'Espacios de formación práctica para que las comunidades aprovechen nuevas herramientas en su día a día.',
+    includes: ['Talleres presenciales', 'Introducción práctica a la inteligencia artificial', 'Ideas para mejorar presentación y empaque'],
+    grad: 'linear-gradient(135deg, #3D2B6B 0%, #7A5BC4 100%)',
+  },
+  {
+    key: 'turismo',
+    icon: '🏞️',
+    title: 'Turismo',
+    desc: 'Fortalecimiento y promoción de experiencias territoriales.',
+    detail: 'Apoyamos a quienes ofrecen turismo comunitario para estructurar, mostrar y comercializar sus experiencias.',
+    includes: ['Diseño de la experiencia', 'Publicación y gestión de reservas', 'Promoción ante nuevos visitantes'],
+    grad: 'linear-gradient(135deg, #1B5E6B 0%, #3FA7A0 100%)',
+  },
+  {
+    key: 'programas',
+    icon: '🤝',
+    title: 'Programas territoriales',
+    desc: 'Diseñamos proyectos para entidades, empresas y organizaciones.',
+    detail: 'Construimos junto a aliados programas de desarrollo rural que conectan recursos con comunidades.',
+    includes: ['Diseño y formulación de proyectos', 'Implementación en el territorio', 'Seguimiento y reporte de resultados'],
+    grad: 'linear-gradient(135deg, #5A5248 0%, #8A8070 100%)',
+  },
+]
+
+
 export default function AboutScreen({ onNavigate, activeNav, onProfileClick, userRole }: Props) {
+  const [openService, setOpenService] = useState<Service | null>(null)
   return (
   <ScreenShell
     activeNav={activeNav ?? 'about'}
@@ -323,6 +396,161 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
           ))}
         </div>
       </div>
+
+      {/* ══════ 7. PORTAFOLIO DE SERVICIOS ══════ */}
+      <div style={{ marginBottom: 40 }}>
+        <h2 style={{ textAlign: 'center', fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#205134', margin: '0 0 8px', fontWeight: 800 }}>
+          ¿Cómo podemos ayudarte a transformar tu territorio?
+        </h2>
+        <p style={{ textAlign: 'center', fontSize: 13, color: '#5A5248', margin: '0 auto 24px', maxWidth: 460, fontFamily: "'Nunito Sans', sans-serif" }}>
+          Elige un servicio para conocer cómo trabajamos.
+        </p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
+          {SERVICES.map((s) => (
+            <div
+              key={s.key}
+              onClick={() => setOpenService(s)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setOpenService(s)}
+              style={{
+                background: '#fff',
+                borderRadius: 20,
+                overflow: 'hidden',
+                border: '1px solid #EDE4D8',
+                boxShadow: '0 2px 14px rgba(42,92,26,0.06)',
+                cursor: 'pointer',
+                transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-4px)'
+                e.currentTarget.style.boxShadow = '0 8px 26px rgba(42,92,26,0.14)'
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)'
+                e.currentTarget.style.boxShadow = '0 2px 14px rgba(42,92,26,0.06)'
+              }}
+            >
+              <div
+                style={{
+                  height: 120,
+                  background: s.img ? `url(${s.img}) center/cover` : s.grad,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 44,
+                }}
+              >
+                {!s.img && s.icon}
+              </div>
+              <div style={{ padding: '16px 18px 18px' }}>
+                <div style={{ fontWeight: 800, fontSize: 16, color: '#1C3A14', fontFamily: "'Poppins', sans-serif", marginBottom: 6 }}>
+                  {s.icon} {s.title}
+                </div>
+                <p style={{ margin: '0 0 12px', fontSize: 13, color: '#5A5248', lineHeight: 1.5, fontFamily: "'Nunito Sans', sans-serif" }}>
+                  {s.desc}
+                </p>
+                <span style={{ fontSize: 13, fontWeight: 800, color: '#C8860A', fontFamily: "'Nunito Sans', sans-serif" }}>
+                  Conocer servicio →
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Detalle del servicio (ventana emergente) */}
+      {openService && (
+        <div
+          onClick={() => setOpenService(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 100,
+            background: 'rgba(21,56,35,0.55)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 24,
+              width: '100%',
+              maxWidth: 460,
+              maxHeight: '88vh',
+              overflowY: 'auto',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.35)',
+            }}
+          >
+            <div
+              style={{
+                height: 130,
+                background: openService.img ? `url(${openService.img}) center/cover` : openService.grad,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 54,
+                position: 'relative',
+              }}
+            >
+              {!openService.img && openService.icon}
+              <button
+                type="button"
+                onClick={() => setOpenService(null)}
+                aria-label="Cerrar"
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 12,
+                  width: 34,
+                  height: 34,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: 'rgba(0,0,0,0.45)',
+                  color: '#fff',
+                  fontSize: 15,
+                  cursor: 'pointer',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: '22px 24px 26px' }}>
+              <h3 style={{ margin: '0 0 8px', fontFamily: "'Poppins', sans-serif", fontSize: 20, color: '#205134', fontWeight: 800 }}>
+                {openService.title}
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: 14, color: '#4A4036', lineHeight: 1.6, fontFamily: "'Nunito Sans', sans-serif" }}>
+                {openService.detail}
+              </p>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#C8860A', letterSpacing: 0.8, marginBottom: 8 }}>QUÉ INCLUYE</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {openService.includes.map((item) => (
+                  <div key={item} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{ color: '#205134', fontWeight: 800 }}>✓</span>
+                    <span style={{ fontSize: 13, color: '#3D2B1A', fontFamily: "'Nunito Sans', sans-serif" }}>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+
+
+
+
+
+
+
+
 
       
 

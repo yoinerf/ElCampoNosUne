@@ -276,7 +276,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               lineHeight: 1.45,
             }}
           >
-            Bienvenido de vuelta a la red agrícola premium de México
+            ¡Qué bueno tenerte de vuelta!
           </p>
 
           {/* Mensaje de Error si existe */}

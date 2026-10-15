@@ -56,7 +56,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
         // Cargar perfil para autodiligenciar formulario de envío
         supabase
           .from('profiles')
-          .select('first_name, last_name, phone, department, municipality')
+          .select('*')
           .eq('id', data.user.id)
           .single()
           .then(({ data: profile }) => {
@@ -67,6 +67,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                 phone: profile.phone || prev.phone,
                 department: profile.department || prev.department,
                 municipality: profile.municipality || prev.municipality,
+                address: profile.address || prev.address,
               }))
             }
           })
@@ -87,6 +88,8 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
   const shippingFee = items.length > 0 && !isExperienceOnly ? 9000 : 0
   const wompiFee = paymentMethod === 'wompi' ? Math.round((subtotal + shippingFee) * 0.029) : 0
   const grandTotal = subtotal + shippingFee + wompiFee
+  // Wompi aún no está habilitado: se puede seleccionar pero no pagar
+  const wompiUnavailable = currentStep === 3 && paymentMethod === 'wompi' && isLogged !== false
 
   const formatPrice = (value: number) => `$${value.toLocaleString('es-CO')} COP`
 
@@ -119,6 +122,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
       setCurrentStep(3)
     } else if (currentStep === 3) {
       // Paso 3 -> Finalizar pedido / Proceder al pago
+      if (paymentMethod === 'wompi') return // Próximamente
       await executePaymentFlow()
     }
   }
@@ -127,6 +131,32 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     setLoadingPayment(true)
     setErrorMessage('')
     setMessage('')
+
+    // Contraentrega: se registra directamente en Supabase (sin backend).
+    // El pedido queda en estado 'PendingPayment' hasta que el productor/admin confirme el pago.
+    if (paymentMethod === 'contraentrega') {
+      const { error } = await supabase.rpc('create_cash_on_delivery_order', {
+        p_items: items.map(({ product, quantity }) => ({
+          id: product.id,
+          type: product.type || 'producto',
+          quantity,
+        })),
+        p_shipping: addressForm,
+        p_shipping_fee: shippingFee,
+      })
+
+      if (error) {
+        console.error('Error creando pedido contraentrega:', error)
+        setErrorMessage(`❌ No se pudo registrar el pedido: ${error.message}`)
+        setLoadingPayment(false)
+        return
+      }
+
+      setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! Quedó pendiente de pago y nuestro productor preparará tu envío. \n\n Podrás seguir el estado de tu pedido en el panel de usuario.')
+      onItemsChange([])
+      setLoadingPayment(false)
+      return
+    }
 
     const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
 
@@ -160,11 +190,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
         return
       }
 
-      if (paymentMethod === 'contraentrega') {
-        setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! El campesino/vendedor preparará tu envío.')
-        onItemsChange([])
-        setLoadingPayment(false)
-      } else if (paymentMethod === 'transferencia') {
+      if (paymentMethod === 'transferencia') {
         setTransferData({
           reference: checkoutData.reference,
           transferInfo: checkoutData.transferInfo || {
@@ -186,7 +212,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
       }
     } catch (err: any) {
       console.error('Error en el flujo de pagos:', err)
-      setErrorMessage(`❌ Error al conectar con el backend de pagos (${backendUrl}).`)
+      setErrorMessage(`Error al conectar con el servicio de pagos.`)
       setLoadingPayment(false)
     }
   }
@@ -206,7 +232,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
   return (
     <>
       <AuthRequiredModal open={authOpen} onClose={() => setAuthOpen(false)} onRequireAuth={(mode) => onRequireAuth?.(mode)} />
-      
+
       <PaymentModal
         open={paymentOpen}
         title="Finalizar pago con Wompi"
@@ -262,7 +288,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
             <div style={{ background: '#fff', border: '1px solid #E8DED0', borderRadius: 18, padding: '48px 24px', textAlign: 'center', maxWidth: 540, margin: '40px auto', boxShadow: '0 4px 20px rgba(0,0,0,0.03)' }}>
               <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
               <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 26, margin: '0 0 12px', fontWeight: 700 }}>¡Gracias por tu compra!</h2>
-              <p style={{ color: '#444', fontSize: 16, margin: '0 0 20px', lineHeight: 1.6 }}>{message}</p>
+              <p style={{ color: '#444', fontSize: 16, margin: '0 0 20px', lineHeight: 1.6, whiteSpace: 'pre-line', }}>{message}</p>
 
               {transferData && (
                 <div style={{ background: '#FAF7F0', border: '1.5px solid #6BAA3D', borderRadius: 16, padding: 18, textAlign: 'left', marginBottom: 24 }}>
@@ -372,10 +398,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
               )}
 
               <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-12 xl:gap-16">
-                
+
                 {/* Columna Izquierda: Contenido del paso actual */}
                 <div>
-                  
+
                   {/* PASO 1: ÚNICAMENTE Carrito de productos */}
                   {currentStep === 1 && (
                     <div className="flex flex-col gap-6">
@@ -562,11 +588,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                           {/* Opción 1: Contraentrega */}
                           <div
                             onClick={() => setPaymentMethod('contraentrega')}
-                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                              paymentMethod === 'contraentrega'
-                                ? 'border-[#205134] bg-[#F2F7F4]'
-                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                            }`}
+                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === 'contraentrega'
+                              ? 'border-[#205134] bg-[#F2F7F4]'
+                              : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
+                              }`}
                           >
                             <div className="flex items-center gap-3 mb-2">
                               <input
@@ -586,11 +611,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                           {/* Opción 2: Wompi */}
                           <div
                             onClick={() => setPaymentMethod('wompi')}
-                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                              paymentMethod === 'wompi'
-                                ? 'border-[#205134] bg-[#F2F7F4]'
-                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                            }`}
+                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === 'wompi'
+                              ? 'border-[#205134] bg-[#F2F7F4]'
+                              : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
+                              }`}
                           >
                             <div className="flex items-center justify-between gap-3 mb-2">
                               <div className="flex items-center gap-3">
@@ -603,7 +627,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                                 />
                                 <div className="font-bold text-[#1C3A14] text-lg">💳 Tarjeta de Crédito / Débito / PSE / Nequi (Wompi)</div>
                               </div>
-                              <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Wompi</span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Wompi</span>
+                                <span className="bg-[#FFF1E0] text-[#C4622D] border border-[#F3C38B] text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Próximamente</span>
+                              </div>
                             </div>
                             <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
                               Pago en línea 100% seguro procesado por la pasarela oficial Wompi (Bancolombia). Incluye tarifa de procesamiento digital (+2.9%).
@@ -611,7 +638,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                           </div>
 
                           {/* Opción 3: Transferencia Bancaria */}
-                          <div
+                          {/*<div
                             onClick={() => setPaymentMethod('transferencia')}
                             className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
                               paymentMethod === 'transferencia'
@@ -635,7 +662,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                             <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
                               Transfiere directamente por Bancolombia, Nequi o Daviplata a la cuenta comunitaria. Sin costo de procesamiento adicional.
                             </p>
-                          </div>
+                          </div>*/}
                         </div>
 
                         {/* Tarjeta Resumen de Entrega */}
@@ -684,21 +711,29 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                       <span className="font-['Poppins'] text-2xl font-bold text-[#205134]">{formatPrice(grandTotal)}</span>
                     </div>
 
-                    {/* BOTÓN PRINCIPAL: "Continuar" vs "Proceder al pago" */}
+                    {/* BOTÓN PRINCIPAL: "Continuar" vs "Confirmar el pedido" (contraentrega) vs "Proceder al pago" */}
                     <button
                       type="button"
-                      disabled={loadingPayment}
+                      disabled={loadingPayment || wompiUnavailable}
                       onClick={handleMainAction}
-                      className="w-full bg-[#205134] hover:bg-[#1a422a] disabled:opacity-50 text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
+                      className="w-full bg-[#205134] hover:bg-[#1a422a] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#205134] text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
                     >
                       {loadingPayment
                         ? 'Procesando...'
                         : isLogged === false
-                        ? 'Crear cuenta para comprar'
-                        : currentStep === 3
-                        ? 'Proceder al pago'
-                        : 'Continuar →'}
+                          ? 'Crear cuenta para comprar'
+                          : currentStep === 3
+                            ? paymentMethod === 'contraentrega'
+                              ? 'Confirmar el pedido'
+                              : wompiUnavailable ? 'Proceder al pago (Próximamente)' : 'Proceder al pago'
+                            : 'Continuar →'}
                     </button>
+
+                    {wompiUnavailable && (
+                      <p className="text-center text-xs text-[#C4622D] font-bold -mt-2 mb-4">
+                        ¡Pronto estará disponible! Estamos trabajando para ti.
+                      </p>
+                    )}
 
                     {isLogged === false && (
                       <div className="text-center text-xs text-[#666] mb-8">

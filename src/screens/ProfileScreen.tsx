@@ -13,8 +13,8 @@ type UserRole = 'asociacion' | 'turismo' | 'comprador'
 
 interface ProfileScreenProps {
   userRole?: UserRole | null
-  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile'
+  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin'
   onProfileClick?: () => void
 }
 

@@ -31,8 +31,8 @@ export interface CartItem {
 
 interface MarketplaceScreenProps {
   onOpenCheckout?: (items: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => void
-  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'superadmin' | any) => void
-  activeNav?: string
+  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
   onProfileClick?: () => void
   initialSelectedProduct?: string | null
   onClearInitialProduct?: () => void

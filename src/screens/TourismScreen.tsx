@@ -31,7 +31,7 @@ interface Experience {
   featured: boolean
 }
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'superadmin' | 'admin'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
 
 interface TourismScreenProps {
   onRequireAuth?: (mode: 'auth' | 'login') => void

@@ -10,7 +10,8 @@ import RegisterScreen from './screens/RegisterScreen'
 import LoginScreen from './screens/LoginScreen'
 import AdminPanelScreen from './screens/AdminPanelScreen'
 import SuperAdminScreen from './screens/SuperAdminScreen'
-import { supabase } from './lib/supabase'
+import SetNewPasswordScreen from './screens/SetNewPasswordScreen'
+import { supabase, authRedirectInfo } from './lib/supabase'
 import logoImg from './assets/logo-nofond.png'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
@@ -39,12 +40,19 @@ export default function App() {
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([])
   const [checkoutConfirm, setCheckoutConfirm] = useState<((items: CartItem[]) => Promise<boolean>) | null>(null)
   const [initialProduct, setInitialProduct] = useState<string | null>(null)
+  // recovery: llegó desde el enlace del correo · forced: entró con contraseña temporal del admin
+  const [passwordMode, setPasswordMode] = useState<'recovery' | 'forced' | null>(authRedirectInfo.isRecovery ? 'recovery' : null)
 
   useEffect(() => {
-    const loadRole = async (session: { user: { id: string } } | null) => {
+    const loadRole = async (session: { user: { id: string; user_metadata?: Record<string, any> } } | null) => {
       if (!session) {
         setUserRole(undefined)
         return
+      }
+
+      // Contraseña temporal asignada por el admin: obligar a cambiarla
+      if (session.user.user_metadata?.must_change_password) {
+        setPasswordMode((prev) => prev ?? 'forced')
       }
 
       const { data } = await supabase
@@ -71,12 +79,15 @@ export default function App() {
     }
 
     supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setFlow('app')
+      // Enlace de recuperación vencido o inválido: mostrar el login con el aviso
+      setFlow(!session && authRedirectInfo.error ? 'login' : 'app')
       await loadRole(session)
       setCheckingSession(false)
     })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setPasswordMode('recovery')
+      if (event === 'SIGNED_OUT') setPasswordMode(null)
       setFlow('app')
       loadRole(session)
     })
@@ -202,6 +213,11 @@ export default function App() {
         </div>
       </div>
     )
+  }
+
+  // Crear nueva contraseña (enlace de recuperación o contraseña temporal) antes de usar la app
+  if (passwordMode) {
+    return <SetNewPasswordScreen mode={passwordMode} onDone={() => setPasswordMode(null)} />
   }
 
   return (

@@ -112,7 +112,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', category_id: '', price: '', unit: 'uds', stockNum: '45', origin: '', description: '', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format' })
 
-  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', department: '', municipality: '', user_type: 'asociacion' })
+  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '', user_type: 'asociacion' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
 
@@ -153,7 +153,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     if (!user) { setLoading(false); return }
 
     const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }, statusesData, itemsData] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, org_name, department, municipality, user_type').eq('id', user.id).single(),
+      supabase.from('profiles').select('id, first_name, last_name, org_name, phone, department, municipality, user_type').eq('id', user.id).single(),
       supabase.from('activities').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(8),
       supabase.from('categories').select('id, name, business_type').eq('active', true).eq('business_type', userRole === 'turismo' ? 'turismo' : 'asociacion'),
       supabase.from('departments').select('id, name').order('name', { ascending: true }),
@@ -166,7 +166,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
 
     if (profileData) {
       setProfile(profileData as ProfileData)
-      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', user_type: profileData.user_type ?? 'asociacion' })
+      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', user_type: profileData.user_type ?? 'asociacion' })
     }
 
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
@@ -372,6 +372,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
       first_name: profileForm.first_name,
       last_name: profileForm.last_name,
       org_name: profileForm.org_name,
+      phone: profileForm.phone.trim() || null,
       department: profileForm.department,
       municipality: profileForm.municipality,
       user_type: profileForm.user_type,
@@ -764,6 +765,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                     <div style={{ marginBottom: 16 }}>
                       <label style={labelStyle}>Nombre de organizacion / asociacion</label>
                       <input value={profileForm.org_name} onChange={(e) => setProfileForm({ ...profileForm, org_name: e.target.value })} placeholder="Ej: Cooperativa El Roble" style={inputStyle} />
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <label style={labelStyle}>WhatsApp para notificaciones de pedidos</label>
+                      <input value={profileForm.phone} onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })} inputMode="tel" placeholder="Ej: 300 123 4567" style={inputStyle} />
+                      <div style={{ fontSize: 12, color: '#8A8070', marginTop: 4 }}>Te avisaremos por WhatsApp cuando recibas un pedido nuevo.</div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
                       <div>

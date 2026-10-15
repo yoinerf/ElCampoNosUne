@@ -1,17 +1,28 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import MarketplaceScreen from './screens/MarketplaceScreen'
-import CheckoutScreen from './screens/CheckoutScreen'
 import type { CartItem } from './screens/MarketplaceScreen'
-import TourismScreen from './screens/TourismScreen'
-import ProfileScreen from './screens/ProfileScreen'
-import BuyerPanelScreen from './screens/BuyerPanelScreen'
-import RegisterScreen from './screens/RegisterScreen'
-import LoginScreen from './screens/LoginScreen'
-import AdminPanelScreen from './screens/AdminPanelScreen'
-import SuperAdminScreen from './screens/SuperAdminScreen'
-import SetNewPasswordScreen from './screens/SetNewPasswordScreen'
 import { supabase, authRedirectInfo } from './lib/supabase'
+
+// Pantallas cargadas bajo demanda: no se descargan hasta que se necesitan
+// (los paneles de admin, por ejemplo, no llegan al navegador de un comprador)
+const CheckoutScreen = lazy(() => import('./screens/CheckoutScreen'))
+const TourismScreen = lazy(() => import('./screens/TourismScreen'))
+const ProfileScreen = lazy(() => import('./screens/ProfileScreen'))
+const BuyerPanelScreen = lazy(() => import('./screens/BuyerPanelScreen'))
+const RegisterScreen = lazy(() => import('./screens/RegisterScreen'))
+const LoginScreen = lazy(() => import('./screens/LoginScreen'))
+const AdminPanelScreen = lazy(() => import('./screens/AdminPanelScreen'))
+const SuperAdminScreen = lazy(() => import('./screens/SuperAdminScreen'))
+const SetNewPasswordScreen = lazy(() => import('./screens/SetNewPasswordScreen'))
+
+function ScreenLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-screen" style={{ background: '#F5EEE6', color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontSize: 15, fontWeight: 600 }}>
+      Cargando...
+    </div>
+  )
+}
 import logoImg from './assets/logo-nofond.png'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
@@ -217,10 +228,15 @@ export default function App() {
 
   // Crear nueva contraseña (enlace de recuperación o contraseña temporal) antes de usar la app
   if (passwordMode) {
-    return <SetNewPasswordScreen mode={passwordMode} onDone={() => setPasswordMode(null)} />
+    return (
+      <Suspense fallback={<ScreenLoader />}>
+        <SetNewPasswordScreen mode={passwordMode} onDone={() => setPasswordMode(null)} />
+      </Suspense>
+    )
   }
 
   return (
+    <Suspense fallback={<ScreenLoader />}>
     <div className="min-h-screen w-full" style={{ background: '#F5EEE6' }}>
       <div className="min-h-screen w-full flex flex-col">
         <div className="flex-1">
@@ -277,5 +293,6 @@ export default function App() {
         </div>
       </div>
     </div>
+    </Suspense>
   )
 }

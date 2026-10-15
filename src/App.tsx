@@ -8,22 +8,26 @@ import ProfileScreen from './screens/ProfileScreen'
 import RegisterScreen from './screens/RegisterScreen'
 import LoginScreen from './screens/LoginScreen'
 import AdminPanelScreen from './screens/AdminPanelScreen'
+import SuperAdminScreen from './screens/SuperAdminScreen'
+import AboutScreen from './screens/AboutScreen'
 import { supabase } from './lib/supabase'
 import logoImg from './assets/logo-nofond.png'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin'
-type UserRole = 'asociacion' | 'turismo' | 'comprador'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'about'
+type UserRole = 'asociacion' | 'turismo' | 'comprador' | 'admin'
 type AppFlow = 'auth' | 'login' | 'app'
 
 const getVisibleTabs = (role?: UserRole): Tab[] => {
   switch (role) {
+    case 'admin':
+      return ['superadmin', 'home', 'market', 'tourism', 'profile', 'about']
     case 'asociacion':
-      return ['admin', 'market']
+      return ['admin', 'market', 'about']
     case 'turismo':
-      return ['admin', 'tourism']
+      return ['admin', 'tourism', 'about']
     case 'comprador':
     default:
-      return ['home', 'market', 'tourism', 'profile']
+      return ['home', 'market', 'tourism', 'profile', 'about']
   }
 }
 
@@ -52,7 +56,12 @@ export default function App() {
       const role = data?.user_type as UserRole | undefined
       setUserRole(role)
 
-      if (role === 'asociacion' || role === 'turismo') {
+      if (role === 'admin') {
+        setActiveTab((prev) => {
+          if (prev === 'market' || prev === 'tourism' || prev === 'profile') return prev
+          return 'superadmin'
+        })
+      } else if (role === 'asociacion' || role === 'turismo') {
         setActiveTab((prev) => {
           if (role === 'asociacion' && prev === 'market') return 'market'
           if (role === 'turismo' && prev === 'tourism') return 'tourism'
@@ -112,7 +121,9 @@ export default function App() {
 
   const returnToHome = () => {
     setFlow('app')
-    if (userRole === 'asociacion' || userRole === 'turismo') {
+    if (userRole === 'admin') {
+      setActiveTab('superadmin')
+    } else if (userRole === 'asociacion' || userRole === 'turismo') {
       setActiveTab('admin')
     } else {
       setActiveTab('home')
@@ -144,27 +155,31 @@ export default function App() {
   }, [checkoutConfirm, flow])
 
   const mainScreens: Record<Tab, JSX.Element> = {
-
-
     home: (
-      <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} onSelectProduct={goToProduct} />
+      <HomeScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} onSelectProduct={goToProduct} />
     ),
 
 
     admin: (
-      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+      <AdminPanelScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
+    ),
+    superadmin: (
+      <SuperAdminScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
     market: (
       <MarketplaceScreen
-        onNavigate={setActiveTab}
-        activeNav={activeTab}
+        onNavigate={(t) => setActiveTab(t as Tab)}
+        activeNav={activeTab as any}
         onProfileClick={handleProfileClick}
-        userRole={userRole}
+        userRole={userRole as any}
         onOpenCheckout={handleOpenCheckout}
       />
     ),
-    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
-    profile: <ProfileScreen userRole={userRole} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />,
+    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} />,
+    profile: <ProfileScreen userRole={userRole as any} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} />,
+      about: (
+    <AboutScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
+  ),
   }
 
   if (checkingSession) {

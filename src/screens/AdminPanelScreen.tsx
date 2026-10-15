@@ -161,6 +161,9 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
     if (deptsData && deptsData.length > 0) setDepartments(deptsData as { id: string; name: string }[])
 
+    const currentOrg = profileData?.org_name?.trim()
+      || `${profileData?.first_name ?? ''} ${profileData?.last_name ?? ''}`.trim()
+
     if (isTurismo) {
       // Cargar experiencias desde tabla experiences con sus imagenes
       const { data: expData } = await supabase.from('experiences').select('*, images(*)').eq('host_id', user.id).order('created_at', { ascending: false })
@@ -169,7 +172,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
         return {
           id: e.id,
           title: e.title,
-          producer: e.host || '',
+          producer: currentOrg || e.host || '',
           price: e.price || 0,
           stock: String(parseInt(e.capacity) || e.capacity || '0'),
           unit: 'pers',
@@ -192,6 +195,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
         const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url || p.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'
         return {
           ...p,
+          producer: currentOrg || p.producer || 'Productor',
           img: primaryImg,
           description: p.description || '',
         }
@@ -353,14 +357,34 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     setProfileMsg('')
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setSavingProfile(false); return }
-    const { error } = await supabase.from('profiles').update({ first_name: profileForm.first_name, last_name: profileForm.last_name, org_name: profileForm.org_name, department: profileForm.department, municipality: profileForm.municipality, user_type: profileForm.user_type }).eq('id', user.id)
-    setSavingProfile(false)
-    if (error) { setProfileMsg('Error al guardar: ' + error.message) }
-    else {
-      setProfileMsg('Perfil actualizado. Recargando...')
-      setProfile((prev) => ({ ...prev, ...profileForm }))
-      window.location.reload()
+    const { error } = await supabase.from('profiles').update({
+      first_name: profileForm.first_name,
+      last_name: profileForm.last_name,
+      org_name: profileForm.org_name,
+      department: profileForm.department,
+      municipality: profileForm.municipality,
+      user_type: profileForm.user_type,
+    }).eq('id', user.id)
+    if (error) {
+      setSavingProfile(false)
+      setProfileMsg('Error al guardar: ' + error.message)
+      return
     }
+
+    // Sincronizar el nombre visible en productos y experiencias ya publicados
+    const displayName = profileForm.org_name?.trim()
+      || `${profileForm.first_name ?? ''} ${profileForm.last_name ?? ''}`.trim()
+      || 'Productor'
+
+    await Promise.all([
+      supabase.from('products').update({ producer: displayName }).eq('producer_id', user.id),
+      supabase.from('experiences').update({ host: displayName }).eq('host_id', user.id),
+    ])
+
+    setSavingProfile(false)
+    setProfileMsg('Perfil actualizado. Recargando...')
+    setProfile((prev) => ({ ...prev, ...profileForm }))
+    window.location.reload()
   }
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #EDE4D8', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: "'Nunito Sans', sans-serif", background: '#FDFAF6', color: '#1C3A14' }

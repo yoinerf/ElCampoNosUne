@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
+import { isAdvertisementActive } from '../lib/dateColombia'
 import bannerImg from '../assets/banner-campo.webp'
 import AutoCarousel from '../components/AutoCarousel'
 
@@ -174,27 +175,100 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       }
 
       // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
+            // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
       try {
-        const { data: productAds } = await supabase
-          .from('advertisements')
-          .select('id, products (id, title, producer, rating, price, images (image_url, is_primary))')
-          .eq('type', 'product')
-          .eq('active', true)
-          .lte('starts_at', new Date().toISOString())
-          .gte('ends_at', new Date().toISOString())
-          .order('starts_at', { ascending: false })
-          .limit(6)
+        const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
+          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }).limit(30),
+          supabase.from('product_reviews').select('product_id, rating'),
+          supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
+        ])
 
-        const featuredProducts = (productAds || [])
-          .map((ad: any) => {
-            const product = ad.products
-            if (!product) return null
-            const primaryImage = product.images?.find((img: any) => img.is_primary) || product.images?.[0]
-            return { ...product, img: primaryImage?.image_url || PLACEHOLDER_PRODUCT_IMG }
-          })
-          .filter(Boolean)
+        const reviewsMap: Record<string, number[]> = {}
+        if (reviewsData) {
+          for (const r of reviewsData) {
+            if (r.product_id) {
+              if (!reviewsMap[r.product_id]) reviewsMap[r.product_id] = []
+              reviewsMap[r.product_id].push(r.rating)
+            }
+          }
+        }
 
-        setFeatured(featuredProducts)
+        // Filtrar anuncios activos según la hora oficial de Colombia
+        const activeProductAds = (adsData || []).filter(ad => ad.type === 'product' && isAdvertisementActive(ad))
+
+        const processed = (products as any[]).map((p) => {
+          const ratings = reviewsMap[p.id] || []
+          const avg = ratings.length > 0
+            ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
+            : (p.rating ?? 5)
+          const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url
+            || p.images?.[0]?.image_url
+            || PLACEHOLDER_PRODUCT_IMG
+
+          const matchingAd = activeProductAds.find((ad) => ad.product_id === p.id)
+          const isAdFeatured = !!matchingAd
+
+          const existingAd = (adsData || []).find((ad) => ad.product_id === p.id)
+          const isAdExpiredOrInactive = existingAd ? !isAdvertisementActive(existingAd) : false
+
+          const isOutstandingValid = p.outstanding === true && !isAdExpiredOrInactive
+
+          const profile = p.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+          const producerName = profile
+            ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || p.producer || 'Productor')
+            : (p.producer || 'Productor')
+
+          return {
+            ...p,
+            producer: producerName,
+            title: matchingAd?.title || p.title,
+            img: matchingAd?.image_url || primaryImg,
+            rating: avg,
+            isAdFeatured,
+            isOutstandingValid,
+          }
+        })
+
+        const existingIds = new Set(processed.map((p) => p.id))
+        for (const ad of activeProductAds) {
+          if (ad.product_id && !existingIds.has(ad.product_id)) {
+            const { data: missingProd } = await supabase
+              .from('products')
+              .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
+              .eq('id', ad.product_id)
+              .single()
+            if (missingProd) {
+              const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url
+                || missingProd.images?.[0]?.image_url
+                || PLACEHOLDER_PRODUCT_IMG
+              const profile = (missingProd as any).profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+              const producerName = profile
+                ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || missingProd.producer || 'Productor')
+                : (missingProd.producer || 'Productor')
+
+              processed.unshift({
+                ...missingProd,
+                producer: producerName,
+                title: ad.title || missingProd.title,
+                img: ad.image_url || primaryImg,
+                rating: missingProd.rating ?? 5,
+                isAdFeatured: true,
+                isOutstandingValid: true,
+              })
+              existingIds.add(missingProd.id)
+            }
+          }
+        }
+
+        processed.sort((a, b) => {
+          if (a.isAdFeatured && !b.isAdFeatured) return -1
+          if (!a.isAdFeatured && b.isAdFeatured) return 1
+          if (a.isOutstandingValid && !b.isOutstandingValid) return -1
+          if (!a.isOutstandingValid && b.isOutstandingValid) return 1
+          return b.rating - a.rating
+        })
+
+        setFeatured(processed.slice(0, 3))
       } catch (e) {
         console.error('Error cargando productos patrocinados en HomeScreen:', e)
       }

@@ -8,6 +8,7 @@ export interface ExperienceModalProps {
   initialData?: any
   title?: string
   categories?: { id: string; name: string }[]
+  hosts?: { id: string; name: string; org_name?: string }[]
 }
 
 const inputStyle: React.CSSProperties = {
@@ -51,11 +52,14 @@ export default function ExperienceModal({
   onSave,
   initialData,
   title = 'Nueva experiencia',
-  categories = []
+  categories = [],
+  hosts,
 }: ExperienceModalProps) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     title: '',
+    host: '',
+    host_id: '',
     category_id: '',
     price: '',
     capacity: '10',
@@ -73,8 +77,18 @@ export default function ExperienceModal({
   useEffect(() => {
     if (isOpen) {
       if (initialData) {
+        const matchedHostId =
+          initialData.host_id ||
+          hosts?.find(
+            (h) =>
+              h.name === initialData.host ||
+              (h.org_name && h.org_name === initialData.host)
+          )?.id ||
+          ''
         setForm({
           title: initialData.title || '',
+          host: initialData.host || (hosts?.find((h) => h.id === matchedHostId)?.name ?? ''),
+          host_id: matchedHostId,
           category_id: initialData.category_id || '',
           price: initialData.price ? String(initialData.price) : '',
           capacity: initialData.capacity ? String(initialData.capacity).replace(/\D/g, '') : (initialData.stockNum || '10'),
@@ -86,13 +100,24 @@ export default function ExperienceModal({
         setExistingImg(initialData.img || '')
       } else {
         const defaultCatId = categories.length > 0 ? categories[0].id : ''
-        setForm({ title: '', category_id: defaultCatId, price: '', capacity: '10', duration: '2 horas', description: '', tags: '', featured: true })
+        setForm({
+          title: '',
+          host: '',
+          host_id: '',
+          category_id: defaultCatId,
+          price: '',
+          capacity: '10',
+          duration: '2 horas',
+          description: '',
+          tags: '',
+          featured: true,
+        })
         setExistingImg('')
       }
       setImages([])
       setUploadError('')
     }
-  }, [isOpen, initialData, categories])
+  }, [isOpen, initialData, categories, hosts])
 
   if (!isOpen) return null
 
@@ -189,6 +214,32 @@ export default function ExperienceModal({
               style={inputStyle}
             />
           </div>
+
+          {hosts && hosts.length > 0 && (
+            <div>
+              <label style={labelStyle}>Anfitrión / Operador</label>
+              <select
+                value={form.host_id}
+                onChange={(e) => {
+                  const selId = e.target.value
+                  const found = hosts.find((h) => h.id === selId)
+                  setForm({
+                    ...form,
+                    host_id: selId,
+                    host: found ? found.name : '',
+                  })
+                }}
+                style={inputStyle}
+              >
+                <option value="">Seleccionar anfitrión u operador...</option>
+                {hosts.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="modal-grid-2">
             {categories.length > 0 ? (
@@ -329,17 +380,27 @@ export default function ExperienceModal({
             )}
 
             {images.length === 0 && existingImg && (
-              <div className="mt-2.5 flex items-center gap-3 p-2.5 rounded-xl border border-[#EDE4D8] bg-[#FAF7F3]">
-                <img
-                  src={existingImg}
-                  alt="actual"
-                  className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-[#EDE4D8] flex-shrink-0"
-                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-[#205134] m-0 font-['Nunito_Sans']">Imagen actual de la experiencia</p>
-                  <p className="text-[11px] text-[#9B7D5A] m-0 font-['Nunito_Sans']">Sube imágenes arriba si deseas reemplazarla</p>
+              <div className="mt-2.5 flex items-center justify-between p-2.5 rounded-xl border border-[#EDE4D8] bg-[#FAF7F3]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={existingImg}
+                    alt="actual"
+                    className="w-14 h-14 sm:w-16 sm:h-16 object-cover rounded-lg border border-[#EDE4D8] flex-shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-[#205134] m-0 font-['Nunito_Sans']">Imagen actual de la experiencia</p>
+                    <p className="text-[11px] text-[#9B7D5A] m-0 font-['Nunito_Sans']">Sube imágenes arriba si deseas reemplazarla</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setExistingImg('')}
+                  className="px-2.5 py-1.5 text-[#9B4728] hover:bg-[#F3ECE2] rounded-lg border border-[#EDE4D8] cursor-pointer text-xs font-bold font-['Nunito_Sans'] flex-shrink-0 transition-colors"
+                  title="Quitar imagen actual"
+                >
+                  ✕ Quitar
+                </button>
               </div>
             )}
           </div>

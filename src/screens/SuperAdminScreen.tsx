@@ -15,6 +15,8 @@ import ExperienceModal from '../components/ExperienceModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
+import ChangePasswordCard from '../components/ChangePasswordCard'
+import TempPasswordModal from '../components/TempPasswordModal'
 import { fetchAllTickets, type SupportTicket } from '../lib/buyer'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -266,6 +268,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
   const [tickets, setTickets] = useState<SupportTicket[]>([])
+  const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
@@ -1229,6 +1232,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                   <TD>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                       <button type="button" style={btnEdit} onClick={() => setUserEditModal({ ...u })}>✏️ Editar</button>
+                                      <button type="button" style={btnEdit} title="Asignar contraseña temporal" onClick={() => setTempPasswordUser({ id: u.id, name: `${u.first_name} ${u.last_name}`.trim(), email: u.email })}>🔑</button>
                                       <button type="button" style={btnDanger} onClick={() => setConfirmDelete({ type: 'user', id: u.id, name: `${u.first_name} ${u.last_name}` })}>{I.trash}</button>
                                     </div>
                                   </TD>
@@ -1590,6 +1594,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     ))}
                   </div>
                 </div>
+                <ChangePasswordCard style={{ marginTop: 18 }} />
               </div>
             )}
           </>}
@@ -1599,6 +1604,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       {/* ══════════════════════════════════════════════════════════════════════════
           MODALES
       ══════════════════════════════════════════════════════════════════════════ */}
+
+      {/* ── MODAL CONTRASEÑA TEMPORAL ── */}
+      {tempPasswordUser && <TempPasswordModal user={tempPasswordUser} onClose={() => setTempPasswordUser(null)} />}
 
       {/* ── MODAL EDITAR USUARIO ── */}
       {userEditModal && (

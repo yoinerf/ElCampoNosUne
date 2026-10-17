@@ -18,6 +18,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
   const isAmazon = store === 'amazonica'
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
+  const [municipality, setMunicipality] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [userType, setUserType] = useState<UserType>('comprador')
@@ -38,6 +39,10 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
     // Validaciones
     if (!fullName.trim()) {
       setError('Por favor ingresa tu nombre completo')
+      return
+    }
+    if (!municipality.trim()) {
+      setError('Por favor ingresa tu ciudad o municipio')
       return
     }
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
@@ -73,6 +78,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
           first_name: firstName,
           last_name: lastName,
           user_type: userType,
+          municipality: municipality.trim(),
         },
       },
     })
@@ -91,6 +97,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
         last_name: lastName,
         email: email.trim(),
         user_type: userType,
+        municipality: municipality.trim(),
         created_at: new Date().toISOString(),
       })
 
@@ -101,26 +108,6 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
 
     setLoading(false)
     setSuccess(true)
-  }
-
-  const handleSocialAuth = async (provider: 'google' | 'apple') => {
-    try {
-      if (provider === 'google') {
-        const { error: authError } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin,
-          },
-        })
-        if (authError) {
-          setError(`Acceso con ${provider} en configuración. Por favor regístrate con tu correo.`)
-        }
-      } else {
-        setError('Registro con Apple próximamente disponible.')
-      }
-    } catch {
-      setError('Servicio de autenticación no disponible temporalmente.')
-    }
   }
 
   return (
@@ -341,6 +328,51 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Juan Pérez Gómez"
                     autoComplete="name"
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: 8,
+                      border: '1.5px solid #D1D5DB',
+                      background: '#FFFFFF',
+                      fontSize: 14,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      color: '#1F2937',
+                      outline: 'none',
+                      boxSizing: 'border-box',
+                      transition: 'border-color 0.2s, box-shadow 0.2s',
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.borderColor = '#205134'
+                      e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.borderColor = '#D1D5DB'
+                      e.target.style.boxShadow = 'none'
+                    }}
+                  />
+                </div>
+
+                {/* Campo: Ciudad (obligatoria) */}
+                <div style={{ marginBottom: 15 }}>
+                  <label htmlFor="register-city" style={{
+                      display: 'block',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#205134',
+                      marginBottom: 5,
+                    }}>
+                    CIUDAD O MUNICIPIO
+                  </label>
+                  <input
+                    id="register-city"
+                    type="text"
+                    value={municipality}
+                    onChange={(e) => setMunicipality(e.target.value)}
+                    placeholder="Ej: Pitalito"
+                    autoComplete="address-level2"
                     style={{
                       width: '100%',
                       padding: '11px 14px',
@@ -698,106 +730,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   {loading ? 'Creando cuenta...' : 'Registrarse'}
                 </button>
 
-                {/* Separador "O REGISTRARSE CON" */}
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    marginBottom: 16,
-                  }}
-                >
-                  <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      color: '#9CA3AF',
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    O REGISTRARSE CON
-                  </span>
-                  <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
-                </div>
-
-                {/* Botones Sociales lado a lado */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 24 }}>
-                  {/* Google */}
-                  <button
-                    type="button"
-                    onClick={() => handleSocialAuth('google')}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 8,
-                      border: '1.5px solid #E5E7EB',
-                      background: '#FFFFFF',
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      color: '#374151',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      transition: 'background-color 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24">
-                      <path
-                        fill="#EA4335"
-                        d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
-                      />
-                      <path
-                        fill="#4285F4"
-                        d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"
-                      />
-                    </svg>
-                    <span>Google</span>
-                  </button>
-
-                  {/* Apple */}
-                  <button
-                    type="button"
-                    onClick={() => handleSocialAuth('apple')}
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 8,
-                      border: '1.5px solid #E5E7EB',
-                      background: '#FFFFFF',
-                      fontSize: 13.5,
-                      fontWeight: 600,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      color: '#374151',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      transition: 'background-color 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#111827">
-                      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.88c.64-.78 1.08-1.86.96-2.88-.93.04-2.05.62-2.72 1.4-.59.68-1.11 1.77-.97 2.83 1.04.08 2.09-.57 2.73-1.35z" />
-                    </svg>
-                    <span>Apple</span>
-                  </button>
-                </div>
+                <div style={{ height: 20 }} />
 
                 {/* Switcher a Iniciar Sesión */}
                 <p

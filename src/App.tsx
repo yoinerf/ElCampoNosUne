@@ -1,5 +1,6 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense, type JSX } from 'react'
 import HomeScreen from './screens/HomeScreen'
+import ScreenShell from './components/ScreenShell'
 import type { CartItem } from './screens/MarketplaceScreen'
 import { supabase, authRedirectInfo } from './lib/supabase'
 import { AMAZON_PATH, STORE_NAMES, cartKey, isAmazonPath, type StoreId } from './lib/stores'
@@ -16,6 +17,8 @@ const LoginScreen = lazy(() => import('./screens/LoginScreen'))
 const AdminPanelScreen = lazy(() => import('./screens/AdminPanelScreen'))
 const SuperAdminScreen = lazy(() => import('./screens/SuperAdminScreen'))
 const SetNewPasswordScreen = lazy(() => import('./screens/SetNewPasswordScreen'))
+const StoreAdminScreen = lazy(() => import('./screens/StoreAdminScreen'))
+const AboutScreen = lazy(() => import('./screens/AboutScreen'))
 
 function ScreenLoader() {
   return (
@@ -26,22 +29,25 @@ function ScreenLoader() {
 }
 import logoImg from './assets/logo-nofond.png'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'amazon'
-type UserRole = 'asociacion' | 'turismo' | 'comprador' | 'admin'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'about' | 'amazon' | 'storeadmin'
+type UserRole = 'asociacion' | 'turismo' | 'comprador' | 'admin' | 'admin_tienda'
 type AppFlow = 'auth' | 'login' | 'app'
 
 const getVisibleTabs = (role?: UserRole, store: StoreId = 'campo'): Tab[] => {
   switch (role) {
     case 'admin':
-      return ['superadmin', 'home', 'market', 'tourism', 'amazon', 'profile']
+      return ['superadmin', 'home', 'market', 'tourism', 'amazon', 'profile', 'about']
     case 'asociacion':
-      // El productor solo ve la tienda a la que pertenece
-      return store === 'amazonica' ? ['admin', 'amazon'] : ['admin', 'market']
+      // El productor solo ve la tienda a la que pertenece (el amazónico no ve páginas de El Campo Nos Une)
+      return store === 'amazonica' ? ['admin', 'amazon'] : ['admin', 'market', 'about']
     case 'turismo':
-      return ['admin', 'tourism']
+      return ['admin', 'tourism', 'about']
+    case 'admin_tienda':
+      // Solo su panel: productores y revisión de perfiles de su tienda
+      return ['storeadmin']
     case 'comprador':
     default:
-      return ['home', 'market', 'tourism', 'amazon', 'profile']
+      return ['home', 'market', 'tourism', 'amazon', 'profile', 'about']
   }
 }
 
@@ -52,6 +58,8 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole | undefined>()
   // Tienda del usuario (profiles.store): define qué tienda gestiona un productor
   const [userStore, setUserStore] = useState<StoreId>('campo')
+  // Valor real de profiles.store (puede ser una tienda nueva): lo usa el panel del admin de tienda
+  const [userStoreId, setUserStoreId] = useState<string>('campo')
   // Tienda desde la que el comprador abrió su panel (para mantener la marca)
   const [panelStore, setPanelStore] = useState<StoreId>('campo')
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([])
@@ -65,6 +73,7 @@ export default function App() {
       if (!session) {
         setUserRole(undefined)
         setUserStore('campo')
+        setUserStoreId('campo')
         return
       }
 
@@ -83,12 +92,15 @@ export default function App() {
       const store: StoreId = data?.store === 'amazonica' ? 'amazonica' : 'campo'
       setUserRole(role)
       setUserStore(store)
+      setUserStoreId(data?.store ?? 'campo')
 
       if (role === 'admin') {
         setActiveTab((prev) => {
           if (prev === 'market' || prev === 'tourism' || prev === 'profile' || prev === 'amazon') return prev
           return 'superadmin'
         })
+      } else if (role === 'admin_tienda') {
+        setActiveTab('storeadmin')
       } else if (role === 'asociacion' || role === 'turismo') {
         setActiveTab((prev) => {
           if (role === 'asociacion' && store === 'campo' && prev === 'market') return 'market'
@@ -122,7 +134,7 @@ export default function App() {
   // Dentro de la Tienda Amazónica no se muestra nada de El Campo Nos Une.
   const viewStore: StoreId =
     activeTab === 'amazon'
-    || (activeTab === 'admin' && userStore === 'amazonica')
+    || ((activeTab === 'admin' || activeTab === 'storeadmin') && userStore === 'amazonica')
     || (activeTab === 'profile' && panelStore === 'amazonica')
       ? 'amazonica'
       : 'campo'
@@ -149,6 +161,8 @@ export default function App() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setFlow('login')
+    } else if (userRole === 'admin_tienda') {
+      setActiveTab('storeadmin')
     } else {
       if (activeTab !== 'profile') setPanelStore(viewStore)
       setActiveTab('profile')
@@ -157,7 +171,9 @@ export default function App() {
 
   const returnToStore = () => {
     setFlow('app')
-    if (viewStore === 'amazonica' || (userRole === 'asociacion' && userStore === 'amazonica')) {
+    if (userRole === 'admin_tienda') {
+      setActiveTab('storeadmin')
+    } else if (viewStore === 'amazonica' || (userRole === 'asociacion' && userStore === 'amazonica')) {
       setActiveTab('amazon')
     } else if (userRole === 'turismo') {
       setActiveTab('tourism')
@@ -166,9 +182,16 @@ export default function App() {
     }
   }
 
+  const goToProduct = (productId: string) => {
+  setInitialProduct(productId)
+  setActiveTab('market')
+}
+
   const returnToHome = () => {
     setFlow('app')
-    if (viewStore === 'amazonica' && userRole !== 'admin' && userRole !== 'turismo') {
+    if (userRole === 'admin_tienda') {
+      setActiveTab('storeadmin')
+    } else if (viewStore === 'amazonica' && userRole !== 'admin' && userRole !== 'turismo') {
       setActiveTab(userRole === 'asociacion' ? 'admin' : 'amazon')
     } else if (userRole === 'admin') {
       setActiveTab('superadmin')
@@ -203,12 +226,17 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [checkoutConfirm, flow])
 
-  const mainScreens: Record<Tab, React.ReactElement> = {
+  const mainScreens: Record<Tab, JSX.Element> = {
     home: (
-      <HomeScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} />
+      <HomeScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} onSelectProduct={goToProduct} />
     ),
+
+
     admin: (
       <AdminPanelScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} store={userStore} />
+    ),
+    storeadmin: (
+      <StoreAdminScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStoreId} />
     ),
     superadmin: (
       <SuperAdminScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
@@ -249,6 +277,9 @@ export default function App() {
       />
     ) : (
       <ProfileScreen userRole={userRole as any} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} />
+    ),
+    about: (
+      <AboutScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
   }
 
@@ -311,6 +342,22 @@ export default function App() {
             </div>
           )}
           {flow === 'app' && (checkoutConfirm ? (
+            // El carrito conserva el header: navegar desde él cierra el checkout
+            <ScreenShell
+              store={viewStore}
+              activeNav={activeTab}
+              userRole={userRole}
+              onNavigate={(t) => {
+                setCheckoutConfirm(null)
+                setActiveTab(t as Tab)
+              }}
+              onProfileClick={() => {
+                setCheckoutConfirm(null)
+                handleProfileClick()
+              }}
+              cartCount={checkoutItems.reduce((sum, item) => sum + item.quantity, 0)}
+              contentStyle={{ padding: 0 }}
+            >
             <CheckoutScreen
               store={viewStore}
               items={checkoutItems}
@@ -330,6 +377,7 @@ export default function App() {
                 setCheckoutConfirm(null)
               }}
             />
+            </ScreenShell>
           ) : activeTab === 'market' || activeTab === 'amazon' ? (
             <MarketplaceScreen
               key={viewStore}

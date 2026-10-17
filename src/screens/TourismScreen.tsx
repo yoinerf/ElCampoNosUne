@@ -6,6 +6,9 @@ import ExperienceModal from '../components/ExperienceModal'
 import { supabase } from '../lib/supabase'
 import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
 import { isAdvertisementActive } from '../lib/dateColombia'
+import { canCurrentUserPublish, confirmGoToDocuments } from '../lib/producerDocuments'
+import { requestPanelSection } from '../lib/notifications'
+import { alertDialog } from '../components/ConfirmDialog'
 
 const tagColors: Record<string, string> = {
   Naturaleza: '#3D7A28',
@@ -31,7 +34,7 @@ interface Experience {
   featured: boolean
 }
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'superadmin' | 'admin'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
 
 interface TourismScreenProps {
   onRequireAuth?: (mode: 'auth' | 'login') => void
@@ -368,6 +371,18 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     return activitySaved
   }
 
+  // Validación documental antes de abrir el formulario (la BD también lo bloquea al guardar)
+  const openPublishForm = async () => {
+    if (!(await canCurrentUserPublish())) {
+      if (await confirmGoToDocuments()) {
+        requestPanelSection('settings')
+        onNavigate?.('admin')
+      }
+      return
+    }
+    setShowForm(true)
+  }
+
   const handleCreateExperience = async (formData: any) => {
     if (!canCreateExperience) {
       setSubmitMessage('Tu perfil no permite registrar experiencias')
@@ -409,6 +424,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     if (error) {
       setSubmitMessage(error.message)
       setSaving(false)
+      await alertDialog({ title: 'No se pudo crear la experiencia', message: error.message, tone: 'danger' })
       return
     }
 
@@ -422,7 +438,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         sort_order: img.sortOrder,
       }))
       const { error: imgErr } = await supabase.from('images').insert(imageRows)
-      if (imgErr) console.error('Error al registrar imágenes de experiencia en public.images:', imgErr.message)
+      if (imgErr) await alertDialog({ title: 'La experiencia se creó, pero sus imágenes no', message: imgErr.message, tone: 'warning' })
     }
 
     const activitySaved = await recordActivity({
@@ -1410,7 +1426,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                   Registra tu servicio de turismo comunitario y conecta con viajeros
                 </p>
                 <button
-                  onClick={() => setShowForm(true)}
+                  onClick={openPublishForm}
                   style={{
                     padding: '11px 24px',
                     borderRadius: 12,

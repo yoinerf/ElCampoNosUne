@@ -7,7 +7,11 @@
 //   - delete_user        { user_id }
 //   - set_temp_password  { user_id, password }
 //
-// Seguridad: solo usuarios autenticados con profiles.user_type = 'admin'.
+// Seguridad (el rol y la tienda de quien llama se leen de profiles, nunca del cuerpo):
+//   - admin (superadmin): todas las acciones, sobre cualquier usuario.
+//   - admin_tienda: create_user (siempre rol 'asociacion' y SU tienda, se ignora lo que
+//     envíe el cliente) y delete_user (solo productores de su tienda, validado en la BD
+//     con can_store_admin_manage). No puede asignar contraseñas temporales.
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
@@ -17,9 +21,9 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 }
 
-const USER_TYPES = ['asociacion', 'turismo', 'comprador', 'admin']
-// Tienda del productor (profiles.store)
-const STORES = ['campo', 'amazonica']
+const USER_TYPES = ['asociacion', 'turismo', 'comprador', 'admin', 'admin_tienda']
+// Roles que pertenecen a una tienda (profiles.store); el resto queda en 'campo'
+const STORE_ROLES = ['asociacion', 'admin_tienda']
 const MIN_PASSWORD_LENGTH = 8
 
 function json(body: unknown, status = 200) {
@@ -54,10 +58,12 @@ Deno.serve(async (req) => {
   const { data: { user: caller }, error: callerError } = await userClient.auth.getUser()
   if (callerError || !caller) return json({ error: 'Sesión inválida. Vuelve a iniciar sesión.' }, 401)
 
-  // 2. Verificar que sea admin (con la service key, sin depender de RLS)
+  // 2. Rol y tienda de quien llama (con la service key, sin depender de RLS)
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
-  const { data: callerProfile } = await admin.from('profiles').select('user_type').eq('id', caller.id).single()
-  if (callerProfile?.user_type !== 'admin') return json({ error: 'Solo un administrador puede realizar esta acción.' }, 403)
+  const { data: callerProfile } = await admin.from('profiles').select('user_type, store').eq('id', caller.id).single()
+  const isSuperAdmin = callerProfile?.user_type === 'admin'
+  const isStoreAdmin = callerProfile?.user_type === 'admin_tienda' && !!callerProfile?.store
+  if (!isSuperAdmin && !isStoreAdmin) return json({ error: 'Solo un administrador puede realizar esta acción.' }, 403)
 
   let body: Record<string, unknown>
   try {
@@ -72,21 +78,36 @@ Deno.serve(async (req) => {
       case 'create_user': {
         const email = clean(body.email)?.toLowerCase()
         const firstName = clean(body.first_name)
-        const userType = String(body.user_type ?? '')
         if (!email || !/^\S+@\S+\.\S+$/.test(email)) return json({ error: 'Correo electrónico inválido.' }, 400)
         if (!firstName) return json({ error: 'El nombre es obligatorio.' }, 400)
-        if (!USER_TYPES.includes(userType)) return json({ error: 'Rol inválido.' }, 400)
-        const store = String(body.store ?? 'campo')
-        if (!STORES.includes(store)) return json({ error: 'Tienda inválida.' }, 400)
+        if (!clean(body.municipality)) return json({ error: 'La ciudad o municipio es obligatoria.' }, 400)
         if (!validPassword(body.password)) {
           return json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres, con letras y números.` }, 400)
         }
+
+        // El admin de tienda siempre crea productores ('asociacion') de SU tienda
+        let userType: string
+        let store: string
+        if (isStoreAdmin) {
+          userType = 'asociacion'
+          store = callerProfile!.store
+        } else {
+          userType = String(body.user_type ?? '')
+          if (!USER_TYPES.includes(userType)) return json({ error: 'Rol inválido.' }, 400)
+          store = STORE_ROLES.includes(userType) ? String(body.store ?? 'campo') : 'campo'
+          const { data: storeRow } = await admin.from('store_settings').select('store').eq('store', store).maybeSingle()
+          if (!storeRow) return json({ error: 'Tienda inválida.' }, 400)
+        }
+
+        // WhatsApp: solo números, máximo 10
+        const phone = clean(body.phone)
+        if (phone && !/^\d{1,10}$/.test(phone)) return json({ error: 'El WhatsApp debe tener solo números (máximo 10).' }, 400)
 
         const profileData = {
           first_name: firstName,
           last_name: clean(body.last_name) ?? '',
           org_name: clean(body.org_name),
-          phone: clean(body.phone),
+          phone,
           user_type: userType,
           department: clean(body.department),
           municipality: clean(body.municipality),
@@ -107,8 +128,8 @@ Deno.serve(async (req) => {
           return json({ error: /already been registered|already exists/i.test(msg) ? 'Ya existe un usuario con ese correo.' : msg }, 400)
         }
 
-        // store va solo al perfil (no a user_metadata): solo el admin la asigna
-        const { error: profileError } = await admin.from('profiles').upsert({ id: created.user.id, email, ...profileData, store: userType === 'asociacion' ? store : 'campo' })
+        // Rol y tienda van al perfil con la service key (handle_new_user solo acepta roles públicos)
+        const { error: profileError } = await admin.from('profiles').upsert({ id: created.user.id, email, ...profileData, store })
         if (profileError) {
           // Revertir para no dejar un usuario de Auth sin perfil
           await admin.auth.admin.deleteUser(created.user.id)
@@ -124,6 +145,12 @@ Deno.serve(async (req) => {
         if (!userId) return json({ error: 'Falta el usuario.' }, 400)
         if (userId === caller.id) return json({ error: 'No puedes eliminar tu propia cuenta.' }, 400)
 
+        // El admin de tienda solo elimina productores de su tienda (lo decide la BD con su sesión)
+        if (isStoreAdmin) {
+          const { data: allowed, error: checkError } = await userClient.rpc('can_store_admin_manage', { p_user: userId })
+          if (checkError || allowed !== true) return json({ error: 'Solo puedes eliminar productores de tu tienda.' }, 403)
+        }
+
         // Borrar en Auth elimina también el perfil (profiles.id ... on delete cascade)
         const { error } = await admin.auth.admin.deleteUser(userId)
         if (error) {
@@ -137,8 +164,9 @@ Deno.serve(async (req) => {
         return json({ ok: true })
       }
 
-      // ─── Contraseña temporal ──────────────────────────────────────────────
+      // ─── Contraseña temporal (solo superadmin) ────────────────────────────
       case 'set_temp_password': {
+        if (!isSuperAdmin) return json({ error: 'Solo un superadministrador puede asignar contraseñas.' }, 403)
         const userId = clean(body.user_id)
         if (!userId) return json({ error: 'Falta el usuario.' }, 400)
         if (!validPassword(body.password)) {

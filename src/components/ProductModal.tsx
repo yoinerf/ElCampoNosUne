@@ -9,6 +9,8 @@ export interface ProductModalProps {
   title?: string
   categories?: { id: string; name: string }[]
   producers?: { id: string; name: string; org_name?: string }[]
+  /** Producto que se edita: sus imágenes guardadas cuentan para el límite de 3 */
+  productId?: string
 }
 
 const inputStyle: React.CSSProperties = {
@@ -35,7 +37,9 @@ const labelStyle: React.CSSProperties = {
 }
 
 const ACCEPTED = ['image/jpeg', 'image/jpg', 'image/png']
-const MAX_BYTES = 6 * 1024 * 1024
+const MAX_BYTES = 5 * 1024 * 1024
+// Máximo de imágenes por producto (la BD también lo valida)
+const MAX_IMAGES = 3
 
 interface UploadedImage {
   file: File
@@ -54,6 +58,7 @@ export default function ProductModal({
   title = 'Nuevo producto',
   categories = [],
   producers,
+  productId,
 }: ProductModalProps) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
@@ -72,6 +77,20 @@ export default function ProductModal({
   const [dragOver, setDragOver] = useState(false)
   const [uploadError, setUploadError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [savedImagesCount, setSavedImagesCount] = useState(0)
+
+  // Al editar, cuántas imágenes tiene ya guardadas el producto
+  useEffect(() => {
+    if (!isOpen || !productId) {
+      setSavedImagesCount(0)
+      return
+    }
+    supabase
+      .from('images')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId)
+      .then(({ count }) => setSavedImagesCount(count ?? 0))
+  }, [isOpen, productId])
 
   useEffect(() => {
     if (isOpen) {
@@ -120,7 +139,7 @@ export default function ProductModal({
 
   const validateFile = (file: File): string | null => {
     if (!ACCEPTED.includes(file.type)) return 'Solo se permiten JPG y PNG'
-    if (file.size > MAX_BYTES) return 'El archivo supera los 6 MB'
+    if (file.size > MAX_BYTES) return `"${file.name}" supera los 5 MB`
     return null
   }
 
@@ -138,13 +157,26 @@ export default function ProductModal({
     setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, storagePath, publicUrl } : img))
   }
 
+  const remainingSlots = Math.max(MAX_IMAGES - savedImagesCount - images.length, 0)
+
   const addFiles = (files: FileList | File[]) => {
     setUploadError('')
+    // Copiar antes de limpiar el input: limpiarlo vacía la FileList que entrega el navegador
     const arr = Array.from(files)
+    // Limpiar permite volver a elegir el mismo archivo después de quitarlo
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    if (remainingSlots === 0) {
+      setUploadError(`Un producto puede tener máximo ${MAX_IMAGES} imágenes.`)
+      return
+    }
     const valid: UploadedImage[] = []
     for (const file of arr) {
       const err = validateFile(file)
       if (err) { setUploadError(err); continue }
+      if (valid.length >= remainingSlots) {
+        setUploadError(`Solo se agregaron ${remainingSlots} imagen(es): un producto puede tener máximo ${MAX_IMAGES}.`)
+        break
+      }
       valid.push({ file, preview: URL.createObjectURL(file), uploading: false })
     }
     if (valid.length === 0) return
@@ -292,14 +324,14 @@ export default function ProductModal({
           <div>
             <label style={labelStyle}>
               Imágenes del producto{' '}
-              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. 6 MB c/u)</span>
+              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. {MAX_IMAGES} de 5 MB c/u)</span>
             </label>
 
             <div
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(e.dataTransfer.files) }}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => remainingSlots > 0 ? fileInputRef.current?.click() : setUploadError(`Un producto puede tener máximo ${MAX_IMAGES} imágenes.`)}
               className="w-full box-border rounded-xl p-3.5 sm:p-4 text-center cursor-pointer transition-all border-2 border-dashed"
               style={{
                 borderColor: dragOver ? '#205134' : '#C8B9A8',
@@ -312,7 +344,9 @@ export default function ProductModal({
                 <span className="text-[#205134] font-bold">haz clic para seleccionar</span>
               </p>
               <p className="mt-0.5 mb-0 text-[11px] text-[#B0A090] font-['Nunito_Sans']">
-                JPG, PNG · máx. 6 MB por imagen
+                {remainingSlots > 0
+                  ? `JPG, PNG · máx. 5 MB por imagen · puedes agregar ${remainingSlots} más`
+                  : `Ya tiene el máximo de ${MAX_IMAGES} imágenes`}
               </p>
             </div>
             <input

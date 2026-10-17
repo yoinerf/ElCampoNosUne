@@ -10,6 +10,7 @@ import {
   type OrderStatusTransition,
   type StatusHistoryRow,
 } from '../lib/orders'
+import { confirmDialog } from './ConfirmDialog'
 import { PAYMENT_METHOD_LABELS, STORE_NAMES } from '../lib/stores'
 
 interface OrdersTableProps {
@@ -106,7 +107,13 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
         : target?.is_final
           ? `¿Cambiar "${item.title}" a "${target.name}"? Es un estado final.`
           : null
-    if (confirmText && !window.confirm(confirmText)) return
+    if (confirmText && !(await confirmDialog({
+      title: cancelling ? 'Cancelar pedido' : reopening ? 'Reactivar pedido' : 'Confirmar cambio de estado',
+      message: confirmText,
+      confirmText: 'Sí, continuar',
+      cancelText: 'Volver',
+      tone: cancelling ? 'danger' : 'warning',
+    }))) return
 
     setSavingId(item.id)
     setErrorMsg('')

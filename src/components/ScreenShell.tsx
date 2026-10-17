@@ -2,9 +2,10 @@ import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
 import { AMAZON_PATH, STORE_NAMES, type StoreId } from '../lib/stores'
+import NotificationBell from './NotificationBell'
 import logoSrc from '../assets/logo-nofond.png'
 
-type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'amazon'
+type NavTab = 'home' | 'market' | 'tourism' | 'about' | 'profile' | 'admin' | 'superadmin' | 'amazon' | 'storeadmin'
 
 interface NavItem {
   id: NavTab
@@ -16,7 +17,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'market', label: 'Productos' },
   { id: 'tourism', label: 'Experiencias' },
   { id: 'amazon', label: 'Tienda Amazónica' },
-  { id: 'profile', label: 'Nosotros' },
+  { id: 'about', label: 'Nosotros' },
 ]
 
 interface ScreenShellProps {
@@ -63,7 +64,10 @@ export default function ScreenShell({
 }: ScreenShellProps) {
   const isAmazon = store === 'amazonica'
   const isSeller = userRole === 'asociacion' || userRole === 'turismo'
-  const homeTab: NavTab = isSeller ? 'admin' : isAmazon ? 'amazon' : 'home'
+  const isStoreAdmin = userRole === 'admin_tienda'
+  // Vendedores y administradores de tienda trabajan desde su panel: sin menú de la tienda
+  const isPanelUser = isSeller || isStoreAdmin
+  const homeTab: NavTab = isStoreAdmin ? 'storeadmin' : isSeller ? 'admin' : isAmazon ? 'amazon' : 'home'
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [sessionUser, setSessionUser] = useState<any>(null)
@@ -85,7 +89,7 @@ export default function ScreenShell({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const navItems: NavItem[] = (isSeller || isAmazon) ? [] : NAV_ITEMS
+  const navItems: NavItem[] = (isPanelUser || isAmazon) ? [] : NAV_ITEMS
   const handleProfileClick = () => {
     if (onProfileClick) {
       onProfileClick()
@@ -206,7 +210,7 @@ export default function ScreenShell({
           {/* Iconos derecha */}
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: isAmazon ? 6 : 10 }}>
             {/* Volver a El Campo Nos Une (solo en la Tienda Amazónica, no para sus productores) */}
-            {isAmazon && !isSeller && (
+            {isAmazon && !isPanelUser && (
               <button
                 type="button"
                 onClick={() => onNavigate?.('home')}
@@ -300,6 +304,7 @@ export default function ScreenShell({
                     Admin
                   </button>
                 )}
+                <NotificationBell onOpen={(tab) => (tab === 'profile' ? handleProfileClick() : onNavigate?.(tab))} />
                 <div style={{ position: 'relative' }}>
                   <button
                     type="button"
@@ -431,8 +436,8 @@ export default function ScreenShell({
               </div>
             )}
 
-            {/* Botón Carrito - Oculto en Experiencias y para rol Asociacion */}
-            {activeNav !== 'tourism' && userRole !== 'asociacion' && (
+            {/* Botón Carrito - Oculto en Inicio, en Experiencias, en Mi panel y para rol Asociacion */}
+            {activeNav !== 'home' && activeNav !== 'tourism' && activeNav !== 'profile' && userRole !== 'asociacion' && !isStoreAdmin && (
               <button
                 type="button"
                 onClick={onCartClick}
@@ -454,9 +459,9 @@ export default function ScreenShell({
                 className="hover:bg-[#20513410]"
               >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <path d="M16 10a4 4 0 0 1-8 0" />
+                  <circle cx="9" cy="20.5" r="1.3" />
+                  <circle cx="18" cy="20.5" r="1.3" />
+                  <path d="M2 3h2.6l2.4 11.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.5L21.4 7H5.6" />
                 </svg>
                 {cartCount !== undefined && cartCount > 0 && (
                   <span

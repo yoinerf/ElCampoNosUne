@@ -281,7 +281,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
         onConfirm={confirmWompiPayment}
       />
 
-      <div className="h-full overflow-y-auto" style={{ background: '#F9F6F0', fontFamily: "'Nunito Sans', sans-serif" }}>
+      <div className="h-full overflow-y-auto" style={{ background: '#F9F6F0', fontFamily: "'Nunito Sans', sans-serif", minHeight: 'calc(100vh - 77px)' }}>
 
         {/* Banner superior si no está logueado */}
         {isLogged === false && items.length > 0 && (
@@ -781,7 +781,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
 
                 {/* Columna Derecha: Resumen de Pedido y Botón Dinámico */}
                 <div>
-                  <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0] shadow-sm sticky top-6">
+                  <div className="bg-white rounded-2xl p-6 md:p-8 border border-[#E8DED0] shadow-sm sticky top-[100px]">
                     <h2 className="font-['Poppins',sans-serif] text-2xl text-[#205134] m-0 mb-6 font-bold">Resumen del pedido</h2>
 
                     <div className="flex justify-between text-sm text-[#555] mb-4">

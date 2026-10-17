@@ -30,7 +30,8 @@ export function adminCreateUser(user: {
   last_name?: string
   org_name?: string
   phone?: string
-  user_type: string
+  // Lo ignora la edge function cuando quien crea es un admin de tienda (siempre asociacion)
+  user_type?: string
   store?: string
   department?: string
   municipality?: string

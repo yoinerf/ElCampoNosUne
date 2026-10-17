@@ -6,6 +6,9 @@ import { supabase } from '../lib/supabase'
 import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
 import { isAdvertisementActive } from '../lib/dateColombia'
 import { cartKey, STORE_NAMES, type StoreId } from '../lib/stores'
+import { canCurrentUserPublish, confirmGoToDocuments } from '../lib/producerDocuments'
+import { requestPanelSection } from '../lib/notifications'
+import { alertDialog } from '../components/ConfirmDialog'
 
 export interface Product {
   id: string
@@ -32,8 +35,8 @@ export interface CartItem {
 
 interface MarketplaceScreenProps {
   onOpenCheckout?: (items: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => void
-  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'superadmin' | any) => void
-  activeNav?: string
+  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin') => void
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'about' | 'amazon'
   onProfileClick?: () => void
   initialSelectedProduct?: string | null
   onClearInitialProduct?: () => void
@@ -1356,6 +1359,22 @@ export default function MarketplaceScreen({
     })
   }
 
+  // Validación documental antes de abrir el formulario (la BD también lo bloquea al guardar)
+  const togglePublishForm = async () => {
+    if (showForm) {
+      setShowForm(false)
+      return
+    }
+    if (!(await canCurrentUserPublish())) {
+      if (await confirmGoToDocuments()) {
+        requestPanelSection('settings')
+        onNavigate?.('admin')
+      }
+      return
+    }
+    setShowForm(true)
+  }
+
   const handleCheckoutCart = () => {
     onOpenCheckout?.(cartItems, confirmCheckoutProducts)
   }
@@ -1477,6 +1496,7 @@ export default function MarketplaceScreen({
     if (error) {
       setSubmitMessage(error.message)
       setSaving(false)
+      await alertDialog({ title: 'No se pudo crear el producto', message: error.message, tone: 'danger' })
       return
     }
 
@@ -1490,7 +1510,7 @@ export default function MarketplaceScreen({
         sort_order: img.sortOrder,
       }))
       const { error: imgErr } = await supabase.from('images').insert(imageRows)
-      if (imgErr) console.error('Error al registrar imágenes en public.images:', imgErr.message)
+      if (imgErr) await alertDialog({ title: 'El producto se creó, pero sus imágenes no', message: imgErr.message, tone: 'warning' })
     }
 
     const activitySaved = await recordActivity({
@@ -2105,7 +2125,10 @@ export default function MarketplaceScreen({
           {/* ══ BANNER TIENDA ══ */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #A86B05 0%, #D4870A 60%, #E5AE30 100%)',
+              // Tienda Amazónica: verde; El Campo Nos Une: naranja
+              background: isAmazon
+                ? 'linear-gradient(135deg, #173E26 0%, #205134 55%, #3D7A28 100%)'
+                : 'linear-gradient(135deg, #A86B05 0%, #D4870A 60%, #E5AE30 100%)',
               borderRadius: '0 0 28px 28px',
               padding: '22px 20px 28px',
               margin: '0 -18px 20px',
@@ -2312,7 +2335,7 @@ export default function MarketplaceScreen({
             <div style={{ padding: '24px 20px', background: 'linear-gradient(180deg, #F5EEE6 0%, #E8DED0 100%)', borderTop: '1px solid #E8DED0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
               <p style={{ margin: 0, fontSize: 13, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, textAlign: 'center' }}>{isAmazon ? '¿Tienes un nuevo producto?' : '¿Tienes un nuevo producto del campo?'}</p>
               <button
-                onClick={() => setShowForm((prev) => !prev)}
+                onClick={togglePublishForm}
                 className="hover:scale-105 transition-transform"
                 style={{
                   width: '100%',

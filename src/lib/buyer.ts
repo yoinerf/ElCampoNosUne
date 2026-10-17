@@ -169,6 +169,30 @@ export async function createTicket(ticket: {
   return supabase.from('support_tickets').insert(ticket)
 }
 
+// El comprador solo puede editar o eliminar sus solicitudes mientras estén 'abierto'
+// (la BD lo valida: ver Instructions/migration_tickets_edit.sql)
+export async function updateMyTicket(id: string, changes: {
+  order_id: string | null
+  type: TicketType
+  category: string
+  subject: string
+  description: string
+}) {
+  const { data, error } = await supabase.from('support_tickets').update(changes).eq('id', id).eq('status', 'abierto').select('id')
+  return { error: error ?? noRowsError(data) }
+}
+
+export async function deleteMyTicket(id: string) {
+  const { data, error } = await supabase.from('support_tickets').delete().eq('id', id).eq('status', 'abierto').select('id')
+  return { error: error ?? noRowsError(data) }
+}
+
+// Si RLS bloquea el cambio, Supabase no devuelve error: simplemente no afecta ninguna fila
+function noRowsError(data: unknown[] | null) {
+  if (data && data.length > 0) return null
+  return { message: 'la solicitud ya no está abierta o no tienes permiso para modificarla.' }
+}
+
 // Admin: todas las solicitudes con datos del comprador
 export async function fetchAllTickets(): Promise<SupportTicket[]> {
   const { data, error } = await supabase

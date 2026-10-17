@@ -18,6 +18,12 @@ import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import TempPasswordModal from '../components/TempPasswordModal'
 import { fetchAllTickets, type SupportTicket } from '../lib/buyer'
+import NotificationBell from '../components/NotificationBell'
+import { usePanelSectionRequest } from '../lib/notifications'
+import CertifiedBadge from '../components/CertifiedBadge'
+import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
+import { generateTempPassword } from '../components/TempPasswordModal'
+import { fetchDocuments, validationState } from '../lib/producerDocuments'
 import { STORE_NAMES, type StoreId } from '../lib/stores'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,8 +36,8 @@ interface UserRow {
   last_name: string
   org_name: string
   user_type: string
-  // Tienda del productor (profiles.store)
-  store?: StoreId
+  // Tienda del productor o del administrador de tienda (profiles.store)
+  store?: string
   department: string
   municipality: string
   email?: string
@@ -97,7 +103,7 @@ const B = {
   bgCardAlt: '#F5EEE6',    // Crema suave secundario
   border: '#EDE5DA',       // Borde sutil contemporáneo
   borderStrong: '#D9CFBF', // Borde reforzado
-  sidebarBg: 'linear-gradient(180deg, #153823 0%, #0F2819 100%)', // Verde profundo institucional
+  sidebarBg: 'linear-gradient(180deg, #143A63 0%, #0B2340 100%)', // Azul profundo: distingue el panel del superadmin
   green: '#205134',        // Verde profundo oficial
   greenHover: '#183E27',
   greenLight: '#6BAA3D',   // Verde acento
@@ -132,6 +138,7 @@ function fmtDate(iso: string) {
 
 const ROLE_LABELS: Record<string, string> = {
   admin: 'Super Admin',
+  admin_tienda: 'Admin de tienda',
   asociacion: 'Asociación',
   turismo: 'Turismo',
   comprador: 'Comprador',
@@ -142,15 +149,29 @@ const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }>
   asociacion: { bg: B.greenSoft, color: B.green, border: 'rgba(32,81,52,0.25)' },
   turismo: { bg: '#F0F8EC', color: '#3F7B25', border: 'rgba(63,123,37,0.25)' },
   comprador: { bg: B.goldSoft, color: '#9E740E', border: 'rgba(158,116,14,0.25)' },
+  admin_tienda: { bg: '#E3F2FD', color: '#1B4D82', border: 'rgba(27,77,130,0.25)' },
 }
 
+// Roles que pertenecen a una tienda: productores y administradores de tienda
+const STORE_ROLES = ['asociacion', 'admin_tienda']
+
 // Tienda del productor: los de la Tienda Amazónica solo venden allí y sus productos no salen en El Campo Nos Une
-function StorePicker({ value, onChange }: { value: StoreId; onChange: (store: StoreId) => void }) {
+// Las tiendas salen de store_settings: una tienda nueva aparece aquí sin cambiar código
+function StorePicker({ value, onChange, label = 'Tienda del productor' }: { value: string; onChange: (store: string) => void; label?: string }) {
+  const [stores, setStores] = useState<{ store: string; name: string }[]>([
+    { store: 'campo', name: STORE_NAMES.campo },
+    { store: 'amazonica', name: STORE_NAMES.amazonica },
+  ])
+  useEffect(() => {
+    supabase.from('store_settings').select('store, name').order('store').then(({ data }) => {
+      if (data && data.length > 0) setStores(data as { store: string; name: string }[])
+    })
+  }, [])
   return (
     <div style={{ marginTop: 14 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: B.green, marginBottom: 6, letterSpacing: 0.3, fontFamily: B.fontBody }}>Tienda del productor</label>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: B.green, marginBottom: 6, letterSpacing: 0.3, fontFamily: B.fontBody }}>{label}</label>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {(['campo', 'amazonica'] as StoreId[]).map((s) => {
+        {stores.map(({ store: s, name }) => {
           const sel = value === s
           return (
             <button
@@ -170,7 +191,7 @@ function StorePicker({ value, onChange }: { value: StoreId; onChange: (store: St
                 fontFamily: B.fontBody,
               }}
             >
-              {STORE_NAMES[s]}
+              {name}
             </button>
           )
         })}
@@ -298,10 +319,14 @@ const I = {
 
 export default function SuperAdminScreen({ onNavigate }: Props) {
   const [section, setSection] = useState<SuperSection>('dashboard')
+  // Una notificación de solicitud nueva abre Solicitudes con la lista actualizada
+  usePanelSectionRequest<SuperSection>((s) => { setSection(s); fetchAllTickets().then(setTickets) }, ['tickets'])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const [users, setUsers] = useState<UserRow[]>([])
+  // Productores y anfitriones con RUT y Cámara de Comercio aprobados
+  const [certifiedIds, setCertifiedIds] = useState<Set<string>>(new Set())
   const [products, setProducts] = useState<ProductRow[]>([])
   const [experiences, setExperiences] = useState<ExperienceRow[]>([])
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
@@ -336,7 +361,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     email: '',
     password: '',
     user_type: 'asociacion',
-    store: 'campo' as StoreId,
+    store: 'campo',
     department: '',
     municipality: '',
   })
@@ -379,6 +404,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       setOrderItems(itemsData)
       setTickets(ticketsData)
       setUsers((usersData || []) as UserRow[])
+      const sellerIds = ((usersData || []) as UserRow[]).filter(u => u.user_type === 'asociacion' || u.user_type === 'turismo').map(u => u.id)
+      fetchDocuments(sellerIds).then((docs) => {
+        setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id)) === 'validado')))
+      })
       setDepartments((deptsData || []) as { id: string; name: string }[])
 
       const userMap = new Map((usersData || []).map((u: any) => [u.id, u]))
@@ -449,6 +478,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       showToast('⚠️ Por favor ingresa el nombre')
       return
     }
+    if (!newUserData.municipality.trim()) {
+      showToast('⚠️ La ciudad o municipio es obligatoria')
+      return
+    }
     if (!newUserData.email.trim() || !newUserData.password.trim()) {
       showToast('⚠️ Por favor ingresa correo y contraseña')
       return
@@ -468,9 +501,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         first_name: newUserData.first_name.trim(),
         last_name: newUserData.last_name.trim(),
         org_name: newUserData.org_name.trim(),
-        phone: newUserData.phone.trim(),
+        phone: onlyPhoneDigits(newUserData.phone),
         user_type: newUserData.user_type,
-        store: newUserData.user_type === 'asociacion' ? newUserData.store : 'campo',
+        store: STORE_ROLES.includes(newUserData.user_type) ? newUserData.store : 'campo',
         department: newUserData.department.trim(),
         municipality: newUserData.municipality.trim(),
         must_change_password: true,
@@ -611,16 +644,20 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const handleSaveUser = async () => {
     if (!userEditModal) return
+    if (!userEditModal.municipality?.trim()) {
+      showToast('⚠️ La ciudad o municipio es obligatoria')
+      return
+    }
     setUserSaving(true)
     const { error } = await supabase.from('profiles').update({
       first_name: userEditModal.first_name,
       last_name: userEditModal.last_name,
       org_name: userEditModal.org_name,
-      phone: userEditModal.phone?.trim() || null,
+      phone: onlyPhoneDigits(userEditModal.phone || "") || null,
       user_type: userEditModal.user_type,
-      store: userEditModal.user_type === 'asociacion' ? (userEditModal.store ?? 'campo') : 'campo',
+      store: STORE_ROLES.includes(userEditModal.user_type) ? (userEditModal.store ?? 'campo') : 'campo',
       department: userEditModal.department || null,
-      municipality: userEditModal.municipality || null,
+      municipality: userEditModal.municipality.trim(),
     }).eq('id', userEditModal.id)
 
     if (!error) {
@@ -935,7 +972,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
           left: 0,
           bottom: 0,
           zIndex: 50,
-          boxShadow: '4px 0 24px rgba(21,56,35,0.12)',
+          boxShadow: '4px 0 24px rgba(11,35,64,0.25)',
         }}
       >
         {/* Logo area */}
@@ -1011,17 +1048,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       </aside>
 
       {/* ── MAIN CONTENT AREA ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }} className="md:ml-[250px]">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }} className="md:ml-[250px]">
 
         {/* Sticky Clean Topbar */}
         <header
+          className="px-4 md:px-7"
           style={{
             position: 'sticky',
             top: 0,
             zIndex: 30,
             background: '#FFFFFF',
             borderBottom: `1px solid ${B.border}`,
-            padding: '0 28px',
             height: 70,
             display: 'flex',
             alignItems: 'center',
@@ -1030,37 +1067,36 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
             boxShadow: '0 2px 10px rgba(32,81,52,0.03)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            {/* Menú (solo móvil). Sin display en línea: anularía md:hidden */}
             <button
-              className="flex md:hidden"
+              className="flex md:hidden items-center justify-center"
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               style={{
                 width: 38,
                 height: 38,
+                flexShrink: 0,
                 borderRadius: 10,
                 border: `1px solid ${B.borderStrong}`,
                 background: '#FAF8F5',
                 cursor: 'pointer',
                 color: B.green,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
               {I.menu}
             </button>
-            <div>
-              <h1 style={{ margin: 0, fontFamily: B.fontDisplay, fontSize: 20, fontWeight: 700, color: B.green, lineHeight: 1.2 }}>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontFamily: B.fontDisplay, fontSize: 20, fontWeight: 700, color: B.green, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {sectionLabels[section]}
               </h1>
-              <p style={{ margin: 0, fontSize: 12, color: B.textMuted, fontWeight: 600 }}>
+              <p className="hidden sm:block" style={{ margin: 0, fontSize: 12, color: B.textMuted, fontWeight: 600 }}>
                 Control y superpoderes sobre toda la plataforma
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => onNavigate('market')}
@@ -1085,19 +1121,21 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <span className="hidden sm:inline">Ver Tienda</span>
             </button>
 
+            <NotificationBell buttonStyle={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${B.borderStrong}`, background: '#FAF8F5' }} />
+
             {section === 'users' && (
               <button type="button" onClick={() => setUserCreateModal(true)} style={btnPrimary}>
-                {I.plus} <span>Nuevo Usuario</span>
+                {I.plus} <span className="hidden sm:inline">Nuevo Usuario</span>
               </button>
             )}
             {section === 'products' && (
               <button type="button" onClick={() => setProductModal({ open: true, editId: null })} style={btnPrimary}>
-                {I.plus} <span>Nuevo Producto</span>
+                {I.plus} <span className="hidden sm:inline">Nuevo Producto</span>
               </button>
             )}
             {section === 'experiences' && (
               <button type="button" onClick={() => setExpModal({ open: true, editId: null })} style={btnPrimary}>
-                {I.plus} <span>Nueva Experiencia</span>
+                {I.plus} <span className="hidden sm:inline">Nueva Experiencia</span>
               </button>
             )}
             {section === 'ads' && (
@@ -1111,14 +1149,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 })}
                 style={btnPrimary}
               >
-                {I.plus} <span>Nuevo Anuncio</span>
+                {I.plus} <span className="hidden sm:inline">Nuevo Anuncio</span>
               </button>
             )}
           </div>
         </header>
 
         {/* Content View */}
-        <main style={{ flex: 1, padding: '28px', boxSizing: 'border-box' }}>
+        <main className="p-4 md:p-7" style={{ flex: 1, boxSizing: 'border-box', minWidth: 0 }}>
           {loading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
               {Array.from({ length: 6 }).map((_, i) => (
@@ -1190,7 +1228,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     Distribución de Usuarios por Rol
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14 }}>
-                    {['admin', 'asociacion', 'turismo', 'comprador'].map(role => {
+                    {['admin', 'admin_tienda', 'asociacion', 'turismo', 'comprador'].map(role => {
                       const count = users.filter(u => u.user_type === role).length
                       const pct = stats.users > 0 ? Math.round((count / stats.users) * 100) : 0
                       const st = ROLE_STYLES[role] || { bg: '#F5F5F5', color: '#333', border: '#ddd' }
@@ -1244,7 +1282,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                         {(u.first_name?.[0] || u.org_name?.[0] || '?').toUpperCase()}
                                       </div>
                                       <div>
-                                        <div style={{ fontWeight: 700, color: B.text, fontSize: 14 }}>{u.first_name} {u.last_name}</div>
+                                        <div style={{ fontWeight: 700, color: B.text, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>{u.first_name} {u.last_name}{certifiedIds.has(u.id) && <CertifiedBadge />}</div>
                                         <div style={{ fontSize: 11, color: B.textFaint }}>{u.email ? `${u.email} • ` : ''}ID: {u.id.slice(0, 8)}…</div>
                                       </div>
                                     </div>
@@ -1254,8 +1292,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                     <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20 }}>
                                       {ROLE_LABELS[u.user_type] || u.user_type}
                                     </span>
-                                    {u.store === 'amazonica' && (
-                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{STORE_NAMES.amazonica}</span>
+                                    {u.store && (u.store !== 'campo' || u.user_type === 'admin_tienda') && (
+                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{STORE_NAMES[u.store as StoreId] ?? u.store}</span>
                                     )}
                                   </TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{[u.municipality, u.department].filter(Boolean).join(', ') || '—'}</TD>
@@ -1641,12 +1679,12 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       {/* ── MODAL EDITAR USUARIO ── */}
       {userEditModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 32px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: '0 0 20px', fontWeight: 700 }}>
               ✏️ Editar Usuario
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 14 }}>
               <div>
                 <label style={lbl}>Nombre</label>
                 <input style={inp} value={userEditModal.first_name || ''} onChange={e => setUserEditModal({ ...userEditModal, first_name: e.target.value })} />
@@ -1661,10 +1699,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <input style={inp} value={userEditModal.org_name || ''} onChange={e => setUserEditModal({ ...userEditModal, org_name: e.target.value })} />
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
-              <input style={inp} inputMode="tel" placeholder="Ej: 300 123 4567" value={userEditModal.phone || ''} onChange={e => setUserEditModal({ ...userEditModal, phone: e.target.value })} />
+              <label style={lbl}>WhatsApp</label>
+              <input style={inp} {...phoneInputProps} value={onlyPhoneDigits(userEditModal.phone || '')} onChange={e => setUserEditModal({ ...userEditModal, phone: onlyPhoneDigits(e.target.value) })} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
               <div>
                 <label style={lbl}>Departamento</label>
                 <select
@@ -1681,10 +1719,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 </select>
               </div>
               <div>
-                <label style={lbl}>Municipio</label>
+                <label style={lbl}>Ciudad / Municipio *</label>
                 <input
                   style={inp}
                   placeholder="Ej: Pitalito, Pasto"
+                  required
                   value={userEditModal.municipality || ''}
                   onChange={e => setUserEditModal({ ...userEditModal, municipality: e.target.value })}
                 />
@@ -1693,7 +1732,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
             <div style={{ marginBottom: 24 }}>
               <label style={lbl}>Rol en el ecosistema</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {['admin', 'asociacion', 'turismo', 'comprador'].map(r => {
+                {['admin', 'admin_tienda', 'asociacion', 'turismo', 'comprador'].map(r => {
                   const sel = userEditModal.user_type === r
                   const st = ROLE_STYLES[r]
                   return (
@@ -1719,8 +1758,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   )
                 })}
               </div>
-              {userEditModal.user_type === 'asociacion' && (
-                <StorePicker value={userEditModal.store ?? 'campo'} onChange={(s) => setUserEditModal({ ...userEditModal, store: s })} />
+              {STORE_ROLES.includes(userEditModal.user_type) && (
+                <StorePicker label={userEditModal.user_type === 'admin_tienda' ? 'Tienda que administra' : undefined} value={userEditModal.store ?? 'campo'} onChange={(s) => setUserEditModal({ ...userEditModal, store: s })} />
               )}
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
@@ -1746,8 +1785,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       {/* ── MODAL CREAR USUARIO ── */}
       {userCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.15)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 32px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: 0, fontWeight: 700 }}>
                 👤 Crear Nuevo Usuario
@@ -1762,7 +1801,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
             </div>
 
             <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Nombre *</label>
                   <input
@@ -1795,17 +1834,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               </div>
 
               <div>
-                <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
+                <label style={lbl}>WhatsApp</label>
                 <input
                   style={inp}
-                  inputMode="tel"
-                  placeholder="Ej: 300 123 4567"
+                  {...phoneInputProps}
                   value={newUserData.phone}
-                  onChange={e => setNewUserData({ ...newUserData, phone: e.target.value })}
+                  onChange={e => setNewUserData({ ...newUserData, phone: onlyPhoneDigits(e.target.value) })}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Correo Electrónico *</label>
                   <input
@@ -1819,22 +1857,26 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 </div>
                 <div>
                   <label style={lbl}>Contraseña Temporal *</label>
-                  <input
-                    type="password"
-                    style={inp}
-                    placeholder="Mínimo 6 caracteres"
-                    required
-                    minLength={6}
-                    value={newUserData.password}
-                    onChange={e => setNewUserData({ ...newUserData, password: e.target.value })}
-                  />
+                  {/* Visible para poder entregársela al usuario; deberá cambiarla al ingresar */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="text"
+                      style={{ ...inp, fontFamily: 'monospace', letterSpacing: 0.5 }}
+                      placeholder="Mínimo 8 caracteres"
+                      required
+                      minLength={8}
+                      value={newUserData.password}
+                      onChange={e => setNewUserData({ ...newUserData, password: e.target.value.trim() })}
+                    />
+                    <button type="button" title="Generar contraseña" onClick={() => setNewUserData({ ...newUserData, password: generateTempPassword() })} style={{ flexShrink: 0, padding: '0 12px', borderRadius: 10, border: `1px solid ${B.borderStrong}`, background: '#FFFFFF', color: B.green, fontWeight: 700, cursor: 'pointer' }}>↻</button>
+                  </div>
                 </div>
               </div>
 
               <div>
                 <label style={lbl}>Rol en el ecosistema</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['asociacion', 'turismo', 'comprador', 'admin'].map(r => {
+                  {['asociacion', 'turismo', 'comprador', 'admin_tienda', 'admin'].map(r => {
                     const sel = newUserData.user_type === r
                     const st = ROLE_STYLES[r]
                     return (
@@ -1860,12 +1902,12 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     )
                   })}
                 </div>
-                {newUserData.user_type === 'asociacion' && (
-                  <StorePicker value={newUserData.store} onChange={(s) => setNewUserData({ ...newUserData, store: s })} />
+                {STORE_ROLES.includes(newUserData.user_type) && (
+                  <StorePicker label={newUserData.user_type === 'admin_tienda' ? 'Tienda que administra' : undefined} value={newUserData.store} onChange={(s) => setNewUserData({ ...newUserData, store: s })} />
                 )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Departamento</label>
                   <select
@@ -1882,10 +1924,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   </select>
                 </div>
                 <div>
-                  <label style={lbl}>Municipio</label>
+                  <label style={lbl}>Ciudad / Municipio *</label>
                   <input
                     style={inp}
                     placeholder="Ej: Pitalito, Pasto"
+                    required
                     value={newUserData.municipality}
                     onChange={e => setNewUserData({ ...newUserData, municipality: e.target.value })}
                   />
@@ -1916,7 +1959,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       {/* ── MODAL ANUNCIOS (Con subida de imágenes y redirección a producto) ── */}
       {adModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 540, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', margin: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 32px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 540, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', margin: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: 0, fontWeight: 700 }}>
                 📢 {adModal.id ? 'Editar Anuncio' : 'Nuevo Anuncio'}
@@ -2099,7 +2142,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
             {/* Fechas de vigencia */}
             <div style={{ marginBottom: 18 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Fecha de Inicio *</label>
                   <input
@@ -2161,8 +2204,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       {/* ── MODAL CONFIRM DELETE ── */}
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(21,56,35,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 36, width: '100%', maxWidth: 440, textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(21,56,35,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 36px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 440, textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ width: 60, height: 60, borderRadius: '50%', background: B.terraSoft, color: B.terraDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 16px', border: '1px solid rgba(155,71,40,0.2)' }}>
               ⚠️
             </div>
@@ -2226,6 +2269,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
           isOpen
           onClose={() => setProductModal({ open: false, editId: null })}
           onSave={handleSaveProduct}
+          productId={productModal.editId ?? undefined}
           title={productModal.editId ? 'Editar Producto' : 'Nuevo Producto'}
           categories={categories.filter(c => c.business_type === 'asociacion')}
           initialData={productModal.initialData}

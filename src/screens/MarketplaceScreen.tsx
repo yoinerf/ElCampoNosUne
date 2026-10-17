@@ -5,6 +5,10 @@ import FavoriteButton from '../components/FavoriteButton'
 import { supabase } from '../lib/supabase'
 import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
 import { isAdvertisementActive } from '../lib/dateColombia'
+import { cartKey, STORE_NAMES, type StoreId } from '../lib/stores'
+import { canCurrentUserPublish, confirmGoToDocuments } from '../lib/producerDocuments'
+import { requestPanelSection } from '../lib/notifications'
+import { alertDialog } from '../components/ConfirmDialog'
 
 export interface Product {
   id: string
@@ -32,11 +36,13 @@ export interface CartItem {
 interface MarketplaceScreenProps {
   onOpenCheckout?: (items: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => void
   onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
+  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'about' | 'amazon'
   onProfileClick?: () => void
   initialSelectedProduct?: string | null
   onClearInitialProduct?: () => void
   userRole?: string | null
+  /** Tienda que se muestra: cada una tiene sus productos, su carrito y su marca */
+  store?: StoreId
 }
 
 // ─── ProductDetail Component ─────────────────────────────────────────────────
@@ -54,6 +60,7 @@ interface ProductDetailProps {
   addingProduct: { id: string; phase: 'plusOne' | 'check' } | null
   onReloadProducts?: () => void
   isProducer?: boolean
+  store?: StoreId
 }
 
 function ProductDetail({
@@ -70,6 +77,7 @@ function ProductDetail({
   addingProduct,
   onReloadProducts,
   isProducer,
+  store = 'campo',
 }: ProductDetailProps) {
   const isExperience = product.type === 'experiencia' || product.unit === 'pers'
   const isOutOfStock = (() => {
@@ -275,7 +283,9 @@ function ProductDetail({
 
               {/* Descripción */}
               <p className="text-sm sm:text-[15px] text-[#4A4036] leading-relaxed mb-3 sm:mb-4 font-['Nunito_Sans']">
-                {product.description || 'Producto del campo colombiano, seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.'}
+                {product.description || (store === 'amazonica'
+                  ? 'Producto seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.'
+                  : 'Producto del campo colombiano, seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.')}
               </p>
 
               <span
@@ -1014,12 +1024,14 @@ export default function MarketplaceScreen({
   initialSelectedProduct,
   onClearInitialProduct,
   userRole: propUserRole,
+  store = 'campo',
 }: MarketplaceScreenProps) {
+  const isAmazon = store === 'amazonica'
   const [activeFilter, setActiveFilter] = useState('Todos')
   const [searchVal, setSearchVal] = useState('')
   const [cart, setCart] = useState<Record<string, number>>(() => {
     try {
-      const saved = localStorage.getItem('campoconecta_cart')
+      const saved = localStorage.getItem(cartKey(store))
       if (saved) {
         const parsed = JSON.parse(saved)
         if (typeof parsed === 'object' && parsed !== null) {
@@ -1040,7 +1052,7 @@ export default function MarketplaceScreen({
 
   useEffect(() => {
     try {
-      localStorage.setItem('campoconecta_cart', JSON.stringify(cart))
+      localStorage.setItem(cartKey(store), JSON.stringify(cart))
     } catch (e) {
       console.error('Error guardando el carrito en localStorage', e)
     }
@@ -1088,7 +1100,7 @@ export default function MarketplaceScreen({
   const loadProducts = async () => {
     try {
       const [{ data: productsData, error: prodErr }, { data: reviewsData }, { data: categoriesData }] = await Promise.all([
-        supabase.from('products').select('*, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }),
+        supabase.from('products').select('*, images(*), profiles(org_name, first_name, last_name)').eq('store', store).order('created_at', { ascending: false }),
         supabase.from('product_reviews').select('product_id, rating'),
         supabase.from('categories').select('id, name')
       ])
@@ -1347,6 +1359,22 @@ export default function MarketplaceScreen({
     })
   }
 
+  // Validación documental antes de abrir el formulario (la BD también lo bloquea al guardar)
+  const togglePublishForm = async () => {
+    if (showForm) {
+      setShowForm(false)
+      return
+    }
+    if (!(await canCurrentUserPublish())) {
+      if (await confirmGoToDocuments()) {
+        requestPanelSection('settings')
+        onNavigate?.('admin')
+      }
+      return
+    }
+    setShowForm(true)
+  }
+
   const handleCheckoutCart = () => {
     onOpenCheckout?.(cartItems, confirmCheckoutProducts)
   }
@@ -1468,6 +1496,7 @@ export default function MarketplaceScreen({
     if (error) {
       setSubmitMessage(error.message)
       setSaving(false)
+      await alertDialog({ title: 'No se pudo crear el producto', message: error.message, tone: 'danger' })
       return
     }
 
@@ -1481,7 +1510,7 @@ export default function MarketplaceScreen({
         sort_order: img.sortOrder,
       }))
       const { error: imgErr } = await supabase.from('images').insert(imageRows)
-      if (imgErr) console.error('Error al registrar imágenes en public.images:', imgErr.message)
+      if (imgErr) await alertDialog({ title: 'El producto se creó, pero sus imágenes no', message: imgErr.message, tone: 'warning' })
     }
 
     const activitySaved = await recordActivity({
@@ -1696,6 +1725,7 @@ export default function MarketplaceScreen({
       contentStyle={{ paddingBottom: 20 }}
       cartCount={cartCount}
       onCartClick={handleCheckoutCart}
+      store={store}
     >
       {selectedProduct && products.find((product) => product.id === selectedProduct) ? (() => {
         const product = products.find((item) => item.id === selectedProduct) as Product
@@ -1717,6 +1747,7 @@ export default function MarketplaceScreen({
             addingProduct={addingProduct}
             onReloadProducts={loadProducts}
             isProducer={isProducer}
+            store={store}
           />
         )
       })() : (
@@ -2094,7 +2125,10 @@ export default function MarketplaceScreen({
           {/* ══ BANNER TIENDA ══ */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #A86B05 0%, #D4870A 60%, #E5AE30 100%)',
+              // Tienda Amazónica: verde; El Campo Nos Une: naranja
+              background: isAmazon
+                ? 'linear-gradient(135deg, #173E26 0%, #205134 55%, #3D7A28 100%)'
+                : 'linear-gradient(135deg, #A86B05 0%, #D4870A 60%, #E5AE30 100%)',
               borderRadius: '0 0 28px 28px',
               padding: '22px 20px 28px',
               margin: '0 -18px 20px',
@@ -2104,15 +2138,15 @@ export default function MarketplaceScreen({
           >
             <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: -20, left: 20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.10)', pointerEvents: 'none' }} />
-            <p style={{ margin: 0, color: '#FFF8EE', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>🌽 MERCADOS CAMPESINOS</p>
-            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#FFFFFF', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>Productos del campo</h1>
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>Frescos y directos de productores colombianos</p>
+            <p style={{ margin: 0, color: '#FFF8EE', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>{isAmazon ? 'TIENDA AMAZÓNICA' : '🌽 MERCADOS CAMPESINOS'}</p>
+            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#FFFFFF', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>{isAmazon ? 'Productos amazónicos' : 'Productos del campo'}</h1>
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>{isAmazon ? 'Tu pedido se envía cuando se confirma el pago' : 'Frescos y directos de productores colombianos'}</p>
           </div>
 
           {/* ══ ANUNCIOS DESTACADOS ACTIVOS (Valida fechas de activación y tipo producto) ══ */}
-          {activeAds.filter(isAdvertisementActive).filter((a) => a.type === 'product' && a.product_id).length > 0 && (
+          {activeAds.filter(isAdvertisementActive).filter((a) => a.type === 'product' && a.product_id && products.some((p) => p.id === a.product_id)).length > 0 && (
             <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {activeAds.filter(isAdvertisementActive).filter((a) => a.type === 'product' && a.product_id).map((ad) => (
+              {activeAds.filter(isAdvertisementActive).filter((a) => a.type === 'product' && a.product_id && products.some((p) => p.id === a.product_id)).map((ad) => (
                 <div
                   key={ad.id}
                   onClick={() => {
@@ -2166,7 +2200,7 @@ export default function MarketplaceScreen({
                       >
                         📢 Destacado
                       </span>
-                      <span style={{ fontSize: 11, color: '#8C827A', fontWeight: 600 }}>El Campo Nos Une</span>
+                      <span style={{ fontSize: 11, color: '#8C827A', fontWeight: 600 }}>{STORE_NAMES[store]}</span>
                     </div>
                     <h3
                       style={{
@@ -2299,9 +2333,9 @@ export default function MarketplaceScreen({
 
           {canCreateProduct && (
             <div style={{ padding: '24px 20px', background: 'linear-gradient(180deg, #F5EEE6 0%, #E8DED0 100%)', borderTop: '1px solid #E8DED0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <p style={{ margin: 0, fontSize: 13, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, textAlign: 'center' }}>¿Tienes un nuevo producto del campo?</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, textAlign: 'center' }}>{isAmazon ? '¿Tienes un nuevo producto?' : '¿Tienes un nuevo producto del campo?'}</p>
               <button
-                onClick={() => setShowForm((prev) => !prev)}
+                onClick={togglePublishForm}
                 className="hover:scale-105 transition-transform"
                 style={{
                   width: '100%',

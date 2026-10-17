@@ -1,9 +1,11 @@
 import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
+import { AMAZON_PATH, STORE_NAMES, type StoreId } from '../lib/stores'
+import NotificationBell from './NotificationBell'
 import logoSrc from '../assets/logo-nofond.png'
 
-type NavTab = 'home' | 'market' | 'tourism' | 'about' | 'profile' | 'admin' | 'superadmin'
+type NavTab = 'home' | 'market' | 'tourism' | 'about' | 'profile' | 'admin' | 'superadmin' | 'amazon' | 'storeadmin'
 
 interface NavItem {
   id: NavTab
@@ -14,8 +16,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'market', label: 'Productos' },
   { id: 'tourism', label: 'Experiencias' },
+  { id: 'amazon', label: 'Tienda Amazónica' },
   { id: 'about', label: 'Nosotros' },
-  { id: 'profile', label: 'Mi Perfil' },
 ]
 
 interface ScreenShellProps {
@@ -28,6 +30,8 @@ interface ScreenShellProps {
   contentClassName?: string
   cartCount?: number
   onCartClick?: () => void
+  /** Tienda que se muestra. En 'amazonica' no aparece nada de la marca El Campo Nos Une. */
+  store?: StoreId
   /** @deprecated ya no se usa — el header nuevo no incluye búsqueda */
   searchPlaceholder?: string
   /** @deprecated */
@@ -56,7 +60,14 @@ export default function ScreenShell({
   contentClassName,
   cartCount,
   onCartClick,
+  store = 'campo',
 }: ScreenShellProps) {
+  const isAmazon = store === 'amazonica'
+  const isSeller = userRole === 'asociacion' || userRole === 'turismo'
+  const isStoreAdmin = userRole === 'admin_tienda'
+  // Vendedores y administradores de tienda trabajan desde su panel: sin menú de la tienda
+  const isPanelUser = isSeller || isStoreAdmin
+  const homeTab: NavTab = isStoreAdmin ? 'storeadmin' : isSeller ? 'admin' : isAmazon ? 'amazon' : 'home'
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [sessionUser, setSessionUser] = useState<any>(null)
@@ -78,9 +89,7 @@ export default function ScreenShell({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const navItems: NavItem[] = (userRole === 'asociacion' || userRole === 'turismo')
-    ? []
-    : NAV_ITEMS
+  const navItems: NavItem[] = (isPanelUser || isAmazon) ? [] : NAV_ITEMS
   const handleProfileClick = () => {
     if (onProfileClick) {
       onProfileClick()
@@ -105,15 +114,15 @@ export default function ScreenShell({
         <div
           style={{
             width: '100%',
-            padding: '0 24px',
+            padding: isAmazon ? '0 12px' : '0 24px',
             height: 76,
             display: 'flex',
             alignItems: 'center',
-            gap: 16,
+            gap: isAmazon ? 8 : 16,
             boxSizing: 'border-box',
           }}
         >
-          {/* Logo (oculto en la página de inicio) */}
+          {/* Logo (oculto en la página de inicio). La Tienda Amazónica aún no tiene logo: se muestra su nombre */}
           {activeNav !== 'home' && (
           <div
             style={{
@@ -122,21 +131,27 @@ export default function ScreenShell({
               display: 'flex',
               alignItems: 'center',
             }}
-            onClick={() => onNavigate?.(userRole === 'asociacion' || userRole === 'turismo' ? 'admin' : 'home')}
+            onClick={() => onNavigate?.(homeTab)}
             role={onNavigate ? 'button' : undefined}
             tabIndex={onNavigate ? 0 : undefined}
-            onKeyDown={(e) => e.key === 'Enter' && onNavigate?.(userRole === 'asociacion' || userRole === 'turismo' ? 'admin' : 'home')}
+            onKeyDown={(e) => e.key === 'Enter' && onNavigate?.(homeTab)}
             aria-label="Ir al inicio"
           >
-            <img
-              src={logoSrc}
-              alt="El Campo Nos Une"
-              style={{
-                height: 52,
-                width: 'auto',
-                display: 'block',
-              }}
-            />
+            {isAmazon ? (
+              <span className="text-base w-[100px] md:w-auto md:text-2xl md:whitespace-nowrap" style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, color: '#205134', lineHeight: 1.1, display: 'block' }}>
+                {STORE_NAMES.amazonica}
+              </span>
+            ) : (
+              <img
+                src={logoSrc}
+                alt="El Campo Nos Une"
+                style={{
+                  height: 52,
+                  width: 'auto',
+                  display: 'block',
+                }}
+              />
+            )}
           </div>
           )}
           {/* Nav central (Desktop) */}
@@ -193,7 +208,31 @@ export default function ScreenShell({
           <div className="md:hidden" style={{ flex: 1 }} />
 
           {/* Iconos derecha */}
-          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: isAmazon ? 6 : 10 }}>
+            {/* Volver a El Campo Nos Une (solo en la Tienda Amazónica, no para sus productores) */}
+            {isAmazon && !isPanelUser && (
+              <button
+                type="button"
+                onClick={() => onNavigate?.('home')}
+                style={{
+                  background: 'transparent',
+                  color: '#205134',
+                  border: '1.5px solid #205134',
+                  borderRadius: 10,
+                  padding: '7px 14px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'background 0.2s',
+                }}
+                className="hover:bg-[#EAF3EC]"
+              >
+                <span className="hidden sm:inline">← Volver al campo</span>
+                <span className="sm:hidden">← Campo</span>
+              </button>
+            )}
             {/* Perfil o Login */}
             {!sessionUser ? (
               <button
@@ -265,6 +304,7 @@ export default function ScreenShell({
                     Admin
                   </button>
                 )}
+                <NotificationBell onOpen={(tab) => (tab === 'profile' ? handleProfileClick() : onNavigate?.(tab))} />
                 <div style={{ position: 'relative' }}>
                   <button
                     type="button"
@@ -370,7 +410,7 @@ export default function ScreenShell({
                           onClick={async () => {
                             clearPromoSession()
                             await supabase.auth.signOut()
-                            window.location.href = '/'
+                            window.location.href = isAmazon ? AMAZON_PATH : '/'
                           }}
                           style={{
                             width: '100%',
@@ -396,8 +436,8 @@ export default function ScreenShell({
               </div>
             )}
 
-            {/* Botón Carrito - Oculto en Experiencias y para rol Asociacion */}
-            {activeNav !== 'tourism' && userRole !== 'asociacion' && (
+            {/* Botón Carrito - Oculto en Inicio, en Experiencias, en Mi panel y para rol Asociacion */}
+            {activeNav !== 'home' && activeNav !== 'tourism' && activeNav !== 'profile' && userRole !== 'asociacion' && !isStoreAdmin && (
               <button
                 type="button"
                 onClick={onCartClick}
@@ -419,9 +459,9 @@ export default function ScreenShell({
                 className="hover:bg-[#20513410]"
               >
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <path d="M16 10a4 4 0 0 1-8 0" />
+                  <circle cx="9" cy="20.5" r="1.3" />
+                  <circle cx="18" cy="20.5" r="1.3" />
+                  <path d="M2 3h2.6l2.4 11.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.5L21.4 7H5.6" />
                 </svg>
                 {cartCount !== undefined && cartCount > 0 && (
                   <span
@@ -448,6 +488,7 @@ export default function ScreenShell({
             )}
 
             {/* Menu Hamburger (Mobile) */}
+            {(!isAmazon || userRole === 'admin') && (
             <button
               className="flex md:hidden items-center justify-center"
               type="button"
@@ -471,6 +512,7 @@ export default function ScreenShell({
                 )}
               </svg>
             </button>
+            )}
           </div>
         </div>
 

@@ -3,14 +3,18 @@ import ScreenShell from '../components/ScreenShell'
 import { StatusBadge } from '../components/OrdersTable'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import { supabase } from '../lib/supabase'
-import { clearPromoSession } from '../lib/promoSession'
 import { fetchOrderStatuses, fetchStatusHistory, type OrderStatus, type StatusHistoryRow } from '../lib/orders'
+import { usePanelSectionRequest } from '../lib/notifications'
+import { confirmDialog } from '../components/ConfirmDialog'
+import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import {
   PAYMENT_METHOD_LABELS,
   PAYMENT_STATUS_LABELS,
   TICKET_CATEGORIES,
   TICKET_STATUS,
   createTicket,
+  deleteMyTicket,
+  updateMyTicket,
   fetchFavorites,
   fetchMyOrders,
   fetchMyTickets,
@@ -22,6 +26,7 @@ import {
   type SupportTicket,
   type TicketType,
 } from '../lib/buyer'
+import { STORE_NAMES, type StoreId } from '../lib/stores'
 
 type BuyerSection = 'overview' | 'orders' | 'payments' | 'reviews' | 'favorites' | 'tickets' | 'profile'
 
@@ -30,7 +35,9 @@ interface BuyerPanelScreenProps {
   activeNav?: string
   onProfileClick?: () => void
   userRole?: string
-  onViewProduct?: (productId: string) => void
+  onViewProduct?: (productId: string, store?: StoreId) => void
+  /** Tienda desde la que se abrió el panel: define la marca del header */
+  store?: StoreId
 }
 
 interface ReviewRow {
@@ -80,6 +87,7 @@ const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 14px', b
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 5 }
 const btnPrimary: React.CSSProperties = { background: C.green, color: '#fff', border: 'none', borderRadius: 12, padding: '10px 18px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: C.body }
 const btnGhost: React.CSSProperties = { background: '#fff', color: C.green, border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: C.body }
+const iconBtn: React.CSSProperties = { width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', color: C.green, border: `1px solid ${C.border}`, borderRadius: 10, cursor: 'pointer', padding: 0 }
 
 function formatPrice(n: number) {
   return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(Number(n) || 0)
@@ -179,8 +187,12 @@ function OrderTracker({ status }: { status?: OrderStatus }) {
   )
 }
 
-export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick, userRole, onViewProduct }: BuyerPanelScreenProps) {
+export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick, userRole, onViewProduct, store = 'campo' }: BuyerPanelScreenProps) {
+  const isAmazon = store === 'amazonica'
+  const storeTab = isAmazon ? 'amazon' : 'market'
   const [section, setSection] = useState<BuyerSection>('overview')
+  // Las notificaciones abren la sección de pedidos o de solicitudes (con datos frescos)
+  usePanelSectionRequest<BuyerSection>((s) => { setSection(s); loadAll(true) }, ['orders', 'tickets'])
   const [loading, setLoading] = useState(true)
   const [userId, setUserId] = useState('')
   const [email, setEmail] = useState('')
@@ -266,12 +278,36 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
   const openTickets = tickets.filter((t) => t.status === 'abierto' || t.status === 'en_revision')
 
   // ─── Solicitudes ──────────────────────────────────────────────────────────
-  const [ticketForm, setTicketForm] = useState<{ open: boolean; type: TicketType; order_id: string; category: string; subject: string; description: string }>({ open: false, type: 'problema', order_id: '', category: TICKET_CATEGORIES.problema[0], subject: '', description: '' })
+  // editingId: solicitud que se está editando (null = nueva)
+  const [ticketForm, setTicketForm] = useState<{ open: boolean; editingId: string | null; type: TicketType; order_id: string; category: string; subject: string; description: string }>({ open: false, editingId: null, type: 'problema', order_id: '', category: TICKET_CATEGORIES.problema[0], subject: '', description: '' })
   const [savingTicket, setSavingTicket] = useState(false)
 
   const openTicketForm = (type: TicketType, orderId = '') => {
-    setTicketForm({ open: true, type, order_id: orderId, category: TICKET_CATEGORIES[type][0], subject: '', description: '' })
+    setTicketForm({ open: true, editingId: null, type, order_id: orderId, category: TICKET_CATEGORIES[type][0], subject: '', description: '' })
     setSection('tickets')
+  }
+
+  // Solo las solicitudes en estado 'abierto' se pueden editar o eliminar
+  const editTicket = (t: SupportTicket) => {
+    setTicketForm({ open: true, editingId: t.id, type: t.type, order_id: t.order_id ?? '', category: t.category, subject: t.subject, description: t.description })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const removeTicket = async (t: SupportTicket) => {
+    if (!(await confirmDialog({
+      title: t.type === 'problema' ? '¿Eliminar este reporte?' : '¿Eliminar esta solicitud?',
+      message: `"${t.subject}" se eliminará y no se puede deshacer.`,
+      confirmText: 'Eliminar',
+      tone: 'danger',
+    }))) return
+    const { error } = await deleteMyTicket(t.id)
+    if (error) {
+      showToast('error', `No se pudo eliminar: ${error.message}`)
+      return
+    }
+    if (ticketForm.editingId === t.id) setTicketForm((f) => ({ ...f, open: false, editingId: null }))
+    setTickets(await fetchMyTickets(userId))
+    showToast('ok', 'Solicitud eliminada.')
   }
 
   const submitTicket = async () => {
@@ -280,22 +316,25 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
       return
     }
     setSavingTicket(true)
-    const { error } = await createTicket({
-      user_id: userId,
+    const data = {
       order_id: ticketForm.order_id || null,
       type: ticketForm.type,
       category: ticketForm.category,
       subject: ticketForm.subject.trim(),
       description: ticketForm.description.trim(),
-    })
+    }
+    const editing = ticketForm.editingId
+    const { error } = editing
+      ? await updateMyTicket(editing, data)
+      : await createTicket({ user_id: userId, ...data })
     setSavingTicket(false)
     if (error) {
-      showToast('error', `No se pudo enviar: ${error.message}`)
+      showToast('error', `No se pudo ${editing ? 'guardar' : 'enviar'}: ${error.message}`)
       return
     }
-    setTicketForm((f) => ({ ...f, open: false }))
+    setTicketForm((f) => ({ ...f, open: false, editingId: null }))
     setTickets(await fetchMyTickets(userId))
-    showToast('ok', 'Recibimos tu solicitud. El equipo de El Campo Nos Une la revisará pronto.')
+    showToast('ok', editing ? 'Solicitud actualizada.' : `Recibimos tu solicitud. El equipo de ${STORE_NAMES[store]} la revisará pronto.`)
   }
 
   // ─── Historial por ítem ───────────────────────────────────────────────────
@@ -327,7 +366,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
   }
 
   const deleteReview = async (id: string) => {
-    if (!window.confirm('¿Eliminar esta reseña?')) return
+    if (!(await confirmDialog({ title: '¿Eliminar esta reseña?', message: 'Esta acción no se puede deshacer.', confirmText: 'Eliminar', tone: 'danger' }))) return
     const { error } = await supabase.from('product_reviews').delete().eq('id', id)
     if (error) { showToast('error', error.message); return }
     await loadReviews(userId)
@@ -347,11 +386,15 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
       showToast('error', 'Nombre y apellido son obligatorios.')
       return
     }
+    if (!profile.municipality.trim()) {
+      showToast('error', 'La ciudad o municipio es obligatoria.')
+      return
+    }
     setSavingProfile(true)
     const { error } = await supabase.from('profiles').update({
       first_name: profile.first_name.trim(),
       last_name: profile.last_name.trim(),
-      phone: profile.phone.trim() || null,
+      phone: onlyPhoneDigits(profile.phone) || null,
       department: profile.department || null,
       municipality: profile.municipality.trim() || null,
       address: profile.address.trim() || null,
@@ -384,12 +427,21 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
             <div style={{ fontSize: 12, color: C.muted }}>{formatDate(o.created_at, true)}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {o.store === 'amazonica' && <Pill label={STORE_NAMES.amazonica} bg="#E3F2FD" color="#1B4D82" />}
             <StatusBadge status={status} />
             <Pill label={`Pago: ${pay.label}`} bg={pay.bg} color={pay.color} />
           </div>
         </div>
 
         <OrderTracker status={status} />
+
+        {o.store === 'amazonica' && o.payment_status !== 'Paid' && status?.code === 'PendingPayment' && (
+          <div style={{ background: '#FFF7E8', border: '1px solid #F0D099', color: '#9B4728', borderRadius: 12, padding: '10px 14px', fontSize: 13, fontWeight: 700 }}>
+            {o.payment_method === 'BankTransfer'
+              ? `Realiza la transferencia con la referencia ${shortId(o.id)}. El productor enviará tu pedido cuando se confirme el pago.`
+              : 'Coordina el pago en efectivo con el productor. Enviará tu pedido cuando reciba el pago.'}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {(o.items ?? []).map((it) => (
@@ -460,7 +512,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
   }
 
   return (
-    <ScreenShell activeNav={activeNav ?? 'profile'} onNavigate={onNavigate} onProfileClick={onProfileClick} userRole={userRole} contentStyle={{ paddingBottom: 32 }}>
+    <ScreenShell activeNav={activeNav ?? 'profile'} onNavigate={onNavigate} onProfileClick={onProfileClick} userRole={userRole} contentStyle={{ paddingBottom: 32 }} store={store}>
       <div style={{ maxWidth: 1100, margin: '0 auto', width: '100%', fontFamily: C.body }}>
         {/* Encabezado */}
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -472,16 +524,6 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               {loading ? 'Cargando...' : `Hola, ${profile.first_name || 'comprador'} 👋`}
             </div>
             <div style={{ fontSize: 13, color: C.muted }}>{email}{profile.municipality ? ` · 📍 ${profile.municipality}` : ''}</div>
-          </div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" style={btnPrimary} onClick={() => onNavigate('market')}>🛒 Ir a la tienda</button>
-            <button
-              type="button"
-              style={{ ...btnGhost, color: '#D06050' }}
-              onClick={async () => { clearPromoSession(); await supabase.auth.signOut(); window.location.href = '/' }}
-            >
-              Cerrar sesión
-            </button>
           </div>
         </div>
 
@@ -542,7 +584,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                 <div>
                   <SectionTitle title="Tu pedido más reciente" action={orders.length > 1 ? <button type="button" style={btnGhost} onClick={() => setSection('orders')}>Ver todos</button> : undefined} />
                   {orders.length === 0
-                    ? <EmptyState emoji="🧺" text="Aún no has hecho pedidos. ¡Descubre los productos del campo!" action={<button type="button" style={btnPrimary} onClick={() => onNavigate('market')}>Explorar productos</button>} />
+                    ? <EmptyState emoji="🧺" text={isAmazon ? 'Aún no has hecho pedidos. ¡Descubre los productos de la tienda!' : 'Aún no has hecho pedidos. ¡Descubre los productos del campo!'} action={<button type="button" style={btnPrimary} onClick={() => onNavigate(storeTab)}>Explorar productos</button>} />
                     : renderOrderCard(orders[0])}
                 </div>
               </div>
@@ -553,7 +595,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <div>
                 <SectionTitle title="Mis pedidos" subtitle="Sigue el estado de cada pedido y de cada producto." />
                 {orders.length === 0
-                  ? <EmptyState emoji="📦" text="Todavía no tienes pedidos." action={<button type="button" style={btnPrimary} onClick={() => onNavigate('market')}>Ir a la tienda</button>} />
+                  ? <EmptyState emoji="📦" text="Todavía no tienes pedidos." action={<button type="button" style={btnPrimary} onClick={() => onNavigate(storeTab)}>Ir a la tienda</button>} />
                   : <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{orders.map(renderOrderCard)}</div>}
               </div>
             )}
@@ -566,6 +608,11 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                   <div style={card}><div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>TOTAL PAGADO</div><div style={{ fontFamily: C.display, fontSize: 24, fontWeight: 700, color: C.green }}>{formatPrice(totalPaid)}</div></div>
                   <div style={card}><div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>PENDIENTE POR PAGAR</div><div style={{ fontFamily: C.display, fontSize: 24, fontWeight: 700, color: C.orange }}>{formatPrice(totalPending)}</div></div>
                 </div>
+                {orders.some((o) => (o.payment_method === 'Cash' || o.payment_method === 'BankTransfer') && o.payment_status === 'Pending') && (
+                  <div style={{ ...card, background: '#FFF7E8', borderColor: '#F0D099', fontSize: 13, color: '#9B4728', fontWeight: 600, marginBottom: 16 }}>
+                    🏦 En los pedidos de la {STORE_NAMES.amazonica} el productor envía tu pedido cuando se confirma el pago (efectivo o transferencia).
+                  </div>
+                )}
                 {orders.some((o) => o.payment_method === 'CashOnDelivery' && o.payment_status === 'Pending') && (
                   <div style={{ ...card, background: C.greenSoft, borderColor: '#C8E6C9', fontSize: 13, color: C.green, fontWeight: 600, marginBottom: 16 }}>
                     💵 En los pedidos contraentrega pagas al recibir. Ten el valor exacto listo para el repartidor.
@@ -679,7 +726,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <div>
                 <SectionTitle title="Mis favoritos" subtitle="Guarda productos con el ❤️ en la tienda." />
                 {favorites.length === 0 ? (
-                  <EmptyState emoji="❤️" text="Aún no tienes favoritos." action={<button type="button" style={btnPrimary} onClick={() => onNavigate('market')}>Explorar productos</button>} />
+                  <EmptyState emoji="❤️" text="Aún no tienes favoritos." action={<button type="button" style={btnPrimary} onClick={() => onNavigate(storeTab)}>Explorar productos</button>} />
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
                     {favorites.map((f) => {
@@ -695,7 +742,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                             <div style={{ fontWeight: 800, color: C.terra, fontFamily: C.display }}>{formatPrice(item.price)}</div>
                             <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 8 }}>
                               {f.product_id ? (
-                                <button type="button" style={{ ...btnPrimary, flex: 1, padding: '8px 10px', fontSize: 13 }} onClick={() => onViewProduct?.(f.product_id!)}>Ver producto</button>
+                                <button type="button" style={{ ...btnPrimary, flex: 1, padding: '8px 10px', fontSize: 13 }} onClick={() => onViewProduct?.(f.product_id!, f.product?.store === 'amazonica' ? 'amazonica' : 'campo')}>Ver producto</button>
                               ) : (
                                 <button type="button" style={{ ...btnPrimary, flex: 1, padding: '8px 10px', fontSize: 13 }} onClick={() => onNavigate('tourism')}>Ver experiencias</button>
                               )}
@@ -715,7 +762,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <SectionTitle
                   title="Solicitudes y reportes"
-                  subtitle="Solo el equipo de administración de El Campo Nos Une puede ver tus solicitudes."
+                  subtitle={`Solo el equipo de administración de ${STORE_NAMES[store]} puede ver tus solicitudes.`}
                   action={!ticketForm.open ? (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" style={btnGhost} onClick={() => openTicketForm('solicitud')}>📝 Nueva solicitud</button>
@@ -726,6 +773,9 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
 
                 {ticketForm.open && (
                   <div style={{ ...card, borderColor: ticketForm.type === 'problema' ? '#F3C38B' : C.green }}>
+                    {ticketForm.editingId && (
+                      <div style={{ fontSize: 12, fontWeight: 800, color: C.green, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>✏️ Editando solicitud</div>
+                    )}
                     <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
                       {(['problema', 'solicitud'] as TicketType[]).map((t) => (
                         <button key={t} type="button" onClick={() => setTicketForm({ ...ticketForm, type: t, category: TICKET_CATEGORIES[t][0] })} style={{ ...btnGhost, background: ticketForm.type === t ? C.green : '#fff', color: ticketForm.type === t ? '#fff' : C.green }}>
@@ -757,8 +807,10 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                       <textarea value={ticketForm.description} onChange={(e) => setTicketForm({ ...ticketForm, description: e.target.value })} rows={4} placeholder="Cuéntanos con detalle qué pasó o qué necesitas." style={{ ...inputStyle, resize: 'vertical' }} />
                     </div>
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-                      <button type="button" style={btnGhost} onClick={() => setTicketForm({ ...ticketForm, open: false })}>Cancelar</button>
-                      <button type="button" style={{ ...btnPrimary, opacity: savingTicket ? 0.6 : 1 }} disabled={savingTicket} onClick={submitTicket}>{savingTicket ? 'Enviando...' : 'Enviar'}</button>
+                      <button type="button" style={btnGhost} onClick={() => setTicketForm({ ...ticketForm, open: false, editingId: null })}>Cancelar</button>
+                      <button type="button" style={{ ...btnPrimary, opacity: savingTicket ? 0.6 : 1 }} disabled={savingTicket} onClick={submitTicket}>
+                        {savingTicket ? (ticketForm.editingId ? 'Guardando...' : 'Enviando...') : (ticketForm.editingId ? 'Guardar cambios' : 'Enviar')}
+                      </button>
                     </div>
                   </div>
                 )}
@@ -781,7 +833,19 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                                 {formatDate(t.created_at, true)}{t.order_id ? ` · Pedido ${shortId(t.order_id)}` : ''}
                               </div>
                             </div>
-                            <Pill label={st.label} bg={st.bg} color={st.color} />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Pill label={st.label} bg={st.bg} color={st.color} />
+                              {t.status === 'abierto' && (
+                                <>
+                                  <button type="button" onClick={() => editTicket(t)} title="Editar" aria-label="Editar solicitud" style={iconBtn}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+                                  </button>
+                                  <button type="button" onClick={() => removeTicket(t)} title="Eliminar" aria-label="Eliminar solicitud" style={{ ...iconBtn, color: '#D06050' }}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M19 6l-1 14H6L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /></svg>
+                                  </button>
+                                </>
+                              )}
+                            </div>
                           </div>
                           <p style={{ margin: '10px 0 0', fontSize: 13, color: C.text, whiteSpace: 'pre-wrap' }}>{t.description}</p>
                           {t.admin_response && (
@@ -818,7 +882,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                   </div>
                   <div>
                     <label style={labelStyle}>Teléfono / WhatsApp</label>
-                    <input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} inputMode="tel" placeholder="300 123 4567" style={inputStyle} />
+                    <input value={onlyPhoneDigits(profile.phone)} onChange={(e) => setProfile({ ...profile, phone: onlyPhoneDigits(e.target.value) })} {...phoneInputProps} style={inputStyle} />
                   </div>
                   <div>
                     <label style={labelStyle}>Departamento</label>
@@ -832,8 +896,8 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                     )}
                   </div>
                   <div>
-                    <label style={labelStyle}>Municipio</label>
-                    <input value={profile.municipality} onChange={(e) => setProfile({ ...profile, municipality: e.target.value })} style={inputStyle} />
+                    <label style={labelStyle}>Ciudad / Municipio *</label>
+                    <input value={profile.municipality} onChange={(e) => setProfile({ ...profile, municipality: e.target.value })} placeholder="Ej: Pitalito" required style={inputStyle} />
                   </div>
                 </div>
                 <div style={{ marginTop: 14 }}>

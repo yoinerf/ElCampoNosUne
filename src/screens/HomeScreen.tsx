@@ -175,10 +175,10 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       }
 
       // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
-            // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
       try {
         const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
-          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }).limit(30),
+          // Solo productos de El Campo Nos Une (los de la Tienda Amazónica no salen aquí)
+          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').eq('store', 'campo').order('created_at', { ascending: false }).limit(30),
           supabase.from('product_reviews').select('product_id, rating'),
           supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         ])
@@ -236,7 +236,8 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               .from('products')
               .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
               .eq('id', ad.product_id)
-              .single()
+              .eq('store', 'campo')
+              .maybeSingle()
             if (missingProd) {
               const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url
                 || missingProd.images?.[0]?.image_url
@@ -268,7 +269,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           return b.rating - a.rating
         })
 
-        setFeatured(processed.slice(0, 3))
+        setFeatured(processed.slice(0, 9))
       } catch (e) {
         console.error('Error cargando productos patrocinados en HomeScreen:', e)
       }
@@ -505,7 +506,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         </p>
       ) : (
         <div style={{ marginBottom: 28 }}>
-          <AutoCarousel>
+          <AutoCarousel perView={3}>
             {featured.map((item) => (
               <div
                 key={item.id}

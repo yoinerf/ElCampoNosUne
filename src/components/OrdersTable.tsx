@@ -10,6 +10,8 @@ import {
   type OrderStatusTransition,
   type StatusHistoryRow,
 } from '../lib/orders'
+import { confirmDialog } from './ConfirmDialog'
+import { PAYMENT_METHOD_LABELS, STORE_NAMES } from '../lib/stores'
 
 interface OrdersTableProps {
   items: OrderItemRow[]
@@ -105,7 +107,13 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
         : target?.is_final
           ? `¿Cambiar "${item.title}" a "${target.name}"? Es un estado final.`
           : null
-    if (confirmText && !window.confirm(confirmText)) return
+    if (confirmText && !(await confirmDialog({
+      title: cancelling ? 'Cancelar pedido' : reopening ? 'Reactivar pedido' : 'Confirmar cambio de estado',
+      message: confirmText,
+      confirmText: 'Sí, continuar',
+      cancelText: 'Volver',
+      tone: cancelling ? 'danger' : 'warning',
+    }))) return
 
     setSavingId(item.id)
     setErrorMsg('')
@@ -180,7 +188,11 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
               ) : filtered.map((it) => {
                 const addr = it.order?.shipping_address || {}
                 const sellerName = it.seller ? (it.seller.org_name || `${it.seller.first_name ?? ''} ${it.seller.last_name ?? ''}`.trim()) : ''
-                const next = getNextStatuses(it.status_id, it.order?.payment_method, transitions, statuses)
+                const orderStore = it.order?.store ?? 'campo'
+                const next = getNextStatuses(it.status_id, it.order?.payment_method, transitions, statuses, orderStore)
+                const itemPay = it.payment_status ?? it.order?.payment_status
+                // Tienda Amazónica: no se prepara ni se envía nada sin pago
+                const awaitingPayment = orderStore === 'amazonica' && itemPay !== 'Paid' && statusById.get(it.status_id)?.code === 'PendingPayment'
                 const suggested = next.find((n) => n.suggested)
                 const others = allowOverride ? statuses.filter((s) => s.id !== it.status_id && !next.some((n) => n.status.id === s.id)) : []
                 const saving = savingId === it.id
@@ -191,6 +203,9 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                       <td style={td}>
                         <div style={{ fontWeight: 800, color: '#1C3A14', fontFamily: 'monospace' }}>#{it.order_id.slice(0, 8).toUpperCase()}</div>
                         <div style={{ fontSize: 12, color: '#8A8070', whiteSpace: 'nowrap' }}>{formatDate(it.order?.created_at || it.created_at)}</div>
+                        {showSeller && orderStore === 'amazonica' && (
+                          <div style={{ marginTop: 4, display: 'inline-block', background: '#E3F2FD', color: '#1B4D82', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>{STORE_NAMES.amazonica}</div>
+                        )}
                       </td>
                       <td style={td}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -210,10 +225,10 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                       {showSeller && <td style={td}>{sellerName || '—'}</td>}
                       <td style={{ ...td, fontWeight: 700, color: '#9B4728', fontFamily: "'Poppins', sans-serif", whiteSpace: 'nowrap' }}>{formatPrice(Number(it.total))}</td>
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                        <div>{it.order?.payment_method === 'CashOnDelivery' ? 'Contraentrega' : it.order?.payment_method || '—'}</div>
+                        <div>{PAYMENT_METHOD_LABELS[it.order?.payment_method ?? ''] ?? (it.order?.payment_method || '—')}</div>
                         {(() => {
                           // Pago del ítem (lo que cobra este vendedor); si no existe aún, el del pedido
-                          const pay = it.payment_status ?? it.order?.payment_status
+                          const pay = itemPay
                           return (
                             <div style={{ fontSize: 12, fontWeight: 700, color: pay === 'Paid' ? '#205134' : '#C4622D' }}>
                               {pay === 'Paid' ? 'Pagado' : pay === 'Refunded' ? 'Reembolsado' : pay === 'Failed' ? 'Fallido' : 'Pendiente'}
@@ -223,6 +238,11 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                       </td>
                       <td style={{ ...td, minWidth: 210 }}>
                         <div style={{ marginBottom: 8 }}><StatusBadge status={statusById.get(it.status_id)} /></div>
+                        {awaitingPayment && (
+                          <div style={{ marginBottom: 8, background: '#FFF1E0', color: '#C4622D', border: '1px solid #F3C38B', borderRadius: 10, padding: '6px 10px', fontSize: 12, fontWeight: 800 }}>
+                            Esperando pago — no enviar
+                          </div>
+                        )}
 
                         {suggested && (
                           <button
@@ -232,7 +252,7 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                             title="Siguiente estado sugerido"
                             style={{ width: '100%', marginBottom: 6, padding: '7px 10px', borderRadius: 10, border: 'none', background: '#205134', color: '#fff', fontSize: 12, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, fontFamily: "'Nunito Sans', sans-serif" }}
                           >
-                            → {suggested.status.name}
+                            → {awaitingPayment && suggested.status.code === 'Paid' ? 'Confirmar pago recibido' : suggested.status.name}
                           </button>
                         )}
 

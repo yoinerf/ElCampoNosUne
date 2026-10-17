@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
 import logoSrc from '../assets/logo-nofond.png'
 
-type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
+type NavTab = 'home' | 'market' | 'tourism' | 'about' | 'profile' | 'admin' | 'superadmin'
 
 interface NavItem {
   id: NavTab
@@ -14,7 +14,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'market', label: 'Productos' },
   { id: 'tourism', label: 'Experiencias' },
-  { id: 'profile', label: 'Nosotros' },
+  { id: 'about', label: 'Nosotros' },
+  { id: 'profile', label: 'Mi Perfil' },
 ]
 
 interface ScreenShellProps {

@@ -3,14 +3,16 @@ import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
 import { isAdvertisementActive } from '../lib/dateColombia'
 import bannerImg from '../assets/banner-campo.webp'
+import AutoCarousel from '../components/AutoCarousel'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile'
+type Tab = 'home' | 'market' | 'tourism' | 'profile'  | 'admin'
 
 interface Props {
   onNavigate: (tab: Tab) => void
   activeNav?: Tab
   onProfileClick?: () => void
   userRole?: 'asociacion' | 'turismo' | 'comprador' | null
+  onSelectProduct?: (productId: string) => void
 }
 
 interface FeaturedProduct {
@@ -42,13 +44,13 @@ interface ActivityItem {
 const getActivityTypeMeta = (type: string) => {
   switch (type) {
     case 'product_created':
-      return { icon: '📦', color: '#E5AE30', label: 'Producto publicado' }  // Dorado para productos
+      return { icon: '📦', color: '#E5AE30', label: 'Producto publicado' }
     case 'experience_created':
-      return { icon: '🏞️', color: '#6BAA3D', label: 'Experiencia publicada' }  // Verde para experiencias
+      return { icon: '🏞️', color: '#6BAA3D', label: 'Experiencia publicada' }
     case 'purchase':
       return { icon: '🛒', color: '#9B4728', label: 'Compra registrada' }
     case 'reservation':
-      return { icon: '✅', color: '#6BAA3D', label: 'Reserva creada' }  // Verde para experiencias
+      return { icon: '✅', color: '#6BAA3D', label: 'Reserva creada' }
     case 'message':
       return { icon: '💬', color: '#5A7BCA', label: 'Mensaje nuevo' }
     default:
@@ -81,7 +83,10 @@ function getColombianGreeting(): { text: string; icon: string } {
   return { text: 'Buenas noches', icon: '🌙' }
 }
 
-export default function HomeScreen({ onNavigate, activeNav, onProfileClick, userRole: propUserRole }: Props) {
+const PLACEHOLDER_PRODUCT_IMG = 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
+const PLACEHOLDER_EXPERIENCE_IMG = 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
+
+export default function HomeScreen({ onNavigate, activeNav, onProfileClick, userRole: propUserRole, onSelectProduct }: Props) {
   const [firstName, setFirstName] = useState('')
   const [featured, setFeatured] = useState<FeaturedProduct[]>([])
   const [tourism, setTourism] = useState<TourismPreview[]>([])
@@ -169,6 +174,8 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         }
       }
 
+      // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
+            // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
       try {
         const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
           supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }).limit(30),
@@ -176,123 +183,120 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         ])
 
-        if (products) {
-          const reviewsMap: Record<string, number[]> = {}
-          if (reviewsData && Array.isArray(reviewsData)) {
-            for (const r of reviewsData) {
-              if (r.product_id) {
-                if (!reviewsMap[r.product_id]) reviewsMap[r.product_id] = []
-                reviewsMap[r.product_id].push(r.rating)
-              }
+        const reviewsMap: Record<string, number[]> = {}
+        if (reviewsData) {
+          for (const r of reviewsData) {
+            if (r.product_id) {
+              if (!reviewsMap[r.product_id]) reviewsMap[r.product_id] = []
+              reviewsMap[r.product_id].push(r.rating)
             }
           }
-
-          // Filtrar anuncios activos según la hora oficial de Colombia
-          const activeProductAds = (adsData || []).filter(ad => ad.type === 'product' && isAdvertisementActive(ad))
-
-          const processed = (products as any[]).map((p) => {
-            const ratings = reviewsMap[p.id] || []
-            const avg = ratings.length > 0
-              ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
-              : (p.rating ?? 5)
-            const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url 
-              || p.images?.[0]?.image_url 
-              || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
-
-            // Comprobar si el producto tiene un anuncio activo vigente
-            const matchingAd = activeProductAds.find((ad) => ad.product_id === p.id)
-            const isAdFeatured = !!matchingAd
-
-            // Comprobar si tiene algún anuncio en adsData que esté expirado o desactivado
-            const existingAd = (adsData || []).find((ad) => ad.product_id === p.id)
-            const isAdExpiredOrInactive = existingAd ? !isAdvertisementActive(existingAd) : false
-
-            // Un producto con outstanding=true es válido si NO tiene un anuncio expirado
-            const isOutstandingValid = p.outstanding === true && !isAdExpiredOrInactive
-
-            const profile = p.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
-            const producerName = profile
-              ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || p.producer || 'Productor')
-              : (p.producer || 'Productor')
-
-            return {
-              ...p,
-              producer: producerName,
-              title: matchingAd?.title || p.title,
-              img: matchingAd?.image_url || primaryImg,
-              rating: avg,
-              isAdFeatured,
-              isOutstandingValid,
-            }
-          })
-
-          // Si hay algún producto en un anuncio activo que no vino en los primeros 30, consultarlo
-          const existingIds = new Set(processed.map((p) => p.id))
-          for (const ad of activeProductAds) {
-            if (ad.product_id && !existingIds.has(ad.product_id)) {
-              const { data: missingProd } = await supabase
-                .from('products')
-                .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
-                .eq('id', ad.product_id)
-                .single()
-              if (missingProd) {
-                const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url 
-                  || missingProd.images?.[0]?.image_url 
-                  || 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format'
-                const profile = (missingProd as any).profiles as { org_name?: string; first_name?: string; last_name?: string } | null
-                const producerName = profile
-                  ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || missingProd.producer || 'Productor')
-                  : (missingProd.producer || 'Productor')
-
-                processed.unshift({
-                  ...missingProd,
-                  producer: producerName,
-                  title: ad.title || missingProd.title,
-                  img: ad.image_url || primaryImg,
-                  rating: missingProd.rating ?? 5,
-                  isAdFeatured: true,
-                  isOutstandingValid: true,
-                })
-                existingIds.add(missingProd.id)
-              }
-            }
-          }
-
-          // Priorización de visualización en destacados:
-          // 1. Productos con anuncio publicitario activo (vigencia hora Colombia)
-          // 2. Productos destacados válidos (outstanding=true sin anuncio vencido)
-          // 3. Mejor calificados
-          processed.sort((a, b) => {
-            if (a.isAdFeatured && !b.isAdFeatured) return -1
-            if (!a.isAdFeatured && b.isAdFeatured) return 1
-            if (a.isOutstandingValid && !b.isOutstandingValid) return -1
-            if (!a.isOutstandingValid && b.isOutstandingValid) return 1
-            return b.rating - a.rating
-          })
-
-          setFeatured(processed.slice(0, 3))
         }
+
+        // Filtrar anuncios activos según la hora oficial de Colombia
+        const activeProductAds = (adsData || []).filter(ad => ad.type === 'product' && isAdvertisementActive(ad))
+
+        const processed = (products as any[]).map((p) => {
+          const ratings = reviewsMap[p.id] || []
+          const avg = ratings.length > 0
+            ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
+            : (p.rating ?? 5)
+          const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url
+            || p.images?.[0]?.image_url
+            || PLACEHOLDER_PRODUCT_IMG
+
+          const matchingAd = activeProductAds.find((ad) => ad.product_id === p.id)
+          const isAdFeatured = !!matchingAd
+
+          const existingAd = (adsData || []).find((ad) => ad.product_id === p.id)
+          const isAdExpiredOrInactive = existingAd ? !isAdvertisementActive(existingAd) : false
+
+          const isOutstandingValid = p.outstanding === true && !isAdExpiredOrInactive
+
+          const profile = p.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+          const producerName = profile
+            ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || p.producer || 'Productor')
+            : (p.producer || 'Productor')
+
+          return {
+            ...p,
+            producer: producerName,
+            title: matchingAd?.title || p.title,
+            img: matchingAd?.image_url || primaryImg,
+            rating: avg,
+            isAdFeatured,
+            isOutstandingValid,
+          }
+        })
+
+        const existingIds = new Set(processed.map((p) => p.id))
+        for (const ad of activeProductAds) {
+          if (ad.product_id && !existingIds.has(ad.product_id)) {
+            const { data: missingProd } = await supabase
+              .from('products')
+              .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
+              .eq('id', ad.product_id)
+              .single()
+            if (missingProd) {
+              const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url
+                || missingProd.images?.[0]?.image_url
+                || PLACEHOLDER_PRODUCT_IMG
+              const profile = (missingProd as any).profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+              const producerName = profile
+                ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || missingProd.producer || 'Productor')
+                : (missingProd.producer || 'Productor')
+
+              processed.unshift({
+                ...missingProd,
+                producer: producerName,
+                title: ad.title || missingProd.title,
+                img: ad.image_url || primaryImg,
+                rating: missingProd.rating ?? 5,
+                isAdFeatured: true,
+                isOutstandingValid: true,
+              })
+              existingIds.add(missingProd.id)
+            }
+          }
+        }
+
+        processed.sort((a, b) => {
+          if (a.isAdFeatured && !b.isAdFeatured) return -1
+          if (!a.isAdFeatured && b.isAdFeatured) return 1
+          if (a.isOutstandingValid && !b.isOutstandingValid) return -1
+          if (!a.isOutstandingValid && b.isOutstandingValid) return 1
+          return b.rating - a.rating
+        })
+
+        setFeatured(processed.slice(0, 3))
       } catch (e) {
-        console.error('Error cargando destacados con reseñas en HomeScreen:', e)
+        console.error('Error cargando productos patrocinados en HomeScreen:', e)
       }
 
-      const { data: tourismData } = await supabase
-        .from('experiences')
-        .select('id, title, host, price, tags, images(*), profiles(org_name, first_name, last_name)')
-        .order('created_at', { ascending: false })
-        .limit(3)
-      if (tourismData) {
-        const mappedTourism = (tourismData as any[]).map((e) => {
-          const primaryImg = e.images?.find((i: any) => i.is_primary)?.image_url 
-            || e.images?.[0]?.image_url 
-            || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
-          const profile = e.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
-          const hostName = profile
-            ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || e.host || 'Anfitrión')
-            : (e.host || 'Anfitrión')
-          return { ...e, host: hostName, img: primaryImg }
-        })
-        setTourism(mappedTourism as TourismPreview[])
+      // ══════ EXPERIENCIAS PATROCINADAS (via advertisements) ══════
+      try {
+        const { data: experienceAds } = await supabase
+          .from('advertisements')
+          .select('id, experiences (id, title, host, price, tags, images (image_url, is_primary))')
+          .eq('type', 'experience')
+          .eq('active', true)
+          .lte('starts_at', new Date().toISOString())
+          .gte('ends_at', new Date().toISOString())
+          .order('starts_at', { ascending: false })
+          .limit(6)
+
+        const featuredExperiences = (experienceAds || [])
+          .map((ad: any) => {
+            const experience = ad.experiences
+            if (!experience) return null
+            const primaryImage = experience.images?.find((img: any) => img.is_primary) || experience.images?.[0]
+            return { ...experience, img: primaryImage?.image_url || PLACEHOLDER_EXPERIENCE_IMG }
+          })
+          .filter(Boolean)
+
+        setTourism(featuredExperiences as TourismPreview[])
+      } catch (e) {
+        console.error('Error cargando experiencias patrocinadas en HomeScreen:', e)
       }
 
       setLoading(false)
@@ -319,12 +323,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       contentStyle={{ paddingBottom: 32 }}
     >
       {/* ══════ BANNER SIEMPRE VISIBLE ══════ */}
-      <div
-        style={{
-          margin: '0 -18px 0',
-          animation: 'fadeInBanner 0.8s ease-out',
-        }}
-      >
+      <div style={{ margin: '0 -18px 0', animation: 'fadeInBanner 0.8s ease-out' }}>
         <img
           src={bannerImg}
           alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
@@ -377,77 +376,37 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         >
           {loading
             ? Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="animate-pulse"
-                style={{
-                  flex: 1,
-                  textAlign: 'center',
-                  borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
-                  padding: '10px 8px 6px',
-                }}
-              >
-                <div style={{ width: 24, height: 24, margin: '0 auto 8px', borderRadius: 8, background: '#E9E2D9' }} />
-                <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
-                <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
-              </div>
-            ))
+                <div key={i} className="animate-pulse" style={{ flex: 1, textAlign: 'center', borderRight: i < 2 ? '1px solid #E8DED0' : 'none', padding: '10px 8px 6px' }}>
+                  <div style={{ width: 24, height: 24, margin: '0 auto 8px', borderRadius: 8, background: '#E9E2D9' }} />
+                  <div style={{ height: 18, margin: '0 auto 6px', width: '60%', borderRadius: 8, background: '#E9E2D9' }} />
+                  <div style={{ height: 11, width: '68%', margin: '0 auto', borderRadius: 8, background: '#F0E9E0' }} />
+                </div>
+              ))
             : [
-              { label: 'Productos', value: String(stats.productos), icon: '📦' },
-              { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
-              { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
-            ].map((s, i) => (
-              <div
-                key={s.label}
-                style={{
-                  flex: 1,
-                  textAlign: 'center',
-                  borderRight: i < 2 ? '1px solid #E8DED0' : 'none',
-                  padding: '8px 6px',
-                }}
-              >
-                <div style={{ fontSize: 20 }}>{s.icon}</div>
-                <div
-                  style={{
-                    fontSize: 18,
-                    fontWeight: 700,
-                    color: '#205134',
-                    fontFamily: "'Poppins', sans-serif",
-                    lineHeight: 1.2,
-                  }}
-                >
-                  {s.value}
+                { label: 'Productos', value: String(stats.productos), icon: '📦' },
+                { label: 'Pedidos', value: String(stats.pedidos), icon: '🛒' },
+                { label: 'Ingresos', value: formatCompact(stats.ingresos), icon: '💰' },
+              ].map((s, i) => (
+                <div key={s.label} style={{ flex: 1, textAlign: 'center', borderRight: i < 2 ? '1px solid #E8DED0' : 'none', padding: '8px 6px' }}>
+                  <div style={{ fontSize: 20 }}>{s.icon}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: '#205134', fontFamily: "'Poppins', sans-serif", lineHeight: 1.2 }}>
+                    {s.value}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    {s.label}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
-                  {s.label}
-                </div>
-              </div>
-            ))}
+              ))}
         </div>
       )}
 
       {/* ══════ EXPLORA — tarjetas de sección ══════ */}
       <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
-        <h2
-          style={{
-            fontFamily: "'Poppins', sans-serif",
-            fontSize: 18,
-            color: '#205134',
-            margin: 0,
-            fontWeight: 700,
-          }}
-        >
+        <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#205134', margin: 0, fontWeight: 700 }}>
           Explora
         </h2>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-          gap: 14,
-          marginBottom: 28,
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 28 }}>
         {/* Productos — Dorado según manual de identidad */}
         <div
           onClick={() => onNavigate('market')}
@@ -468,51 +427,15 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              position: 'absolute',
-              top: -20,
-              right: -20,
-              width: 90,
-              height: 90,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.15)',
-            }}
-          />
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 16,
-              background: 'rgba(255,255,255,0.18)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 26,
-            }}
-          >
+          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.15)' }} />
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
             🌽
           </div>
           <div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: '#1C2700',
-                fontFamily: "'Poppins', sans-serif",
-                lineHeight: 1.2,
-              }}
-            >
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1C2700', fontFamily: "'Poppins', sans-serif", lineHeight: 1.2 }}>
               Productos
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: 'rgba(28,39,0,0.65)',
-                fontFamily: "'Nunito Sans', sans-serif",
-                marginTop: 2,
-              }}
-            >
+            <div style={{ fontSize: 11, color: 'rgba(28,39,0,0.65)', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
               Mercados campesinos
             </div>
           </div>
@@ -533,57 +456,19 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
             alignItems: 'flex-start',
             gap: 10,
             cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(32,81,52,0.20)',
             position: 'relative',
             overflow: 'hidden',
           }}
         >
-          <div
-            style={{
-              position: 'absolute',
-              top: -20,
-              right: -20,
-              width: 90,
-              height: 90,
-              borderRadius: '50%',
-              background: 'rgba(255,255,255,0.12)',
-            }}
-          />
-          <div
-            style={{
-              width: 52,
-              height: 52,
-              borderRadius: 16,
-              background: 'rgba(255,255,255,0.18)',
-              border: '1.5px solid rgba(255,255,255,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 26,
-            }}
-          >
+          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.12)' }} />
+          <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
             🏞️
           </div>
           <div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 700,
-                color: '#F5EEE6',
-                fontFamily: "'Poppins', sans-serif",
-                lineHeight: 1.2,
-              }}
-            >
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#F5EEE6', fontFamily: "'Poppins', sans-serif", lineHeight: 1.2 }}>
               Experiencias
             </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: 'rgba(245,238,230,0.75)',
-                fontFamily: "'Nunito Sans', sans-serif",
-                marginTop: 2,
-              }}
-            >
+            <div style={{ fontSize: 11, color: 'rgba(245,238,230,0.75)', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
               Turismo comunitario
             </div>
           </div>
@@ -592,83 +477,59 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
       {/* ══════ PRODUCTOS DESTACADOS ══════ */}
       <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
-        <h2
-          style={{
-            fontFamily: "'Poppins', sans-serif",
-            fontSize: 18,
-            color: '#205134',
-            margin: 0,
-            fontWeight: 700,
-          }}
-        >
+        <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#205134', margin: 0, fontWeight: 700 }}>
           Productos destacados
         </h2>
         <span
-          style={{
-            fontSize: 12,
-            color: '#C8860A',
-            fontWeight: 700,
-            fontFamily: "'Nunito Sans', sans-serif",
-            cursor: 'pointer',
-          }}
+          style={{ fontSize: 12, color: '#C8860A', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif", cursor: 'pointer' }}
           onClick={() => onNavigate('market')}
         >
           Ver todos →
         </span>
       </div>
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: 14,
-          marginBottom: 28,
-        }}
-      >
-        {loading
-          ? Array.from({ length: 3 }).map((_, index) => (
-            <div
-              key={index}
-              className="animate-pulse"
-              style={{
-                background: '#f2eae0',
-                borderRadius: 18,
-                height: 200,
-                border: '1px solid #E8E0CF',
-                overflow: 'hidden',
-              }}
-            >
+      {loading ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14, marginBottom: 28 }}>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="animate-pulse" style={{ background: '#f2eae0', borderRadius: 18, height: 200, border: '1px solid #E8E0CF', overflow: 'hidden' }}>
               <div style={{ height: 120, background: '#E9E2D9' }} />
               <div style={{ padding: '10px 12px 12px' }}>
                 <div style={{ height: 13, width: '75%', borderRadius: 8, background: '#E9E2D9', marginBottom: 8 }} />
                 <div style={{ height: 10, width: '55%', borderRadius: 8, background: '#F0E9E0' }} />
               </div>
             </div>
-          ))
-          : featured.length === 0
-            ? (
-              <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", gridColumn: '1 / -1' }}>
-                Aún no hay productos destacados.
-              </p>
-            )
-            : featured.map((item) => (
+          ))}
+        </div>
+      ) : featured.length === 0 ? (
+        <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 28 }}>
+          Aún no hay productos destacados.
+        </p>
+      ) : (
+        <div style={{ marginBottom: 28 }}>
+          <AutoCarousel>
+            {featured.map((item) => (
               <div
                 key={item.id}
-                onClick={() => onNavigate('market')}
+                onClick={() => onSelectProduct ? onSelectProduct(item.id) : onNavigate('market')}
                 style={{
                   background: '#fff',
-                  borderRadius: 18,
                   overflow: 'hidden',
-                  boxShadow: '0 2px 16px rgba(42,92,26,0.08)',
-                  border: '1px solid #E8E0CF',
                   cursor: 'pointer',
+                  border: '1px solid #E8E0CF',
+                  borderRadius: 20,
+                  boxShadow: '0 4px 20px rgba(42,92,26,0.10)',
+                  transition: 'transform 0.25s ease, box-shadow 0.25s ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)'
+                  e.currentTarget.style.boxShadow = '0 8px 28px rgba(42,92,26,0.18)'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)'
+                  e.currentTarget.style.boxShadow = '0 4px 20px rgba(42,92,26,0.10)'
                 }}
               >
-                <div style={{ position: 'relative', height: 120 }}>
-                  <img
-                    src={item.img}
-                    alt={item.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                <div style={{ position: 'relative', height: 280 }}>
+                  <img src={item.img} alt={item.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   <div
                     style={{
                       position: 'absolute',
@@ -680,59 +541,46 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                   <div
                     style={{
                       position: 'absolute',
-                      top: 8,
-                      left: 8,
+                      top: 10,
+                      left: 10,
                       background: '#E5AE30',
                       color: '#1C2700',
                       fontSize: 10,
                       fontWeight: 700,
                       fontFamily: "'Nunito Sans', sans-serif",
-                      padding: '2px 8px',
+                      padding: '3px 10px',
                       borderRadius: 20,
+                      letterSpacing: 0.3,
                     }}
                   >
-                    Destacado
+                    PATROCINADO
                   </div>
                 </div>
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: '#205134',
-                      fontFamily: "'Poppins', sans-serif",
-                      lineHeight: 1.3,
-                      marginBottom: 4,
-                    }}
-                  >
+                <div style={{ padding: '12px 14px 14px' }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#205134', fontFamily: "'Poppins', sans-serif", marginBottom: 4 }}>
                     {item.title}
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
                     {item.producer}
                   </div>
                   <div className="flex items-center justify-between">
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#C8860A', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: '#C8860A', fontFamily: "'Nunito Sans', sans-serif" }}>
                       {formatPrice(item.price)}
                     </span>
-                    <span style={{ fontSize: 11, color: '#3D7A28', fontFamily: "'Nunito Sans', sans-serif" }}>
+                    <span style={{ fontSize: 12, color: '#3D7A28', fontFamily: "'Nunito Sans', sans-serif" }}>
                       ⭐ {item.rating}
                     </span>
                   </div>
                 </div>
               </div>
             ))}
-      </div>
+          </AutoCarousel>
+        </div>
+      )}
 
       {/* ══════ BANNER EXPERIENCIAS ══════ */}
       <div
-        style={{
-          borderRadius: 20,
-          overflow: 'hidden',
-          position: 'relative',
-          height: 130,
-          marginBottom: 28,
-          cursor: 'pointer',
-        }}
+        style={{ borderRadius: 20, overflow: 'hidden', position: 'relative', height: 130, marginBottom: 28, cursor: 'pointer' }}
         onClick={() => onNavigate('tourism')}
       >
         <img
@@ -754,16 +602,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           <p style={{ color: '#6BAA3D', fontSize: 11, margin: 0, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>
             TURISMO COMUNITARIO
           </p>
-          <h3
-            style={{
-              color: '#F5EEE6',
-              fontSize: 17,
-              margin: '5px 0 0',
-              fontFamily: "'Poppins', sans-serif",
-              fontWeight: 700,
-              lineHeight: 1.3,
-            }}
-          >
+          <h3 style={{ color: '#F5EEE6', fontSize: 17, margin: '5px 0 0', fontFamily: "'Poppins', sans-serif", fontWeight: 700, lineHeight: 1.3 }}>
             Descubre experiencias únicas en el campo →
           </h3>
         </div>
@@ -773,121 +612,78 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       {tourism.length > 0 && (
         <>
           <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
-            <h2
-              style={{
-                fontFamily: "'Poppins', sans-serif",
-                fontSize: 18,
-                color: '#205134',
-                margin: 0,
-                fontWeight: 700,
-              }}
-            >
+            <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#205134', margin: 0, fontWeight: 700 }}>
               Experiencias
             </h2>
             <span
-              style={{
-                fontSize: 12,
-                color: '#205134',
-                fontWeight: 700,
-                fontFamily: "'Nunito Sans', sans-serif",
-                cursor: 'pointer',
-              }}
+              style={{ fontSize: 12, color: '#205134', fontWeight: 700, fontFamily: "'Nunito Sans', sans-serif", cursor: 'pointer' }}
               onClick={() => onNavigate('tourism')}
             >
               Ver todas →
             </span>
           </div>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-              gap: 14,
-              marginBottom: 28,
-            }}
-          >
-            {tourism.map((exp) => (
-              <div
-                key={exp.id}
-                onClick={() => onNavigate('tourism')}
-                style={{
-                  background: '#fff',
-                  borderRadius: 18,
-                  overflow: 'hidden',
-                  boxShadow: '0 2px 16px rgba(42,92,26,0.08)',
-                  border: '1px solid #E8E0CF',
-                  cursor: 'pointer',
-                }}
-              >
-                <div style={{ position: 'relative', height: 110 }}>
-                  <img
-                    src={exp.img}
-                    alt={exp.title}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 45%, rgba(20,45,25,0.4) 100%)',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                </div>
-                <div style={{ padding: '10px 12px 12px' }}>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      fontWeight: 700,
-                      color: '#205134',
-                      fontFamily: "'Poppins', sans-serif",
-                      lineHeight: 1.3,
-                      marginBottom: 4,
-                    }}
-                  >
-                    {exp.title}
+          <div style={{ marginBottom: 28 }}>
+            <AutoCarousel>
+              {tourism.map((exp) => (
+                <div
+                  key={exp.id}
+                  onClick={() => onNavigate('tourism')}
+                  style={{ background: '#fff', overflow: 'hidden', cursor: 'pointer', border: '1px solid #E8E0CF', borderRadius: 20, boxShadow: '0 4px 20px rgba(42,92,26,0.10)' }}
+                >
+                  <div style={{ position: 'relative', height: 220 }}>
+                    <img src={exp.img} alt={exp.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        background: 'linear-gradient(180deg, rgba(0,0,0,0.02) 0%, rgba(0,0,0,0) 45%, rgba(20,45,25,0.4) 100%)',
+                        pointerEvents: 'none',
+                      }}
+                    />
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: 10,
+                        left: 10,
+                        background: '#E5AE30',
+                        color: '#1C2700',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        fontFamily: "'Nunito Sans', sans-serif",
+                        padding: '3px 10px',
+                        borderRadius: 20,
+                        letterSpacing: 0.3,
+                      }}
+                    >
+                      PATROCINADO
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
-                    {exp.host}
+                  <div style={{ padding: '12px 14px 14px' }}>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#205134', fontFamily: "'Poppins', sans-serif", marginBottom: 4 }}>
+                      {exp.title}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginBottom: 8 }}>
+                      {exp.host}
+                    </div>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
+                      {formatPrice(exp.price)}
+                    </span>
                   </div>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
-                    {formatPrice(exp.price)}
-                  </span>
                 </div>
-              </div>
-            ))}
+              ))}
+            </AutoCarousel>
           </div>
         </>
       )}
 
       {/* ══════ ACTIVIDAD RECIENTE ══════ */}
-      <h2
-        style={{
-          fontFamily: "'Poppins', sans-serif",
-          fontSize: 18,
-          color: '#205134',
-          margin: '0 0 14px',
-          fontWeight: 700,
-        }}
-      >
+      <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#205134', margin: '0 0 14px', fontWeight: 700 }}>
         Actividad reciente
       </h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {loading
-          ? Array.from({ length: 3 }).map((_, index) => (
-            <div
-              key={index}
-              className="animate-pulse"
-              style={{
-                background: '#fff',
-                borderRadius: 14,
-                padding: '12px 14px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                border: '1px solid #E8E0CF',
-                height: 68,
-              }}
-            >
+        {loading ? (
+          Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="animate-pulse" style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #E8E0CF', height: 68 }}>
               <div style={{ width: 40, height: 40, borderRadius: 12, background: '#E9E2D9' }} />
               <div style={{ flex: 1, display: 'grid', gap: 8 }}>
                 <div style={{ height: 12, width: '75%', borderRadius: 8, background: '#E9E2D9' }} />
@@ -895,50 +691,27 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
               </div>
             </div>
           ))
-          : notifications.length === 0
-            ? (
-              <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
-                No tienes actividad reciente.
-              </p>
-            )
-            : notifications.map((a) => (
-              <div
-                key={a.id}
-                style={{
-                  background: '#fff',
-                  borderRadius: 14,
-                  padding: '12px 14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  border: '1px solid #E8E0CF',
-                }}
-              >
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    background: a.color + '18',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 20,
-                    flexShrink: 0,
-                  }}
-                >
-                  {a.icon}
+        ) : notifications.length === 0 ? (
+          <p style={{ fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>
+            No tienes actividad reciente.
+          </p>
+        ) : (
+          notifications.map((a) => (
+            <div key={a.id} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #E8E0CF' }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: a.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
+                {a.icon}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
+                  {a.text}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}>
-                    {a.text}
-                  </div>
-                  <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
-                    {timeAgo(a.created_at)}
-                  </div>
+                <div style={{ fontSize: 11, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
+                  {timeAgo(a.created_at)}
                 </div>
               </div>
-            ))}
+            </div>
+          ))
+        )}
       </div>
     </ScreenShell>
   )

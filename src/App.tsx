@@ -1,4 +1,4 @@
-import React, { useState, useEffect, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense, type JSX } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import type { CartItem } from './screens/MarketplaceScreen'
 import { supabase, authRedirectInfo } from './lib/supabase'
@@ -15,6 +15,7 @@ const LoginScreen = lazy(() => import('./screens/LoginScreen'))
 const AdminPanelScreen = lazy(() => import('./screens/AdminPanelScreen'))
 const SuperAdminScreen = lazy(() => import('./screens/SuperAdminScreen'))
 const SetNewPasswordScreen = lazy(() => import('./screens/SetNewPasswordScreen'))
+const AboutScreen = lazy(() => import('./screens/AboutScreen'))
 
 function ScreenLoader() {
   return (
@@ -25,21 +26,21 @@ function ScreenLoader() {
 }
 import logoImg from './assets/logo-nofond.png'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
+type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'about'
 type UserRole = 'asociacion' | 'turismo' | 'comprador' | 'admin'
 type AppFlow = 'auth' | 'login' | 'app'
 
 const getVisibleTabs = (role?: UserRole): Tab[] => {
   switch (role) {
     case 'admin':
-      return ['superadmin', 'home', 'market', 'tourism', 'profile']
+      return ['superadmin', 'home', 'market', 'tourism', 'profile', 'about']
     case 'asociacion':
-      return ['admin', 'market']
+      return ['admin', 'market', 'about']
     case 'turismo':
-      return ['admin', 'tourism']
+      return ['admin', 'tourism', 'about']
     case 'comprador':
     default:
-      return ['home', 'market', 'tourism', 'profile']
+      return ['home', 'market', 'tourism', 'profile', 'about']
   }
 }
 
@@ -136,6 +137,11 @@ export default function App() {
     }
   }
 
+  const goToProduct = (productId: string) => {
+  setInitialProduct(productId)
+  setActiveTab('market')
+}
+
   const returnToHome = () => {
     setFlow('app')
     if (userRole === 'admin') {
@@ -171,10 +177,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState)
   }, [checkoutConfirm, flow])
 
-  const mainScreens: Record<Tab, React.ReactElement> = {
+  const mainScreens: Record<Tab, JSX.Element> = {
     home: (
-      <HomeScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} />
+      <HomeScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} onSelectProduct={goToProduct} />
     ),
+
+
     admin: (
       <AdminPanelScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
@@ -205,6 +213,9 @@ export default function App() {
       />
     ) : (
       <ProfileScreen userRole={userRole as any} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} />
+    ),
+    about: (
+      <AboutScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
   }
 

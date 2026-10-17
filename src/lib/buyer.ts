@@ -1,4 +1,7 @@
 import { supabase } from './supabase'
+import { PAYMENT_METHOD_LABELS } from './stores'
+
+export { PAYMENT_METHOD_LABELS }
 
 // ─── Pedidos del comprador ──────────────────────────────────────────────────
 
@@ -20,6 +23,8 @@ export interface BuyerOrder {
   status_id: number
   payment_method: string
   payment_status: string
+  // Tienda del pedido ('campo' | 'amazonica'). El comprador usa la misma cuenta en ambas.
+  store?: string
   customer_name: string | null
   customer_phone: string | null
   shipping_address: any
@@ -41,11 +46,6 @@ export async function fetchMyOrders(userId: string): Promise<BuyerOrder[]> {
   return (data ?? []) as BuyerOrder[]
 }
 
-export const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CashOnDelivery: 'Contraentrega',
-  Online: 'Pago en línea',
-}
-
 export const PAYMENT_STATUS_LABELS: Record<string, { label: string; bg: string; color: string }> = {
   Pending: { label: 'Pendiente', bg: '#FFF1E0', color: '#C4622D' },
   Paid: { label: 'Pagado', bg: '#EAF3EC', color: '#205134' },
@@ -60,14 +60,14 @@ export interface FavoriteRow {
   product_id: string | null
   experience_id: string | null
   created_at: string
-  product: { id: string; title: string; price: number; unit: string | null; producer: string | null; stock: string | null; images: { image_url: string; is_primary: boolean }[] } | null
+  product: { id: string; title: string; price: number; unit: string | null; producer: string | null; stock: string | null; store?: string; images: { image_url: string; is_primary: boolean }[] } | null
   experience: { id: string; title: string; price: number; host: string | null; images: { image_url: string; is_primary: boolean }[] } | null
 }
 
 export async function fetchFavorites(userId: string): Promise<FavoriteRow[]> {
   const { data, error } = await supabase
     .from('favorites')
-    .select('id, product_id, experience_id, created_at, product:products(id, title, price, unit, producer, stock, images(image_url, is_primary)), experience:experiences(id, title, price, host, images(image_url, is_primary))')
+    .select('id, product_id, experience_id, created_at, product:products(id, title, price, unit, producer, stock, store, images(image_url, is_primary)), experience:experiences(id, title, price, host, images(image_url, is_primary))')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
   if (error) console.error('Error cargando favoritos:', error.message)

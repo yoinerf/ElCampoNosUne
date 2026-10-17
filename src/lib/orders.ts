@@ -31,6 +31,8 @@ export interface OrderItemRow {
     shipping_address: any
     payment_method: string
     payment_status: string
+    // Tienda del pedido ('campo' | 'amazonica'). Puede faltar si no se ha migrado.
+    store?: string
     created_at: string
   } | null
   seller?: { org_name: string | null; first_name: string | null; last_name: string | null } | null
@@ -66,7 +68,7 @@ export async function fetchOrderItems(sellerId?: string): Promise<OrderItemRow[]
   let query = supabase
     .from('order_items')
     .select(
-      '*, order:orders(id, customer_name, customer_phone, shipping_address, payment_method, payment_status, created_at), seller:profiles(org_name, first_name, last_name)'
+      '*, order:orders(id, customer_name, customer_phone, shipping_address, payment_method, payment_status, store, created_at), seller:profiles(org_name, first_name, last_name)'
     )
     .order('created_at', { ascending: false })
   if (sellerId) query = query.eq('seller_id', sellerId)
@@ -76,6 +78,8 @@ export async function fetchOrderItems(sellerId?: string): Promise<OrderItemRow[]
 }
 
 export interface OrderStatusTransition {
+  // Cada tienda tiene su propio flujo de estados
+  store?: string
   from_status_id: number
   to_status_id: number
   sort_order: number
@@ -94,7 +98,7 @@ export interface StatusHistoryRow {
 export async function fetchOrderTransitions(): Promise<OrderStatusTransition[]> {
   const { data, error } = await supabase
     .from('order_status_transitions')
-    .select('from_status_id, to_status_id, sort_order, suggested_for')
+    .select('store, from_status_id, to_status_id, sort_order, suggested_for')
     .order('sort_order', { ascending: true })
   if (error) console.error('Error cargando order_status_transitions:', error.message)
   return (data ?? []) as OrderStatusTransition[]
@@ -110,15 +114,17 @@ export async function fetchStatusHistory(itemId: string): Promise<StatusHistoryR
   return (data ?? []) as StatusHistoryRow[]
 }
 
-// Estados a los que se puede pasar desde el actual, en orden y con el sugerido primero
+// Estados a los que se puede pasar desde el actual (según el flujo de la tienda del pedido),
+// en orden y con el sugerido primero
 export function getNextStatuses(
   currentStatusId: number,
   paymentMethod: string | undefined,
   transitions: OrderStatusTransition[],
-  statuses: OrderStatus[]
+  statuses: OrderStatus[],
+  store: string = 'campo'
 ) {
   return transitions
-    .filter((t) => t.from_status_id === currentStatusId)
+    .filter((t) => (t.store ?? 'campo') === store && t.from_status_id === currentStatusId)
     .map((t) => ({
       status: statuses.find((s) => s.id === t.to_status_id),
       suggested: !!paymentMethod && t.suggested_for.includes(paymentMethod),

@@ -3,7 +3,7 @@
 // aquí (Supabase la inyecta como variable de entorno); nunca llega al navegador.
 //
 // Acciones (POST con JSON { action, ... }):
-//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, department?, municipality?, must_change_password? }
+//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, store?, department?, municipality?, must_change_password? }
 //   - delete_user        { user_id }
 //   - set_temp_password  { user_id, password }
 //
@@ -18,6 +18,8 @@ const corsHeaders = {
 }
 
 const USER_TYPES = ['asociacion', 'turismo', 'comprador', 'admin']
+// Tienda del productor (profiles.store)
+const STORES = ['campo', 'amazonica']
 const MIN_PASSWORD_LENGTH = 8
 
 function json(body: unknown, status = 200) {
@@ -74,6 +76,8 @@ Deno.serve(async (req) => {
         if (!email || !/^\S+@\S+\.\S+$/.test(email)) return json({ error: 'Correo electrónico inválido.' }, 400)
         if (!firstName) return json({ error: 'El nombre es obligatorio.' }, 400)
         if (!USER_TYPES.includes(userType)) return json({ error: 'Rol inválido.' }, 400)
+        const store = String(body.store ?? 'campo')
+        if (!STORES.includes(store)) return json({ error: 'Tienda inválida.' }, 400)
         if (!validPassword(body.password)) {
           return json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres, con letras y números.` }, 400)
         }
@@ -103,7 +107,8 @@ Deno.serve(async (req) => {
           return json({ error: /already been registered|already exists/i.test(msg) ? 'Ya existe un usuario con ese correo.' : msg }, 400)
         }
 
-        const { error: profileError } = await admin.from('profiles').upsert({ id: created.user.id, email, ...profileData })
+        // store va solo al perfil (no a user_metadata): solo el admin la asigna
+        const { error: profileError } = await admin.from('profiles').upsert({ id: created.user.id, email, ...profileData, store: userType === 'asociacion' ? store : 'campo' })
         if (profileError) {
           // Revertir para no dejar un usuario de Auth sin perfil
           await admin.auth.admin.deleteUser(created.user.id)

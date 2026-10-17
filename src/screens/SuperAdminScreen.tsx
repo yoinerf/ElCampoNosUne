@@ -18,6 +18,7 @@ import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import TempPasswordModal from '../components/TempPasswordModal'
 import { fetchAllTickets, type SupportTicket } from '../lib/buyer'
+import { STORE_NAMES, type StoreId } from '../lib/stores'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,6 +30,8 @@ interface UserRow {
   last_name: string
   org_name: string
   user_type: string
+  // Tienda del productor (profiles.store)
+  store?: StoreId
   department: string
   municipality: string
   email?: string
@@ -139,6 +142,41 @@ const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }>
   asociacion: { bg: B.greenSoft, color: B.green, border: 'rgba(32,81,52,0.25)' },
   turismo: { bg: '#F0F8EC', color: '#3F7B25', border: 'rgba(63,123,37,0.25)' },
   comprador: { bg: B.goldSoft, color: '#9E740E', border: 'rgba(158,116,14,0.25)' },
+}
+
+// Tienda del productor: los de la Tienda Amazónica solo venden allí y sus productos no salen en El Campo Nos Une
+function StorePicker({ value, onChange }: { value: StoreId; onChange: (store: StoreId) => void }) {
+  return (
+    <div style={{ marginTop: 14 }}>
+      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: B.green, marginBottom: 6, letterSpacing: 0.3, fontFamily: B.fontBody }}>Tienda del productor</label>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {(['campo', 'amazonica'] as StoreId[]).map((s) => {
+          const sel = value === s
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => onChange(s)}
+              style={{
+                flex: '1 1 140px',
+                padding: '10px 8px',
+                borderRadius: 10,
+                border: sel ? `2px solid ${B.green}` : `1.5px solid ${B.border}`,
+                background: sel ? B.greenSoft : '#FFFFFF',
+                color: sel ? B.green : B.textMuted,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                fontFamily: B.fontBody,
+              }}
+            >
+              {STORE_NAMES[s]}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 const PAGE = 12
@@ -298,6 +336,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     email: '',
     password: '',
     user_type: 'asociacion',
+    store: 'campo' as StoreId,
     department: '',
     municipality: '',
   })
@@ -324,7 +363,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
@@ -431,6 +470,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         org_name: newUserData.org_name.trim(),
         phone: newUserData.phone.trim(),
         user_type: newUserData.user_type,
+        store: newUserData.user_type === 'asociacion' ? newUserData.store : 'campo',
         department: newUserData.department.trim(),
         municipality: newUserData.municipality.trim(),
         must_change_password: true,
@@ -453,6 +493,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         email: '',
         password: '',
         user_type: 'asociacion',
+        store: 'campo',
         department: '',
         municipality: '',
       })
@@ -577,6 +618,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       org_name: userEditModal.org_name,
       phone: userEditModal.phone?.trim() || null,
       user_type: userEditModal.user_type,
+      store: userEditModal.user_type === 'asociacion' ? (userEditModal.store ?? 'campo') : 'campo',
       department: userEditModal.department || null,
       municipality: userEditModal.municipality || null,
     }).eq('id', userEditModal.id)
@@ -1212,6 +1254,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                     <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20 }}>
                                       {ROLE_LABELS[u.user_type] || u.user_type}
                                     </span>
+                                    {u.store === 'amazonica' && (
+                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{STORE_NAMES.amazonica}</span>
+                                    )}
                                   </TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{[u.municipality, u.department].filter(Boolean).join(', ') || '—'}</TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{ago(u.created_at)}</TD>
@@ -1674,6 +1719,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   )
                 })}
               </div>
+              {userEditModal.user_type === 'asociacion' && (
+                <StorePicker value={userEditModal.store ?? 'campo'} onChange={(s) => setUserEditModal({ ...userEditModal, store: s })} />
+              )}
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <button
@@ -1812,6 +1860,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     )
                   })}
                 </div>
+                {newUserData.user_type === 'asociacion' && (
+                  <StorePicker value={newUserData.store} onChange={(s) => setNewUserData({ ...newUserData, store: s })} />
+                )}
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>

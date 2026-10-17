@@ -6,6 +6,7 @@ import ProductModal from '../components/ProductModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
+import { STORE_NAMES, type StoreId } from '../lib/stores'
 
 type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
 
@@ -48,10 +49,12 @@ interface ProfileData {
 }
 
 interface Props {
-  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin') => void
+  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'amazon') => void
   activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin'
   onProfileClick?: () => void
   userRole?: string
+  /** Tienda del productor (profiles.store): define la marca del panel y a qué tienda lleva "Ver Tienda" */
+  store?: StoreId
 }
 
 const PAGE_SIZE = 10
@@ -94,7 +97,8 @@ function SidebarItem({ icon, label, active, onClick }: SidebarItemProps) {
   )
 }
 
-export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
+export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo' }: Props) {
+  const isAmazon = store === 'amazonica'
   const [section, setSection] = useState<AdminSection>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [products, setProducts] = useState<ProductItem[]>([])
@@ -112,7 +116,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', category_id: '', price: '', unit: 'uds', stockNum: '45', origin: '', description: '', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format' })
 
-  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '', user_type: 'asociacion' })
+  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
 
@@ -166,7 +170,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
 
     if (profileData) {
       setProfile(profileData as ProfileData)
-      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', user_type: profileData.user_type ?? 'asociacion' })
+      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '' })
     }
 
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
@@ -375,7 +379,6 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
       phone: profileForm.phone.trim() || null,
       department: profileForm.department,
       municipality: profileForm.municipality,
-      user_type: profileForm.user_type,
     }).eq('id', user.id)
     if (error) {
       setSavingProfile(false)
@@ -394,9 +397,8 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
     ])
 
     setSavingProfile(false)
-    setProfileMsg('Perfil actualizado. Recargando...')
+    setProfileMsg('Perfil actualizado.')
     setProfile((prev) => ({ ...prev, ...profileForm }))
-    window.location.reload()
   }
 
   const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #EDE4D8', fontSize: 14, outline: 'none', boxSizing: 'border-box', fontFamily: "'Nunito Sans', sans-serif", background: '#FDFAF6', color: '#1C3A14' }
@@ -437,7 +439,11 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
         style={{ width: 240, flexShrink: 0, background: '#FDFAF6', borderRight: '1px solid #EDE4D8', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 40, boxShadow: '2px 0 16px rgba(32,81,52,0.06)' }}
       >
         <div style={{ padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
-          <img src={logoSrc} alt="Logo" style={{ height: 90, width: 'auto', display: 'block' }} />
+          {isAmazon ? (
+            <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 800, color: '#205134', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{STORE_NAMES.amazonica}</span>
+          ) : (
+            <img src={logoSrc} alt="Logo" style={{ height: 90, width: 'auto', display: 'block' }} />
+          )}
         </div>
 
         <nav style={{ flex: 1, padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto' }}>
@@ -483,7 +489,7 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : 'market')} style={{ height: 38, padding: '0 16px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
+            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : isAmazon ? 'amazon' : 'market')} style={{ height: 38, padding: '0 16px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
               {isTurismo ? 'Ver Experiencias' : 'Ver Tienda'}
             </button>
@@ -782,23 +788,6 @@ export default function AdminPanelScreen({ onNavigate, userRole }: Props) {
                       <div>
                         <label style={labelStyle}>Municipio</label>
                         <input value={profileForm.municipality} onChange={(e) => setProfileForm({ ...profileForm, municipality: e.target.value })} placeholder="Municipio" style={inputStyle} />
-                      </div>
-                    </div>
-                    <div style={{ marginBottom: 24 }}>
-                      <label style={labelStyle}>Tipo de cuenta (Rol)</label>
-                      <div style={{ background: '#FFF7E8', border: '1px solid #F0D099', borderRadius: 12, padding: '10px 14px', fontSize: 12, color: '#9B4728', fontWeight: 600, marginBottom: 10 }}>
-                        Cambiar el rol afecta el tipo de contenido que puedes publicar. Requiere recargar la aplicacion.
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        {[
-                          { value: 'asociacion', label: 'Productos / Asociacion' },
-                          { value: 'turismo', label: 'Turismo / Experiencias' },
-                          { value: 'comprador', label: 'Comprador' },
-                        ].map((opt) => (
-                          <button key={opt.value} type="button" onClick={() => setProfileForm({ ...profileForm, user_type: opt.value })} style={{ flex: '1 1 140px', padding: '10px 8px', borderRadius: 12, border: profileForm.user_type === opt.value ? '2px solid #205134' : '1.5px solid #EDE4D8', background: profileForm.user_type === opt.value ? '#EAF3EC' : '#FDFAF6', color: profileForm.user_type === opt.value ? '#205134' : '#5A5248', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", textAlign: 'center', transition: 'all 180ms' }}>
-                            {opt.label}
-                          </button>
-                        ))}
                       </div>
                     </div>
                     {profileMsg && (

@@ -171,7 +171,8 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
       try {
         const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
-          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }).limit(30),
+          // Solo productos de El Campo Nos Une (los de la Tienda Amazónica no salen aquí)
+          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').eq('store', 'campo').order('created_at', { ascending: false }).limit(30),
           supabase.from('product_reviews').select('product_id, rating'),
           supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         ])
@@ -234,7 +235,8 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
                 .from('products')
                 .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
                 .eq('id', ad.product_id)
-                .single()
+                .eq('store', 'campo')
+                .maybeSingle()
               if (missingProd) {
                 const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url 
                   || missingProd.images?.[0]?.image_url 

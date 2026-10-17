@@ -1,17 +1,21 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
+import { STORE_NAMES, type StoreId } from '../lib/stores'
 
 interface Props {
   onComplete: () => void
   onLogin: () => void
   onBackToStore?: () => void
   onBackToHome?: () => void
+  /** En 'amazonica' no se muestra la marca El Campo Nos Une y solo se registran compradores */
+  store?: StoreId
 }
 
 type UserType = 'comprador' | 'asociacion' | 'turismo'
 
-export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome }: Props) {
+export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome, store = 'campo' }: Props) {
+  const isAmazon = store === 'amazonica'
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -185,17 +189,21 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
         >
           {/* Logo Central de El Campo Nos Une */}
           <div style={{ marginBottom: 16, textAlign: 'center' }}>
-            <img
-              src={logoSrc}
-              alt="El Campo Nos Une"
-              style={{
-                height: 120,
-                width: 'auto',
-                display: 'block',
-                margin: '0 auto',
-                filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
-              }}
-            />
+            {isAmazon ? (
+              <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: 28, fontWeight: 800, color: '#205134' }}>{STORE_NAMES.amazonica}</div>
+            ) : (
+              <img
+                src={logoSrc}
+                alt="El Campo Nos Une"
+                style={{
+                  height: 120,
+                  width: 'auto',
+                  display: 'block',
+                  margin: '0 auto',
+                  filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
+                }}
+              />
+            )}
           </div>
 
           {/* Título y Subtítulo idénticos al manual de identidad */}
@@ -248,7 +256,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   margin: '0 0 8px',
                 }}
               >
-                ¡Bienvenido al Campo!
+                {isAmazon ? `¡Bienvenido a la ${STORE_NAMES.amazonica}!` : '¡Bienvenido al Campo!'}
               </h2>
               <p
                 style={{
@@ -379,7 +387,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="ejemplo@elcamponosune.mx"
+                    placeholder={isAmazon ? 'ejemplo@correo.com' : 'ejemplo@elcamponosune.mx'}
                     autoComplete="email"
                     style={{
                       width: '100%',
@@ -405,7 +413,8 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   />
                 </div>
 
-                {/* Selector sutil de Tipo de Cuenta */}
+                {/* Selector sutil de Tipo de Cuenta (en la Tienda Amazónica solo compradores: los productores los crea el admin) */}
+                {!isAmazon && (
                 <div style={{ marginBottom: 15 }}>
                   <label
                     style={{
@@ -467,6 +476,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                     })}
                   </div>
                 </div>
+                )}
 
                 {/* Campo: Contraseña */}
                 <div style={{ marginBottom: 15 }}>
@@ -916,7 +926,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
               marginBottom: 20,
             }}
           >
-            "Sembrando hoy la cooperación del mañana."
+            {isAmazon ? '"Productos de la Amazonía, directo de quienes los cultivan."' : '"Sembrando hoy la cooperación del mañana."'}
           </blockquote>
 
           {/* Subtítulo institucional según manual */}
@@ -931,7 +941,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
               color: 'rgba(255, 255, 255, 0.88)',
             }}
           >
-            CULTIVO INTELIGENTE & INTEGRADO • EL CAMPO NOS UNE
+            {isAmazon ? STORE_NAMES.amazonica : 'CULTIVO INTELIGENTE & INTEGRADO • EL CAMPO NOS UNE'}
           </p>
         </div>
       </div>

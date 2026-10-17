@@ -31,6 +31,7 @@ export function adminCreateUser(user: {
   org_name?: string
   phone?: string
   user_type: string
+  store?: string
   department?: string
   municipality?: string
   must_change_password?: boolean

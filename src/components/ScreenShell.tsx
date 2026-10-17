@@ -1,9 +1,10 @@
 import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
+import { AMAZON_PATH, STORE_NAMES, type StoreId } from '../lib/stores'
 import logoSrc from '../assets/logo-nofond.png'
 
-type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
+type NavTab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'amazon'
 
 interface NavItem {
   id: NavTab
@@ -14,6 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Inicio' },
   { id: 'market', label: 'Productos' },
   { id: 'tourism', label: 'Experiencias' },
+  { id: 'amazon', label: 'Tienda Amazónica' },
   { id: 'profile', label: 'Nosotros' },
 ]
 
@@ -27,6 +29,8 @@ interface ScreenShellProps {
   contentClassName?: string
   cartCount?: number
   onCartClick?: () => void
+  /** Tienda que se muestra. En 'amazonica' no aparece nada de la marca El Campo Nos Une. */
+  store?: StoreId
   /** @deprecated ya no se usa — el header nuevo no incluye búsqueda */
   searchPlaceholder?: string
   /** @deprecated */
@@ -55,7 +59,11 @@ export default function ScreenShell({
   contentClassName,
   cartCount,
   onCartClick,
+  store = 'campo',
 }: ScreenShellProps) {
+  const isAmazon = store === 'amazonica'
+  const isSeller = userRole === 'asociacion' || userRole === 'turismo'
+  const homeTab: NavTab = isSeller ? 'admin' : isAmazon ? 'amazon' : 'home'
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [sessionUser, setSessionUser] = useState<any>(null)
@@ -77,9 +85,7 @@ export default function ScreenShell({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const navItems: NavItem[] = (userRole === 'asociacion' || userRole === 'turismo')
-    ? []
-    : NAV_ITEMS
+  const navItems: NavItem[] = (isSeller || isAmazon) ? [] : NAV_ITEMS
   const handleProfileClick = () => {
     if (onProfileClick) {
       onProfileClick()
@@ -104,15 +110,15 @@ export default function ScreenShell({
         <div
           style={{
             width: '100%',
-            padding: '0 24px',
+            padding: isAmazon ? '0 12px' : '0 24px',
             height: 76,
             display: 'flex',
             alignItems: 'center',
-            gap: 16,
+            gap: isAmazon ? 8 : 16,
             boxSizing: 'border-box',
           }}
         >
-          {/* Logo (oculto en la página de inicio) */}
+          {/* Logo (oculto en la página de inicio). La Tienda Amazónica aún no tiene logo: se muestra su nombre */}
           {activeNav !== 'home' && (
           <div
             style={{
@@ -121,21 +127,27 @@ export default function ScreenShell({
               display: 'flex',
               alignItems: 'center',
             }}
-            onClick={() => onNavigate?.(userRole === 'asociacion' || userRole === 'turismo' ? 'admin' : 'home')}
+            onClick={() => onNavigate?.(homeTab)}
             role={onNavigate ? 'button' : undefined}
             tabIndex={onNavigate ? 0 : undefined}
-            onKeyDown={(e) => e.key === 'Enter' && onNavigate?.(userRole === 'asociacion' || userRole === 'turismo' ? 'admin' : 'home')}
+            onKeyDown={(e) => e.key === 'Enter' && onNavigate?.(homeTab)}
             aria-label="Ir al inicio"
           >
-            <img
-              src={logoSrc}
-              alt="El Campo Nos Une"
-              style={{
-                height: 52,
-                width: 'auto',
-                display: 'block',
-              }}
-            />
+            {isAmazon ? (
+              <span className="text-base w-[100px] md:w-auto md:text-2xl md:whitespace-nowrap" style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, color: '#205134', lineHeight: 1.1, display: 'block' }}>
+                {STORE_NAMES.amazonica}
+              </span>
+            ) : (
+              <img
+                src={logoSrc}
+                alt="El Campo Nos Une"
+                style={{
+                  height: 52,
+                  width: 'auto',
+                  display: 'block',
+                }}
+              />
+            )}
           </div>
           )}
           {/* Nav central (Desktop) */}
@@ -192,7 +204,31 @@ export default function ScreenShell({
           <div className="md:hidden" style={{ flex: 1 }} />
 
           {/* Iconos derecha */}
-          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: isAmazon ? 6 : 10 }}>
+            {/* Volver a El Campo Nos Une (solo en la Tienda Amazónica, no para sus productores) */}
+            {isAmazon && !isSeller && (
+              <button
+                type="button"
+                onClick={() => onNavigate?.('home')}
+                style={{
+                  background: 'transparent',
+                  color: '#205134',
+                  border: '1.5px solid #205134',
+                  borderRadius: 10,
+                  padding: '7px 14px',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  fontFamily: "'Nunito Sans', sans-serif",
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'background 0.2s',
+                }}
+                className="hover:bg-[#EAF3EC]"
+              >
+                <span className="hidden sm:inline">← Volver al campo</span>
+                <span className="sm:hidden">← Campo</span>
+              </button>
+            )}
             {/* Perfil o Login */}
             {!sessionUser ? (
               <button
@@ -369,7 +405,7 @@ export default function ScreenShell({
                           onClick={async () => {
                             clearPromoSession()
                             await supabase.auth.signOut()
-                            window.location.href = '/'
+                            window.location.href = isAmazon ? AMAZON_PATH : '/'
                           }}
                           style={{
                             width: '100%',
@@ -447,6 +483,7 @@ export default function ScreenShell({
             )}
 
             {/* Menu Hamburger (Mobile) */}
+            {(!isAmazon || userRole === 'admin') && (
             <button
               className="flex md:hidden items-center justify-center"
               type="button"
@@ -470,6 +507,7 @@ export default function ScreenShell({
                 )}
               </svg>
             </button>
+            )}
           </div>
         </div>
 

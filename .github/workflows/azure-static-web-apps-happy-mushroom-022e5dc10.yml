@@ -9,13 +9,43 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
+  # Tipos y build antes de desplegar: un error de TypeScript no llega a producción
+  verify_job:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
+    runs-on: ubuntu-latest
+    name: Typecheck and Build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+      - run: pnpm run lint
+      - run: pnpm run test
+      - run: pnpm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
   build_and_deploy_job:
+    needs: verify_job
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.action != 'closed')
     runs-on: ubuntu-latest
     name: Build and Deploy Job
+    permissions:
+      contents: read
+      pull-requests: write # comentario con la URL de vista previa
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: true
           lfs: false

@@ -10,9 +10,6 @@ export const isTab = (value: string | null | undefined): value is Tab => TABS.in
 /** profiles.user_type */
 export type UserRole = 'asociacion' | 'turismo' | 'comprador' | 'admin' | 'admin_tienda'
 
-/** Fila de public.departments (id numérico) */
-export type Department = { id: number; name: string }
-
 /** Props de navegación que App pasa a cada pantalla */
 export interface NavProps {
   onNavigate: (tab: Tab) => void

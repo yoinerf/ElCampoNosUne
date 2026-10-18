@@ -1,7 +1,34 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 import { STORE_NAMES, type StoreId } from '../lib/stores'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
+
+// Estilos de los campos del formulario (los selects de ubicación y documento usan los mismos)
+const FIELD_LABEL: React.CSSProperties = {
+  display: 'block',
+  fontSize: 11.5,
+  fontWeight: 800,
+  fontFamily: "'Nunito Sans', sans-serif",
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: '#205134',
+  marginBottom: 5,
+}
+const FIELD_INPUT: React.CSSProperties = {
+  width: '100%',
+  padding: '11px 14px',
+  borderRadius: 8,
+  border: '1.5px solid #D1D5DB',
+  background: '#FFFFFF',
+  fontSize: 14,
+  fontFamily: "'Nunito Sans', sans-serif",
+  color: '#1F2937',
+  outline: 'none',
+  boxSizing: 'border-box',
+}
 
 interface Props {
   onComplete: () => void
@@ -18,7 +45,8 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
   const isAmazon = store === 'amazonica'
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
-  const [municipality, setMunicipality] = useState('')
+  const [location, setLocation] = useState({ department: '', municipality: '' })
+  const [doc, setDoc] = useState({ documentType: '', documentNumber: '' })
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [userType, setUserType] = useState<UserType>('comprador')
@@ -41,8 +69,13 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
       setError('Por favor ingresa tu nombre completo')
       return
     }
-    if (!municipality.trim()) {
-      setError('Por favor ingresa tu ciudad o municipio')
+    const docError = validateDocument(doc.documentType, doc.documentNumber)
+    if (docError) {
+      setError(docError)
+      return
+    }
+    if (!location.department || !location.municipality) {
+      setError('Por favor selecciona tu departamento y municipio')
       return
     }
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
@@ -78,7 +111,10 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
           first_name: firstName,
           last_name: lastName,
           user_type: userType,
-          municipality: municipality.trim(),
+          department: location.department,
+          municipality: location.municipality,
+          document_type: doc.documentType,
+          document_number: normalizeDocumentNumber(doc.documentNumber),
         },
       },
     })
@@ -338,50 +374,21 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   />
                 </div>
 
-                {/* Campo: Ciudad (obligatoria) */}
-                <div style={{ marginBottom: 15 }}>
-                  <label htmlFor="register-city" style={{
-                      display: 'block',
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                      color: '#205134',
-                      marginBottom: 5,
-                    }}>
-                    CIUDAD O MUNICIPIO
-                  </label>
-                  <input
-                    id="register-city"
-                    type="text"
-                    value={municipality}
-                    onChange={(e) => setMunicipality(e.target.value)}
-                    placeholder="Ej: Pitalito"
-                    autoComplete="address-level2"
-                    style={{
-                      width: '100%',
-                      padding: '11px 14px',
-                      borderRadius: 8,
-                      border: '1.5px solid #D1D5DB',
-                      background: '#FFFFFF',
-                      fontSize: 14,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      color: '#1F2937',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.2s, box-shadow 0.2s',
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#205134'
-                      e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#D1D5DB'
-                      e.target.style.boxShadow = 'none'
-                    }}
-                  />
-                </div>
+                {/* Documento de identidad y ubicación (obligatorios) */}
+                <DocumentFields
+                  {...doc}
+                  onChange={setDoc}
+                  labelStyle={FIELD_LABEL}
+                  inputStyle={FIELD_INPUT}
+                  fieldStyle={{ marginBottom: 15 }}
+                />
+                <LocationFields
+                  {...location}
+                  onChange={setLocation}
+                  labelStyle={FIELD_LABEL}
+                  inputStyle={FIELD_INPUT}
+                  fieldStyle={{ marginBottom: 15 }}
+                />
 
                 {/* Campo: Correo Electrónico */}
                 <div style={{ marginBottom: 15 }}>

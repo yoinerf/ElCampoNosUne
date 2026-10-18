@@ -27,7 +27,10 @@ import {
   type TicketType,
 } from '../lib/buyer'
 import { STORE_NAMES, type StoreId } from '../lib/stores'
-import type { Department, Tab, UserRole } from '../lib/types'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
 
 type BuyerSection = 'overview' | 'orders' | 'payments' | 'reviews' | 'favorites' | 'tickets' | 'profile'
 
@@ -57,6 +60,8 @@ interface ProfileForm {
   department: string
   municipality: string
   address: string
+  document_type: string
+  document_number: string
 }
 
 // Pasos del seguimiento del pedido (línea de progreso)
@@ -202,8 +207,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
   const [favorites, setFavorites] = useState<FavoriteRow[]>([])
   const [reviews, setReviews] = useState<ReviewRow[]>([])
   const [tickets, setTickets] = useState<SupportTicket[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
-  const [profile, setProfile] = useState<ProfileForm>({ first_name: '', last_name: '', phone: '', department: '', municipality: '', address: '' })
+  const [profile, setProfile] = useState<ProfileForm>({ first_name: '', last_name: '', phone: '', department: '', municipality: '', address: '', document_type: '', document_number: '' })
   const [toast, setToast] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
 
   const statusById = new Map(statuses.map((s) => [s.id, s]))
@@ -229,20 +233,18 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
     setUserId(user.id)
     setEmail(user.email ?? '')
 
-    const [statusesData, ordersData, favsData, ticketsData, { data: profileData }, { data: deptsData }] = await Promise.all([
+    const [statusesData, ordersData, favsData, ticketsData, { data: profileData }] = await Promise.all([
       fetchOrderStatuses(),
       fetchMyOrders(user.id),
       fetchFavorites(user.id),
       fetchMyTickets(user.id),
       supabase.from('profiles').select('*').eq('id', user.id).single(),
-      supabase.from('departments').select('id, name').order('name', { ascending: true }),
       loadReviews(user.id),
     ])
     setStatuses(statusesData)
     setOrders(ordersData)
     setFavorites(favsData)
     setTickets(ticketsData)
-    setDepartments(deptsData ?? [])
     if (profileData) {
       setProfile({
         first_name: profileData.first_name ?? '',
@@ -251,6 +253,8 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
         department: profileData.department ?? '',
         municipality: profileData.municipality ?? '',
         address: profileData.address ?? '',
+        document_type: profileData.document_type ?? '',
+        document_number: profileData.document_number ?? '',
       })
     }
     setLoading(false)
@@ -387,8 +391,13 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
       showToast('error', 'Nombre y apellido son obligatorios.')
       return
     }
-    if (!profile.municipality.trim()) {
-      showToast('error', 'La ciudad o municipio es obligatoria.')
+    const docError = validateDocument(profile.document_type, profile.document_number)
+    if (docError) {
+      showToast('error', docError)
+      return
+    }
+    if (!profile.department || !profile.municipality) {
+      showToast('error', 'Selecciona tu departamento y municipio.')
       return
     }
     setSavingProfile(true)
@@ -397,8 +406,10 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
       last_name: profile.last_name.trim(),
       phone: onlyPhoneDigits(profile.phone) || null,
       department: profile.department || null,
-      municipality: profile.municipality.trim() || null,
+      municipality: profile.municipality || null,
       address: profile.address.trim() || null,
+      document_type: profile.document_type,
+      document_number: normalizeDocumentNumber(profile.document_number),
     }).eq('id', userId)
     setSavingProfile(false)
     if (error) { showToast('error', `No se pudieron guardar tus datos: ${error.message}`); return }
@@ -885,21 +896,20 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                     <label style={labelStyle}>Teléfono / WhatsApp</label>
                     <input value={onlyPhoneDigits(profile.phone)} onChange={(e) => setProfile({ ...profile, phone: onlyPhoneDigits(e.target.value) })} {...phoneInputProps} style={inputStyle} />
                   </div>
-                  <div>
-                    <label style={labelStyle}>Departamento</label>
-                    {departments.length > 0 ? (
-                      <select value={profile.department} onChange={(e) => setProfile({ ...profile, department: e.target.value })} style={inputStyle}>
-                        <option value="">Selecciona...</option>
-                        {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                      </select>
-                    ) : (
-                      <input value={profile.department} onChange={(e) => setProfile({ ...profile, department: e.target.value })} style={inputStyle} />
-                    )}
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Ciudad / Municipio *</label>
-                    <input value={profile.municipality} onChange={(e) => setProfile({ ...profile, municipality: e.target.value })} placeholder="Ej: Pitalito" required style={inputStyle} />
-                  </div>
+                  <DocumentFields
+                    documentType={profile.document_type}
+                    documentNumber={profile.document_number}
+                    onChange={({ documentType, documentNumber }) => setProfile((p) => ({ ...p, document_type: documentType, document_number: documentNumber }))}
+                    labelStyle={labelStyle}
+                    inputStyle={inputStyle}
+                  />
+                  <LocationFields
+                    department={profile.department}
+                    municipality={profile.municipality}
+                    onChange={(loc) => setProfile((p) => ({ ...p, ...loc }))}
+                    labelStyle={labelStyle}
+                    inputStyle={inputStyle}
+                  />
                 </div>
                 <div style={{ marginTop: 14 }}>
                   <label style={labelStyle}>Dirección de entrega</label>

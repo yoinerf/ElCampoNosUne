@@ -10,6 +10,8 @@ import { validationState, validateDocFile, type ProducerDocument } from './produ
 import { MAX_IMAGE_BYTES, validateImage } from './imageUpload'
 import { TABS, isTab } from './types'
 import { pathForTab, routeFromPath } from './routes'
+import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from './identity'
+import { DEPARTMENTS, findDepartment, findMunicipality, municipalitiesOf } from './geo'
 
 const fakeFile = (type: string, size: number, name = 'archivo') => ({ type, size, name }) as File
 
@@ -118,6 +120,43 @@ describe('routes', () => {
     expect(routeFromPath('/no-existe')).toEqual({ tab: 'home', store: 'campo' })
     expect(routeFromPath('/productos/')).toEqual({ tab: 'market', store: 'campo' })
     expect(routeFromPath('/tienda-amazonica/no-existe')).toEqual({ tab: 'amazon', store: 'amazonica' })
+  })
+})
+
+describe('identity', () => {
+  it('normaliza y valida según el tipo de documento', () => {
+    expect(normalizeDocumentNumber(' 1.023.456 789 ')).toBe('1023456789')
+    expect(validateDocument('CC', '1.023.456.789')).toBeNull()
+    expect(validateDocument('CC', '12AB')).not.toBeNull()
+    expect(validateDocument('NIT', '900123456-7')).toBeNull()
+    expect(validateDocument('PAS', 'ab12345')).toBeNull()
+    expect(validateDocument('', '123456')).toBe('Selecciona el tipo de documento.')
+    expect(validateDocument('CC', '')).toBe('Ingresa el número de documento.')
+  })
+
+  it('al editar a otro usuario el documento puede quedar vacío', () => {
+    expect(validateOptionalDocument('', '')).toBeNull()
+    expect(validateOptionalDocument('CC', '')).not.toBeNull()
+    expect(documentColumns('', '')).toEqual({ document_type: null, document_number: null })
+    expect(documentColumns('CE', 'x-12 34')).toEqual({ document_type: 'CE', document_number: 'X-1234' })
+  })
+})
+
+describe('geo', () => {
+  it('lista los 33 departamentos y sus municipios', () => {
+    expect(DEPARTMENTS).toHaveLength(33)
+    expect(municipalitiesOf('Antioquia').some((m) => m.name === 'Medellín')).toBe(true)
+    expect(municipalitiesOf('No existe')).toEqual([])
+  })
+
+  it('Bogotá D.C. usa su capital como único municipio', () => {
+    expect(municipalitiesOf('Bogotá D.C.')).toEqual([{ code: '11001', name: 'Bogotá' }])
+  })
+
+  it('reconoce nombres guardados con otra escritura', () => {
+    expect(findDepartment('bogota, d.c.')?.name).toBe('Bogotá D.C.')
+    expect(findDepartment('CAQUETA')?.name).toBe('Caquetá')
+    expect(findMunicipality('Caquetá', 'florencia')?.name).toBe('Florencia')
   })
 })
 

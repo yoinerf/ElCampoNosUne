@@ -22,7 +22,10 @@ import {
   type ProducerDocument,
 } from '../lib/producerDocuments'
 import logoSrc from '../assets/logo-nofond.png'
-import type { Department, Tab, UserRole } from '../lib/types'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
 
 // Panel del administrador de tienda: gestiona SOLO los productores de su tienda.
 // Misma distribución que el panel del productor (menú lateral + barra superior).
@@ -48,6 +51,8 @@ interface Producer {
   phone: string | null
   department: string | null
   municipality: string | null
+  document_type: string | null
+  document_number: string | null
   user_type: string
   created_at: string
 }
@@ -115,7 +120,7 @@ function formatDate(iso: string) {
 
 const producerName = (p: Producer) => p.org_name?.trim() || `${p.first_name} ${p.last_name}`.trim() || 'Productor'
 
-const EMPTY_FORM = { first_name: '', last_name: '', org_name: '', email: '', phone: '', department: '', municipality: '', password: '' }
+const EMPTY_FORM = { first_name: '', last_name: '', org_name: '', email: '', phone: '', department: '', municipality: '', document_type: '', document_number: '', password: '' }
 
 const SECTION_LABEL: Record<Section, string> = { dashboard: 'Panel Principal', producers: 'Productores', review: 'Revisión de perfiles' }
 
@@ -126,7 +131,6 @@ export default function StoreAdminScreen({ store }: Props) {
   const [me, setMe] = useState({ first_name: '', last_name: '' })
   const [producers, setProducers] = useState<Producer[]>([])
   const [documents, setDocuments] = useState<ProducerDocument[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
@@ -150,23 +154,21 @@ export default function StoreAdminScreen({ store }: Props) {
 
   const loadAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const [{ data: storeData }, { data: meData }, { data: producersData, error }, { data: deptsData }] = await Promise.all([
+    const [{ data: storeData }, { data: meData }, { data: producersData, error }] = await Promise.all([
       supabase.from('store_settings').select('name').eq('store', store).maybeSingle(),
       supabase.from('profiles').select('first_name, last_name').eq('id', user?.id ?? '').maybeSingle(),
       supabase
         .from('profiles')
-        .select('id, first_name, last_name, org_name, email, phone, department, municipality, user_type, created_at')
+        .select('id, first_name, last_name, org_name, email, phone, department, municipality, document_type, document_number, user_type, created_at')
         .eq('store', store)
         .in('user_type', ['asociacion', 'turismo'])
         .order('created_at', { ascending: false }),
-      supabase.from('departments').select('id, name').order('name', { ascending: true }),
     ])
     if (error) console.error('Error cargando productores:', error.message)
     const list = (producersData ?? []) as Producer[]
     setStoreName(storeData?.name ?? store)
     if (meData) setMe({ first_name: meData.first_name ?? '', last_name: meData.last_name ?? '' })
     setProducers(list)
-    setDepartments(deptsData ?? [])
     setDocuments(await fetchDocuments(list.map((p) => p.id)))
     setLoading(false)
   }
@@ -197,14 +199,17 @@ export default function StoreAdminScreen({ store }: Props) {
   const openEdit = (p: Producer) => setForm({
     open: true,
     editingId: p.id,
-    data: { first_name: p.first_name ?? '', last_name: p.last_name ?? '', org_name: p.org_name ?? '', email: p.email ?? '', phone: p.phone ?? '', department: p.department ?? '', municipality: p.municipality ?? '', password: '' },
+    data: { first_name: p.first_name ?? '', last_name: p.last_name ?? '', org_name: p.org_name ?? '', email: p.email ?? '', phone: p.phone ?? '', department: p.department ?? '', municipality: p.municipality ?? '', document_type: p.document_type ?? '', document_number: p.document_number ?? '', password: '' },
   })
   const closeForm = () => setForm({ open: false, editingId: null, data: EMPTY_FORM })
 
   const saveProducer = async () => {
     const d = form.data
     if (!d.first_name.trim()) return showToast('error', 'El nombre es obligatorio.')
-    if (!d.municipality.trim()) return showToast('error', 'La ciudad o municipio es obligatoria.')
+    // Al crear el documento es obligatorio; al editar productores antiguos puede faltar
+    const docError = form.editingId ? validateOptionalDocument(d.document_type, d.document_number) : validateDocument(d.document_type, d.document_number)
+    if (docError) return showToast('error', docError)
+    if (!d.department || !d.municipality) return showToast('error', 'Selecciona el departamento y el municipio.')
     if (!form.editingId && (d.password.length < MIN_PASSWORD_LENGTH || !/[A-Za-z]/.test(d.password) || !/\d/.test(d.password))) {
       return showToast('error', `La contraseña temporal debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres, con letras y números.`)
     }
@@ -220,7 +225,8 @@ export default function StoreAdminScreen({ store }: Props) {
           org_name: d.org_name.trim() || null,
           phone: onlyPhoneDigits(d.phone) || null,
           department: d.department || null,
-          municipality: d.municipality.trim() || null,
+          municipality: d.municipality || null,
+          ...documentColumns(d.document_type, d.document_number),
         })
         .eq('id', form.editingId)
         .select('id')
@@ -242,7 +248,9 @@ export default function StoreAdminScreen({ store }: Props) {
         org_name: d.org_name.trim(),
         phone: onlyPhoneDigits(d.phone),
         department: d.department,
-        municipality: d.municipality.trim(),
+        municipality: d.municipality,
+        document_type: d.document_type,
+        document_number: normalizeDocumentNumber(d.document_number),
         must_change_password: true,
       })
       setSaving(false)
@@ -641,17 +649,24 @@ export default function StoreAdminScreen({ store }: Props) {
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-                <div>
-                  <label style={labelStyle}>Departamento</label>
-                  <select style={inputStyle} value={form.data.department} onChange={(e) => setForm({ ...form, data: { ...form.data, department: e.target.value } })}>
-                    <option value="">Seleccionar departamento...</option>
-                    {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Ciudad / Municipio *</label>
-                  <input style={inputStyle} placeholder="Ej: Pitalito, Pasto" required value={form.data.municipality} onChange={(e) => setForm({ ...form, data: { ...form.data, municipality: e.target.value } })} />
-                </div>
+                <DocumentFields
+                  documentType={form.data.document_type}
+                  documentNumber={form.data.document_number}
+                  onChange={({ documentType, documentNumber }) => setForm((f) => ({ ...f, data: { ...f.data, document_type: documentType, document_number: documentNumber } }))}
+                  labelStyle={labelStyle}
+                  inputStyle={inputStyle}
+                  required={!form.editingId}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <LocationFields
+                  department={form.data.department}
+                  municipality={form.data.municipality}
+                  onChange={(loc) => setForm((f) => ({ ...f, data: { ...f.data, ...loc } }))}
+                  labelStyle={labelStyle}
+                  inputStyle={inputStyle}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>

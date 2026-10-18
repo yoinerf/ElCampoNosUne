@@ -948,6 +948,8 @@ export type Database = {
           categories: string[] | null
           created_at: string | null
           department: string | null
+          document_number: string | null
+          document_type: string | null
           email: string
           first_name: string
           id: string
@@ -964,6 +966,8 @@ export type Database = {
           categories?: string[] | null
           created_at?: string | null
           department?: string | null
+          document_number?: string | null
+          document_type?: string | null
           email: string
           first_name: string
           id: string
@@ -980,6 +984,8 @@ export type Database = {
           categories?: string[] | null
           created_at?: string | null
           department?: string | null
+          document_number?: string | null
+          document_type?: string | null
           email?: string
           first_name?: string
           id?: string

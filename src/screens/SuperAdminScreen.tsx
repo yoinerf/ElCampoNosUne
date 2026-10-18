@@ -28,7 +28,10 @@ import { STORE_NAMES, type StoreId } from '../lib/stores'
 import { uploadPublicImage } from '../lib/imageUpload'
 import { primaryImageUrl } from '../lib/catalog'
 import type { TablesInsert as TableInsert } from '../lib/database.types'
-import type { Department, Tab, UserRole } from '../lib/types'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
 import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, SItem, StatCard, I } from '../components/superadmin/ui'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -45,6 +48,8 @@ interface UserRow {
   store?: string
   department: string
   municipality: string
+  document_type?: string | null
+  document_number?: string | null
   email?: string
   phone?: string | null
   created_at: string
@@ -118,7 +123,6 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
   const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, reservations: 0, income: 0 })
 
   const [search, setSearch] = useState('')
@@ -147,6 +151,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     store: 'campo',
     department: '',
     municipality: '',
+    document_type: '',
+    document_number: '',
   })
   const [userCreating, setUserCreating] = useState(false)
 
@@ -167,12 +173,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: catsData },
         { data: ordersData },
         { count: reservationsCount },
-        { data: deptsData },
         statusesData,
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
@@ -180,7 +185,6 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         // reservations no tiene columna total: los ingresos salen de orders
         supabase.from('orders').select('total, payment_status'),
         supabase.from('reservations').select('id', { count: 'exact', head: true }),
-        supabase.from('departments').select('id, name').order('name', { ascending: true }),
         fetchOrderStatuses(),
         fetchOrderItems(),
         fetchAllTickets(),
@@ -194,7 +198,6 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       fetchDocuments(sellerIds).then((docs) => {
         setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id)) === 'validado')))
       })
-      setDepartments(deptsData || [])
 
       const userMap = new Map((usersData || []).map((u) => [u.id, u]))
 
@@ -279,8 +282,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       showToast('⚠️ Por favor ingresa el nombre')
       return
     }
-    if (!newUserData.municipality.trim()) {
-      showToast('⚠️ La ciudad o municipio es obligatoria')
+    const docError = validateDocument(newUserData.document_type, newUserData.document_number)
+    if (docError) {
+      showToast('⚠️ ' + docError)
+      return
+    }
+    if (!newUserData.department || !newUserData.municipality) {
+      showToast('⚠️ Selecciona el departamento y el municipio')
       return
     }
     if (!newUserData.email.trim() || !newUserData.password.trim()) {
@@ -305,8 +313,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         phone: onlyPhoneDigits(newUserData.phone),
         user_type: newUserData.user_type,
         store: STORE_ROLES.includes(newUserData.user_type) ? newUserData.store : 'campo',
-        department: newUserData.department.trim(),
-        municipality: newUserData.municipality.trim(),
+        department: newUserData.department,
+        municipality: newUserData.municipality,
+        document_type: newUserData.document_type,
+        document_number: normalizeDocumentNumber(newUserData.document_number),
         must_change_password: true,
       })
 
@@ -330,6 +340,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         store: 'campo',
         department: '',
         municipality: '',
+        document_type: '',
+        document_number: '',
       })
       loadAll()
     } catch (err) {
@@ -445,8 +457,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const handleSaveUser = async () => {
     if (!userEditModal) return
-    if (!userEditModal.municipality?.trim()) {
-      showToast('⚠️ La ciudad o municipio es obligatoria')
+    const docError = validateOptionalDocument(userEditModal.document_type ?? '', userEditModal.document_number ?? '')
+    if (docError) {
+      showToast('⚠️ ' + docError)
+      return
+    }
+    if (!userEditModal.department || !userEditModal.municipality) {
+      showToast('⚠️ Selecciona el departamento y el municipio')
       return
     }
     setUserSaving(true)
@@ -458,7 +475,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       user_type: userEditModal.user_type,
       store: STORE_ROLES.includes(userEditModal.user_type) ? (userEditModal.store ?? 'campo') : 'campo',
       department: userEditModal.department || null,
-      municipality: userEditModal.municipality.trim(),
+      municipality: userEditModal.municipality,
+      ...documentColumns(userEditModal.document_type ?? '', userEditModal.document_number ?? ''),
     }).eq('id', userEditModal.id)
 
     if (!error) {
@@ -1499,31 +1517,21 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <input style={inp} {...phoneInputProps} value={onlyPhoneDigits(userEditModal.phone || '')} onChange={e => setUserEditModal({ ...userEditModal, phone: onlyPhoneDigits(e.target.value) })} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={lbl}>Departamento</label>
-                <select
-                  style={inp}
-                  value={userEditModal.department || ''}
-                  onChange={e => setUserEditModal({ ...userEditModal, department: e.target.value })}
-                >
-                  <option value="">Seleccionar departamento...</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.name}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Ciudad / Municipio *</label>
-                <input
-                  style={inp}
-                  placeholder="Ej: Pitalito, Pasto"
-                  required
-                  value={userEditModal.municipality || ''}
-                  onChange={e => setUserEditModal({ ...userEditModal, municipality: e.target.value })}
-                />
-              </div>
+              <DocumentFields
+                documentType={userEditModal.document_type ?? ''}
+                documentNumber={userEditModal.document_number ?? ''}
+                onChange={({ documentType, documentNumber }) => setUserEditModal((u) => (u ? { ...u, document_type: documentType, document_number: documentNumber } : u))}
+                labelStyle={lbl}
+                inputStyle={inp}
+                required={false}
+              />
+              <LocationFields
+                department={userEditModal.department ?? ''}
+                municipality={userEditModal.municipality ?? ''}
+                onChange={(loc) => setUserEditModal((u) => (u ? { ...u, ...loc } : u))}
+                labelStyle={lbl}
+                inputStyle={inp}
+              />
             </div>
             <div style={{ marginBottom: 24 }}>
               <label style={lbl}>Rol en el ecosistema</label>
@@ -1704,31 +1712,20 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-                <div>
-                  <label style={lbl}>Departamento</label>
-                  <select
-                    style={inp}
-                    value={newUserData.department}
-                    onChange={e => setNewUserData({ ...newUserData, department: e.target.value })}
-                  >
-                    <option value="">Seleccionar departamento...</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Ciudad / Municipio *</label>
-                  <input
-                    style={inp}
-                    placeholder="Ej: Pitalito, Pasto"
-                    required
-                    value={newUserData.municipality}
-                    onChange={e => setNewUserData({ ...newUserData, municipality: e.target.value })}
-                  />
-                </div>
+                <DocumentFields
+                  documentType={newUserData.document_type}
+                  documentNumber={newUserData.document_number}
+                  onChange={({ documentType, documentNumber }) => setNewUserData((n) => ({ ...n, document_type: documentType, document_number: documentNumber }))}
+                  labelStyle={lbl}
+                  inputStyle={inp}
+                />
+                <LocationFields
+                  department={newUserData.department}
+                  municipality={newUserData.municipality}
+                  onChange={(loc) => setNewUserData((n) => ({ ...n, ...loc }))}
+                  labelStyle={lbl}
+                  inputStyle={inp}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>

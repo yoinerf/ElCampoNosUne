@@ -14,7 +14,11 @@ import { confirmGoToDocuments, fetchDocuments, validationState, VALIDATION_STATE
 import { alertDialog, confirmDialog } from '../components/ConfirmDialog'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 import { STORE_NAMES, type StoreId } from '../lib/stores'
-import type { Department, Tab, UserRole } from '../lib/types'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { DEPARTMENTS } from '../lib/geo'
+import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
 import { primaryImageUrl } from '../lib/catalog'
 
 type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
@@ -130,7 +134,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', category_id: '', price: '', unit: 'uds', stockNum: '45', origin: '', description: '', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format' })
 
-  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '' })
+  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '', document_type: '', document_number: '' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
 
@@ -158,7 +162,6 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
   // Datos dinámicos desde Supabase
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [departments, setDepartments] = useState<Department[]>([])
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
 
@@ -170,11 +173,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }, statusesData, itemsData] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, org_name, phone, department, municipality, user_type').eq('id', user.id).single(),
+    const [{ data: profileData }, { data: actData }, { data: catsData }, statusesData, itemsData] = await Promise.all([
+      supabase.from('profiles').select('id, first_name, last_name, org_name, phone, department, municipality, user_type, document_type, document_number').eq('id', user.id).single(),
       supabase.from('activities').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(8),
       supabase.from('categories').select('id, name, business_type').eq('active', true).eq('business_type', userRole === 'turismo' ? 'turismo' : 'asociacion'),
-      supabase.from('departments').select('id, name').order('name', { ascending: true }),
       fetchOrderStatuses(),
       fetchOrderItems(user.id),
     ])
@@ -185,11 +187,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
     if (profileData) {
       setProfile(profileData as ProfileData)
-      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '' })
+      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', document_type: profileData.document_type ?? '', document_number: profileData.document_number ?? '' })
     }
 
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
-    if (deptsData && deptsData.length > 0) setDepartments(deptsData)
 
     const currentOrg = profileData?.org_name?.trim()
       || `${profileData?.first_name ?? ''} ${profileData?.last_name ?? ''}`.trim()
@@ -266,7 +267,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     }
     setEditingId(null)
     const defaultCatId = categories.length > 0 ? categories[0].id : ''
-    const defaultDept = departments.length > 0 ? departments[0].name : ''
+    const defaultDept = profile.department || DEPARTMENTS[0]?.name || ''
     setForm({ title: '', category_id: defaultCatId, price: '', unit: isTurismo ? 'pers' : 'uds', stockNum: '45', origin: defaultDept, description: '', img: '' })
     setShowModal(true)
   }
@@ -391,8 +392,13 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   }
 
   const handleSaveProfile = async () => {
-    if (!profileForm.municipality.trim()) {
-      setProfileMsg('Error: la ciudad o municipio es obligatoria.')
+    const docError = validateDocument(profileForm.document_type, profileForm.document_number)
+    if (docError) {
+      setProfileMsg('Error: ' + docError)
+      return
+    }
+    if (!profileForm.department || !profileForm.municipality) {
+      setProfileMsg('Error: selecciona el departamento y el municipio.')
       return
     }
     setSavingProfile(true)
@@ -406,6 +412,8 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       phone: onlyPhoneDigits(profileForm.phone) || null,
       department: profileForm.department,
       municipality: profileForm.municipality,
+      document_type: profileForm.document_type,
+      document_number: normalizeDocumentNumber(profileForm.document_number),
     }).eq('id', user.id)
     if (error) {
       setSavingProfile(false)
@@ -821,17 +829,22 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                       <div style={{ fontSize: 12, color: '#8A8070', marginTop: 4 }}>Te avisaremos por WhatsApp cuando recibas un pedido nuevo.</div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
-                      <div>
-                        <label style={labelStyle}>Departamento</label>
-                        <select value={profileForm.department} onChange={(e) => setProfileForm({ ...profileForm, department: e.target.value })} style={inputStyle}>
-                          <option value="">Seleccionar...</option>
-                          {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Ciudad / Municipio *</label>
-                        <input value={profileForm.municipality} onChange={(e) => setProfileForm({ ...profileForm, municipality: e.target.value })} placeholder="Ej: Pitalito" required style={inputStyle} />
-                      </div>
+                      <DocumentFields
+                        documentType={profileForm.document_type}
+                        documentNumber={profileForm.document_number}
+                        onChange={({ documentType, documentNumber }) => setProfileForm((f) => ({ ...f, document_type: documentType, document_number: documentNumber }))}
+                        labelStyle={labelStyle}
+                        inputStyle={inputStyle}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
+                      <LocationFields
+                        department={profileForm.department}
+                        municipality={profileForm.municipality}
+                        onChange={(loc) => setProfileForm((f) => ({ ...f, ...loc }))}
+                        labelStyle={labelStyle}
+                        inputStyle={inputStyle}
+                      />
                     </div>
                     {profileMsg && (
                       <div style={{ background: profileMsg.includes('Error') ? '#FEE9E1' : '#EAF3EC', color: profileMsg.includes('Error') ? '#C4622D' : '#205134', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 700, marginBottom: 16 }}>{profileMsg}</div>

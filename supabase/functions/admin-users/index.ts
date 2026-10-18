@@ -3,7 +3,7 @@
 // aquí (Supabase la inyecta como variable de entorno); nunca llega al navegador.
 //
 // Acciones (POST con JSON { action, ... }):
-//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, store?, department?, municipality?, must_change_password? }
+//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, store?, department?, municipality?, document_type, document_number, must_change_password? }
 //   - delete_user        { user_id }
 //   - set_temp_password  { user_id, password }
 //
@@ -47,6 +47,21 @@ function validPassword(password: unknown): password is string {
 
 function clean(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+// Documento de identidad: mismas reglas que src/lib/identity.ts y el check de profiles
+const DOCUMENT_TYPES = ['CC', 'CE', 'TI', 'PPT', 'PAS', 'NIT']
+
+function parseDocument(type: unknown, rawNumber: unknown): { type: string; number: string } | { error: string } {
+  const docType = typeof type === 'string' ? type.trim().toUpperCase() : ''
+  if (!DOCUMENT_TYPES.includes(docType)) return { error: 'Tipo de documento inválido.' }
+  const number = typeof rawNumber === 'string' ? rawNumber.replace(/[\s.]/g, '').toUpperCase() : ''
+  const valid = docType === 'CC' || docType === 'TI'
+    ? /^\d{5,12}$/.test(number)
+    : docType === 'NIT'
+      ? /^\d{8,12}(-\d)?$/.test(number)
+      : /^[A-Z0-9]{4,20}$/.test(number)
+  return valid ? { type: docType, number } : { error: 'Número de documento inválido.' }
 }
 
 Deno.serve(async (req) => {
@@ -112,6 +127,9 @@ Deno.serve(async (req) => {
         const phone = clean(body.phone)
         if (phone && !/^\d{1,10}$/.test(phone)) return json({ error: 'El WhatsApp debe tener solo números (máximo 10).' }, 400)
 
+        const document = parseDocument(body.document_type, body.document_number)
+        if ('error' in document) return json({ error: document.error }, 400)
+
         const profileData = {
           first_name: firstName,
           last_name: clean(body.last_name) ?? '',
@@ -120,6 +138,8 @@ Deno.serve(async (req) => {
           user_type: userType,
           department: clean(body.department),
           municipality: clean(body.municipality),
+          document_type: document.type,
+          document_number: document.number,
         }
 
         const { data: created, error: createError } = await admin.auth.admin.createUser({

@@ -25,17 +25,31 @@ export function StoresProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   const reload = useCallback(async () => {
-    const { data, error } = await supabase.from('store_settings').select('*').order('sort_order').order('store')
+    // Sin .order() por columnas: si falta alguna (migración pendiente) la consulta no debe fallar
+    const { data, error } = await supabase.from('store_settings').select('*')
     if (error) console.error('Error cargando tiendas:', error.message)
     if (data && data.length > 0) {
+      // Valores por defecto para columnas que aún no existan en la base
+      const rows = data as Partial<StoreSettings>[]
       setAllStores(
-        data.map((s) => ({
-          ...s,
-          slug: s.slug ?? null,
-          payment_methods: (s.payment_methods ?? []) as StoreSettings['payment_methods'],
-          shipping_fee: Number(s.shipping_fee ?? 0),
-          transfer_info: (s.transfer_info ?? {}) as StoreSettings['transfer_info'],
-        })),
+        rows
+          .filter((s): s is Partial<StoreSettings> & { store: string } => !!s.store)
+          .map((s) => {
+            const isMain = s.store === MAIN_STORE
+            return {
+              ...FALLBACK_MAIN_STORE,
+              ...s,
+              name: s.name ?? s.store,
+              slug: isMain ? null : s.slug ?? s.store.replace(/_/g, '-'),
+              tagline: s.tagline ?? (isMain ? FALLBACK_MAIN_STORE.tagline : null),
+              payment_methods: (s.payment_methods?.length ? s.payment_methods : isMain ? FALLBACK_MAIN_STORE.payment_methods : ['Cash', 'BankTransfer']) as StoreSettings['payment_methods'],
+              shipping_fee: Number(s.shipping_fee ?? FALLBACK_MAIN_STORE.shipping_fee),
+              active: s.active ?? true,
+              sort_order: s.sort_order ?? (isMain ? 0 : 10),
+              transfer_info: (s.transfer_info ?? {}) as StoreSettings['transfer_info'],
+            }
+          })
+          .sort((a, b) => a.sort_order - b.sort_order || a.store.localeCompare(b.store)),
       )
     }
     setLoading(false)

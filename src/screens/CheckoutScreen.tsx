@@ -113,7 +113,8 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
   // Cálculos dinámicos
   const isExperienceOnly = items.length > 0 && items.every((item) => item.product.type === 'experiencia')
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-  // Referencia para el resumen: el valor definitivo lo fija create_store_order con la tienda
+  // Envío fijo de la tienda (store_settings.shipping_fee, lo cobra create_store_order).
+  // En 0 el envío lo acuerda cada vendedor con el comprador y no se suma al total.
   const shippingFee = items.length > 0 && !isExperienceOnly ? storeConfig.shipping_fee : 0
   const wompiFee = paymentMethod === 'wompi' ? Math.round((subtotal + shippingFee) * 0.029) : 0
   const grandTotal = subtotal + shippingFee + wompiFee
@@ -593,10 +594,14 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                       <span className="font-bold text-[#1C3A14]">{formatPrice(subtotal)}</span>
                     </div>
 
-                    <div className="flex justify-between text-sm text-[#555] mb-4">
-                      <span>Envío estimado</span>
-                      <span className="font-bold text-[#205134]">{formatPrice(shippingFee)}</span>
-                    </div>
+                    {!isExperienceOnly && (
+                      <div className="flex justify-between gap-4 text-sm text-[#555] mb-4">
+                        <span>Envío</span>
+                        {shippingFee > 0
+                          ? <span className="font-bold text-[#205134]">{formatPrice(shippingFee)}</span>
+                          : <span className="font-bold text-[#205134] text-right">A convenir con el productor</span>}
+                      </div>
+                    )}
 
                     {paymentMethod === 'wompi' && currentStep === 3 && (
                       <div className="flex justify-between text-sm text-[#555] mb-4">
@@ -608,7 +613,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                     <div className="h-px bg-[#E8DED0] w-full mb-6"></div>
 
                     <div className="flex justify-between items-center mb-8">
-                      <span className="font-['Poppins'] text-lg font-bold text-[#1C3A14]">Total estimado</span>
+                      <span className="font-['Poppins'] text-lg font-bold text-[#1C3A14]">{!isExperienceOnly && shippingFee === 0 ? 'Total (sin envío)' : 'Total estimado'}</span>
                       <span className="font-['Poppins'] text-2xl font-bold text-[#205134]">{formatPrice(grandTotal)}</span>
                     </div>
 

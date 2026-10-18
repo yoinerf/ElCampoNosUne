@@ -58,7 +58,7 @@ export const FALLBACK_MAIN_STORE: StoreSettings = {
   tagline: 'Sembrando hoy la cooperación del mañana.',
   description: null,
   payment_methods: ['CashOnDelivery', 'BankTransfer'],
-  shipping_fee: 9000,
+  shipping_fee: 0,
   active: true,
   sort_order: 0,
   payment_timeout_hours: null,

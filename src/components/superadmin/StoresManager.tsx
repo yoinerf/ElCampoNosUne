@@ -56,7 +56,7 @@ const NEW_STORE: StoreForm = {
   tagline: '',
   description: '',
   payment_methods: ['BankTransfer', 'Cash'],
-  shipping_fee: '9000',
+  shipping_fee: '0',
   payment_timeout_hours: '',
   active: true,
   sort_order: '20',
@@ -267,6 +267,7 @@ function StoreFormFields({ editing, set }: { editing: { form: StoreForm; isNew: 
         <div>
           <label style={lbl}>Costo de envío (COP)</label>
           <input style={inp} inputMode="numeric" value={form.shipping_fee} onChange={(e) => set({ shipping_fee: e.target.value.replace(/\D/g, '') })} />
+          <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>0 = cada vendedor acuerda el envío con el comprador (no se suma al total).</div>
         </div>
         <div>
           <label style={lbl}>Plazo para pagar (horas)</label>

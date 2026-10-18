@@ -14,6 +14,8 @@ logs/
 instructions/
 *.md
 *.MD
+# Historial de versiones de la app (sí se versiona)
+!CHANGELOG.md
 
 
 # Platform-managed agentplat state, not project source. In the

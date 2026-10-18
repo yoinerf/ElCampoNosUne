@@ -35,6 +35,7 @@ import { documentColumns, normalizeDocumentNumber, validateDocument, validateOpt
 import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, SItem, StatCard, I } from '../components/superadmin/ui'
 import MyAccountCard from '../components/MyAccountCard'
 import StoresManager from '../components/superadmin/StoresManager'
+import { APP_VERSION } from '../lib/version'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1452,8 +1453,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <h3 style={{ fontFamily: B.fontDisplay, fontSize: 22, color: B.green, margin: '0 0 8px', fontWeight: 700 }}>
                     Configuración de Super Administrador
                   </h3>
-                  <p style={{ color: B.textMuted, fontSize: 14, margin: '0 0 28px' }}>
+                  <p style={{ color: B.textMuted, fontSize: 14, margin: '0 0 8px' }}>
                     Ajustes de infraestructura, pasarela de pagos y catálogo general.
+                  </p>
+                  <p style={{ margin: '0 0 28px' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: B.green, background: B.greenSoft, padding: '4px 10px', borderRadius: 20 }}>Versión {APP_VERSION}</span>
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
                     {[

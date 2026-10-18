@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { isAdvertisementActive } from '../lib/dateColombia'
 import bannerImg from '../assets/banner-campo.webp'
 import AutoCarousel from '../components/AutoCarousel'
+import bannerPrincipal from '../assets/banner-principal.webp'
 
 type Tab = 'home' | 'market' | 'tourism' | 'profile'  | 'admin'
 
@@ -322,13 +323,61 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       userRole={userRole || propUserRole}
       contentStyle={{ paddingBottom: 32 }}
     >
-      {/* ══════ BANNER SIEMPRE VISIBLE ══════ */}
-      <div style={{ margin: '0 -18px 0', animation: 'fadeInBanner 0.8s ease-out' }}>
+           {/* ══════ BANNER PRINCIPAL + BOTONES ══════ */}
+      <style>{`
+        .hero-banner { position: relative; margin: 0 -18px; background: #E2E9E2; animation: fadeInBanner 0.8s ease-out; }
+        .hero-banner img { display: block; width: 100%; height: auto; }
+        .hero-banner__btns { display: flex; gap: 12px; flex-wrap: wrap; padding: 14px 18px 18px; }
+
+        @media (min-width: 720px) {
+          .hero-banner__btns { position: absolute; left: 3%; bottom: 32%; padding: 0; }
+        }
+        @media (min-width: 1200px) {
+          .hero-banner__btns { gap: 14px; }
+        }
+
+        .brand-btn {
+          position: relative; overflow: hidden; border: none; cursor: pointer; font-family: inherit; font-weight: 700; font-size: 15px;
+          padding: 13px 22px; border-radius: 999px; display: inline-flex; align-items: center; gap: 8px;
+          transition: transform .18s ease, box-shadow .18s ease;
+        }
+        .brand-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+        .brand-btn:hover { transform: translateY(-3px); }
+        .brand-btn:active { transform: translateY(0) scale(.98); }
+        .brand-btn__arrow { transition: transform .2s ease; }
+        .brand-btn:hover .brand-btn__arrow { transform: translateX(4px); }
+
+        .brand-btn--green { background: linear-gradient(135deg, #205134 0%, #2E6B42 100%); color: #fff; box-shadow: 0 6px 16px rgba(32,81,52,.35); }
+        .brand-btn--green:hover { box-shadow: 0 10px 22px rgba(32,81,52,.45); }
+        .brand-btn--gold { background: linear-gradient(135deg, #E5AE30 0%, #F3C95A 100%); color: #205134; box-shadow: 0 6px 16px rgba(200,134,10,.32); }
+        .brand-btn--gold:hover { box-shadow: 0 10px 22px rgba(200,134,10,.42); }
+
+        .brand-btn--green::after {
+          content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+          background: linear-gradient(100deg, transparent, rgba(255,255,255,.35), transparent);
+          transform: skewX(-20deg); animation: brandShine 4.5s ease-in-out infinite;
+        }
+        @keyframes brandShine { 0%, 60% { left: -60%; } 100% { left: 130%; } }
+
+        @media (max-width: 719px) { .brand-btn { flex: 1 1 150px; justify-content: center; } }
+        @media (prefers-reduced-motion: reduce) { .brand-btn--green::after { animation: none; } }
+      `}</style>
+
+      <div className="hero-banner">
         <img
-          src={bannerImg}
-          alt="El Campo Nos Une — Conectamos con lo mejor del campo con las personas"
-          style={{ width: '100%', height: 'auto', display: 'block' }}
+          src={bannerPrincipal}
+          alt="SAKI — Plataforma Territorial Amazónica. Lo mejor del campo está más cerca de ti"
         />
+        <div className="hero-banner__btns">
+          <button className="brand-btn brand-btn--green" onClick={() => onNavigate('market')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="20" r="1.5" /><circle cx="18" cy="20" r="1.5" /><path d="M2 3h3l2.4 11.2a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.5L21 7H6" /></svg>
+            Explorar productos <span className="brand-btn__arrow">→</span>
+          </button>
+          <button className="brand-btn brand-btn--gold" onClick={() => onNavigate('tourism')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 20l6-10 4 6 2-3 6 7z" /><circle cx="17" cy="6" r="2" /></svg>
+            Descubrir experiencias <span className="brand-btn__arrow">→</span>
+          </button>
+        </div>
       </div>
 
       {/* ══════ HERO — saludo si está logueado ══════ */}
@@ -400,80 +449,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         </div>
       )}
 
-      {/* ══════ EXPLORA — tarjetas de sección ══════ */}
-      <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>
-        <h2 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 18, color: '#205134', margin: 0, fontWeight: 700 }}>
-          Explora
-        </h2>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 28 }}>
-        {/* Productos — Dorado según manual de identidad */}
-        <div
-          onClick={() => onNavigate('market')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onNavigate('market')}
-          style={{
-            borderRadius: 20,
-            background: 'linear-gradient(135deg, #C8860A 0%, #E5AE30 100%)',
-            padding: '20px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 10,
-            cursor: 'pointer',
-            boxShadow: '0 6px 20px rgba(200,134,10,0.25)',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.15)' }} />
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
-            🌽
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#1C2700', fontFamily: "'Poppins', sans-serif", lineHeight: 1.2 }}>
-              Productos
-            </div>
-            <div style={{ fontSize: 11, color: 'rgba(28,39,0,0.65)', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
-              Mercados campesinos
-            </div>
-          </div>
-        </div>
-
-        {/* Experiencias — Verde según manual de identidad */}
-        <div
-          onClick={() => onNavigate('tourism')}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === 'Enter' && onNavigate('tourism')}
-          style={{
-            borderRadius: 20,
-            background: 'linear-gradient(135deg, #205134 0%, #6BAA3D 100%)',
-            padding: '20px 18px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 10,
-            cursor: 'pointer',
-            position: 'relative',
-            overflow: 'hidden',
-          }}
-        >
-          <div style={{ position: 'absolute', top: -20, right: -20, width: 90, height: 90, borderRadius: '50%', background: 'rgba(255,255,255,0.12)' }} />
-          <div style={{ width: 52, height: 52, borderRadius: 16, background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>
-            🏞️
-          </div>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#F5EEE6', fontFamily: "'Poppins', sans-serif", lineHeight: 1.2 }}>
-              Experiencias
-            </div>
-            <div style={{ fontSize: 11, color: 'rgba(245,238,230,0.75)', fontFamily: "'Nunito Sans', sans-serif", marginTop: 2 }}>
-              Turismo comunitario
-            </div>
-          </div>
-        </div>
-      </div>
+        
 
       {/* ══════ PRODUCTOS DESTACADOS ══════ */}
       <div className="flex items-center justify-between" style={{ marginBottom: 14 }}>

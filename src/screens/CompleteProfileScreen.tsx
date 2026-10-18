@@ -6,7 +6,7 @@ import DocumentFields from '../components/DocumentFields'
 import LocationFields from '../components/LocationFields'
 import logoSrc from '../assets/logo-nofond.png'
 
-// Primera vez con Google: no hubo formulario de registro, así que se piden los datos
+// Primera vez con Google (o cuenta sin perfil): no hubo formulario de registro, así que se piden los datos
 // obligatorios y el tipo de cuenta. Lo guarda la RPC complete_my_profile (una sola vez).
 
 type AccountType = 'comprador' | 'asociacion' | 'turismo'
@@ -56,9 +56,11 @@ export default function CompleteProfileScreen({ onDone }: { onDone: () => void }
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setEmail(user.email ?? '')
-      const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single()
-      setFirstName(data?.first_name ?? '')
-      setLastName(data?.last_name ?? '')
+      const { data } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).maybeSingle()
+      // Si el perfil aún no existe, el nombre sale de la cuenta (Google envía full_name)
+      const fullName = String(user.user_metadata?.full_name ?? user.user_metadata?.name ?? '').trim()
+      setFirstName(data?.first_name || user.user_metadata?.first_name || fullName.split(' ')[0] || '')
+      setLastName(data?.last_name || user.user_metadata?.last_name || fullName.split(' ').slice(1).join(' '))
     }
     load()
   }, [])
@@ -97,7 +99,7 @@ export default function CompleteProfileScreen({ onDone }: { onDone: () => void }
         <img src={logoSrc} alt="El Campo Nos Une" style={{ height: 72, display: 'block', margin: '0 auto 12px' }} />
         <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 700, color: '#205134', textAlign: 'center', margin: '0 0 6px' }}>Completa tu perfil</h1>
         <p style={{ fontFamily: "'Nunito Sans', sans-serif", fontSize: 14, color: '#6B7280', textAlign: 'center', margin: '0 0 22px' }}>
-          Iniciaste sesión con Google{email ? ` (${email})` : ''}. Necesitamos estos datos una sola vez para crear tu cuenta.
+          {email ? `Cuenta: ${email}. ` : ''}Necesitamos estos datos una sola vez para terminar de crear tu cuenta.
         </p>
 
         <div style={{ marginBottom: 15 }}>

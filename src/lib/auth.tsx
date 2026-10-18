@@ -59,7 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       role,
       store: data?.store ?? MAIN_STORE,
-      needsProfileCompletion: isOAuthUser(session) && !data?.document_number && role !== 'admin' && role !== 'admin_tienda',
+      // Sin fila en profiles (no se creó al registrarse) también se completa: la RPC la crea
+      needsProfileCompletion: !data || (isOAuthUser(session) && !data.document_number && role !== 'admin' && role !== 'admin_tienda'),
       loading: false,
       profileLoadId: prev.profileLoadId + 1,
     }))

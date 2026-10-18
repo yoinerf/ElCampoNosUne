@@ -123,3 +123,4 @@ src/assets/*.jpeg    -filter -diff -merge text
 src/assets/logo-nofond.png !text !filter !merge !diff
 src/assets/banner-campo.webp !text !filter !merge !diff
 src/assets/banner-campo.png !text !filter !merge !diff
+src/assets/banner-principal.webp !text !filter !merge !diff

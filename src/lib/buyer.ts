@@ -1,4 +1,8 @@
 import { supabase } from './supabase'
+import { PAYMENT_METHOD_LABELS } from './stores'
+import type { ShippingAddress } from './catalog'
+
+export { PAYMENT_METHOD_LABELS }
 
 // ─── Pedidos del comprador ──────────────────────────────────────────────────
 
@@ -20,9 +24,11 @@ export interface BuyerOrder {
   status_id: number
   payment_method: string
   payment_status: string
+  // Tienda del pedido (store_settings.store). El comprador usa la misma cuenta en todas.
+  store?: string
   customer_name: string | null
   customer_phone: string | null
-  shipping_address: any
+  shipping_address: ShippingAddress | null
   subtotal: number
   shipping_fee: number
   total: number
@@ -41,11 +47,6 @@ export async function fetchMyOrders(userId: string): Promise<BuyerOrder[]> {
   return (data ?? []) as BuyerOrder[]
 }
 
-export const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  CashOnDelivery: 'Contraentrega',
-  Online: 'Pago en línea',
-}
-
 export const PAYMENT_STATUS_LABELS: Record<string, { label: string; bg: string; color: string }> = {
   Pending: { label: 'Pendiente', bg: '#FFF1E0', color: '#C4622D' },
   Paid: { label: 'Pagado', bg: '#EAF3EC', color: '#205134' },
@@ -60,14 +61,14 @@ export interface FavoriteRow {
   product_id: string | null
   experience_id: string | null
   created_at: string
-  product: { id: string; title: string; price: number; unit: string | null; producer: string | null; stock: string | null; images: { image_url: string; is_primary: boolean }[] } | null
+  product: { id: string; title: string; price: number; unit: string | null; producer: string | null; stock: string | null; store?: string; images: { image_url: string; is_primary: boolean }[] } | null
   experience: { id: string; title: string; price: number; host: string | null; images: { image_url: string; is_primary: boolean }[] } | null
 }
 
 export async function fetchFavorites(userId: string): Promise<FavoriteRow[]> {
   const { data, error } = await supabase
     .from('favorites')
-    .select('id, product_id, experience_id, created_at, product:products(id, title, price, unit, producer, stock, images(image_url, is_primary)), experience:experiences(id, title, price, host, images(image_url, is_primary))')
+    .select('id, product_id, experience_id, created_at, product:products(id, title, price, unit, producer, stock, store, images(image_url, is_primary)), experience:experiences(id, title, price, host, images(image_url, is_primary))')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
   if (error) console.error('Error cargando favoritos:', error.message)
@@ -167,6 +168,30 @@ export async function createTicket(ticket: {
   description: string
 }) {
   return supabase.from('support_tickets').insert(ticket)
+}
+
+// El comprador solo puede editar o eliminar sus solicitudes mientras estén 'abierto'
+// (la BD lo valida: ver Instructions/migration_tickets_edit.sql)
+export async function updateMyTicket(id: string, changes: {
+  order_id: string | null
+  type: TicketType
+  category: string
+  subject: string
+  description: string
+}) {
+  const { data, error } = await supabase.from('support_tickets').update(changes).eq('id', id).eq('status', 'abierto').select('id')
+  return { error: error ?? noRowsError(data) }
+}
+
+export async function deleteMyTicket(id: string) {
+  const { data, error } = await supabase.from('support_tickets').delete().eq('id', id).eq('status', 'abierto').select('id')
+  return { error: error ?? noRowsError(data) }
+}
+
+// Si RLS bloquea el cambio, Supabase no devuelve error: simplemente no afecta ninguna fila
+function noRowsError(data: unknown[] | null) {
+  if (data && data.length > 0) return null
+  return { message: 'la solicitud ya no está abierta o no tienes permiso para modificarla.' }
 }
 
 // Admin: todas las solicitudes con datos del comprador

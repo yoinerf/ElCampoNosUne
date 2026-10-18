@@ -2,17 +2,18 @@ import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
 import { isAdvertisementActive } from '../lib/dateColombia'
-import bannerImg from '../assets/banner-campo.webp'
 import AutoCarousel from '../components/AutoCarousel'
 import bannerPrincipal from '../assets/banner-principal.webp'
+import type { Tab, UserRole } from '../lib/types'
+import { primaryImageUrl } from '../lib/catalog'
+import { fetchSellerSales } from '../lib/orders'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile'  | 'admin'
 
 interface Props {
   onNavigate: (tab: Tab) => void
   activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: 'asociacion' | 'turismo' | 'comprador' | null
+  userRole?: UserRole | null
   onSelectProduct?: (productId: string) => void
 }
 
@@ -116,25 +117,18 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           const role = profile.user_type as 'asociacion' | 'turismo' | 'comprador'
 
           if (role !== 'comprador') {
-            const { count: productosCount } = await supabase
-              .from('products')
-              .select('*', { count: 'exact', head: true })
-              .eq('producer_id', user.id)
-
-            const { data: reservations, count: pedidosCount } = await supabase
-              .from('reservations')
-              .select('*, products(price), experiences(price)', { count: 'exact' })
-              .eq('user_id', user.id)
-
-            const ingresos = (reservations || []).reduce((sum, r: any) => {
-              const price = r.products?.price ?? r.experiences?.price ?? 0
-              return sum + price * (r.quantity ?? 1)
-            }, 0)
+            // Publicados y ventas del vendedor (antes se leían sus propias reservas como si fueran ventas)
+            const [{ count: productosCount }, sales] = await Promise.all([
+              role === 'turismo'
+                ? supabase.from('experiences').select('id', { count: 'exact', head: true }).eq('host_id', user.id)
+                : supabase.from('products').select('id', { count: 'exact', head: true }).eq('producer_id', user.id),
+              fetchSellerSales(user.id),
+            ])
 
             setStats({
               productos: productosCount ?? 0,
-              pedidos: pedidosCount ?? 0,
-              ingresos,
+              pedidos: sales.count,
+              ingresos: sales.income,
             })
           } else {
             const { count: pedidosCount } = await supabase
@@ -176,10 +170,10 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       }
 
       // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
-            // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
       try {
         const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
-          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }).limit(30),
+          // Solo productos de El Campo Nos Une (los de las tiendas aliadas no salen aquí)
+          supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles:public_profiles(org_name, first_name, last_name)').eq('store', 'campo').order('created_at', { ascending: false }).limit(30),
           supabase.from('product_reviews').select('product_id, rating'),
           supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         ])
@@ -197,14 +191,12 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         // Filtrar anuncios activos según la hora oficial de Colombia
         const activeProductAds = (adsData || []).filter(ad => ad.type === 'product' && isAdvertisementActive(ad))
 
-        const processed = (products as any[]).map((p) => {
+        const processed = (products ?? []).map((p) => {
           const ratings = reviewsMap[p.id] || []
           const avg = ratings.length > 0
             ? Number((ratings.reduce((sum, val) => sum + val, 0) / ratings.length).toFixed(1))
             : (p.rating ?? 5)
-          const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url
-            || p.images?.[0]?.image_url
-            || PLACEHOLDER_PRODUCT_IMG
+          const primaryImg = primaryImageUrl(p.images, PLACEHOLDER_PRODUCT_IMG)
 
           const matchingAd = activeProductAds.find((ad) => ad.product_id === p.id)
           const isAdFeatured = !!matchingAd
@@ -214,7 +206,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
 
           const isOutstandingValid = p.outstanding === true && !isAdExpiredOrInactive
 
-          const profile = p.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+          const profile = p.profiles
           const producerName = profile
             ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || p.producer || 'Productor')
             : (p.producer || 'Productor')
@@ -235,14 +227,13 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           if (ad.product_id && !existingIds.has(ad.product_id)) {
             const { data: missingProd } = await supabase
               .from('products')
-              .select('id, title, producer, rating, price, outstanding, images(*), profiles(org_name, first_name, last_name)')
+              .select('id, title, producer, rating, price, outstanding, images(*), profiles:public_profiles(org_name, first_name, last_name)')
               .eq('id', ad.product_id)
-              .single()
+              .eq('store', 'campo')
+              .maybeSingle()
             if (missingProd) {
-              const primaryImg = missingProd.images?.find((i: any) => i.is_primary)?.image_url
-                || missingProd.images?.[0]?.image_url
-                || PLACEHOLDER_PRODUCT_IMG
-              const profile = (missingProd as any).profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+              const primaryImg = primaryImageUrl(missingProd.images, PLACEHOLDER_PRODUCT_IMG)
+              const profile = missingProd.profiles
               const producerName = profile
                 ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || missingProd.producer || 'Productor')
                 : (missingProd.producer || 'Productor')
@@ -269,7 +260,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           return b.rating - a.rating
         })
 
-        setFeatured(processed.slice(0, 3))
+        setFeatured(processed.slice(0, 9))
       } catch (e) {
         console.error('Error cargando productos patrocinados en HomeScreen:', e)
       }
@@ -286,16 +277,21 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           .order('starts_at', { ascending: false })
           .limit(6)
 
-        const featuredExperiences = (experienceAds || [])
-          .map((ad: any) => {
-            const experience = ad.experiences
-            if (!experience) return null
-            const primaryImage = experience.images?.find((img: any) => img.is_primary) || experience.images?.[0]
-            return { ...experience, img: primaryImage?.image_url || PLACEHOLDER_EXPERIENCE_IMG }
-          })
-          .filter(Boolean)
+        const featuredExperiences: TourismPreview[] = (experienceAds || []).flatMap((ad) => {
+          const experience = ad.experiences
+          if (!experience) return []
+          const primaryImage = experience.images?.find((img) => img.is_primary) || experience.images?.[0]
+          return [{
+            id: experience.id,
+            title: experience.title,
+            host: experience.host ?? '',
+            price: experience.price,
+            tags: experience.tags ?? [],
+            img: primaryImage?.image_url || PLACEHOLDER_EXPERIENCE_IMG,
+          }]
+        })
 
-        setTourism(featuredExperiences as TourismPreview[])
+        setTourism(featuredExperiences)
       } catch (e) {
         console.error('Error cargando experiencias patrocinadas en HomeScreen:', e)
       }
@@ -481,7 +477,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
         </p>
       ) : (
         <div style={{ marginBottom: 28 }}>
-          <AutoCarousel>
+          <AutoCarousel perView={3}>
             {featured.map((item) => (
               <div
                 key={item.id}

@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+// Generado con: supabase gen types typescript --linked --schema public > src/lib/database.types.ts
+import type { Database } from './database.types'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -15,4 +17,4 @@ export const authRedirectInfo = {
 // URL a la que Supabase redirige desde los correos (debe estar en Auth → URL Configuration)
 export const authRedirectUrl = `${window.location.origin}${import.meta.env.BASE_URL}`
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+export const supabase = createClient<Database>(supabaseUrl, supabaseKey)

@@ -8,7 +8,7 @@ interface TempPasswordModalProps {
 }
 
 // Genera una contraseña temporal legible (sin caracteres ambiguos como 0/O, 1/l)
-function generateTempPassword(length = 10) {
+export function generateTempPassword(length = 10) {
   const letters = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz'
   const digits = '23456789'
   const all = letters + digits

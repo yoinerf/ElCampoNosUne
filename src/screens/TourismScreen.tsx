@@ -2,10 +2,17 @@ import React, { useState, useEffect, useRef } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import ExperienceReservationModal from '../components/ExperienceReservationModal'
 import AuthRequiredModal from '../components/AuthRequiredModal'
-import ExperienceModal from '../components/ExperienceModal'
+import ExperienceModal, { type ExperienceFormData } from '../components/ExperienceModal'
 import { supabase } from '../lib/supabase'
 import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
 import { isAdvertisementActive } from '../lib/dateColombia'
+import { canCurrentUserPublish, confirmGoToDocuments } from '../lib/producerDocuments'
+import { requestPanelSection } from '../lib/notifications'
+import { alertDialog } from '../components/ConfirmDialog'
+import type { Tab, UserRole } from '../lib/types'
+import type { Json } from '../lib/database.types'
+import { primaryImageUrl } from '../lib/catalog'
+import type { AdvertisementRow } from '../lib/catalog'
 
 const tagColors: Record<string, string> = {
   Naturaleza: '#3D7A28',
@@ -31,17 +38,16 @@ interface Experience {
   featured: boolean
 }
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin'
 
 interface TourismScreenProps {
   onRequireAuth?: (mode: 'auth' | 'login') => void
-  onNavigate: (tab: Tab | any) => void
-  activeNav?: Tab | any
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: 'asociacion' | 'turismo' | 'comprador' | 'admin' | null
+  userRole?: UserRole | null
 }
 
-export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick, userRole: propUserRole }: TourismScreenProps) {
+export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, onProfileClick, userRole }: TourismScreenProps) {
   const [selected, setSelected] = useState<string | null>(null)
 
   const handleSelectExperience = (expId: string) => {
@@ -82,9 +88,8 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   })
   const [authModalOpen, setAuthModalOpen] = useState(false)
   const [pendingReservation, setPendingReservation] = useState<Experience | null>(null)
-  const [userRole, setUserRole] = useState<'asociacion' | 'turismo' | 'comprador' | 'admin' | null>(null)
-  const [allAds, setAllAds] = useState<any[]>([])
-  const [activeAds, setActiveAds] = useState<any[]>([])
+  const [allAds, setAllAds] = useState<AdvertisementRow[]>([])
+  const [activeAds, setActiveAds] = useState<AdvertisementRow[]>([])
   const [dismissedPromo, setDismissedPromo] = useState(false)
   const [featuredIndex, setFeaturedIndex] = useState(0)
   const [featuredSlideDir, setFeaturedSlideDir] = useState<'left' | 'right' | null>(null)
@@ -92,10 +97,11 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
 
   const loadExperiences = async () => {
     try {
-      const [{ data: experiencesData, error: expErr }, { data: reviewsData }] = await Promise.all([
-        supabase.from('experiences').select('*, images(*), profiles(org_name, first_name, last_name)').order('created_at', { ascending: false }),
-        supabase.from('experience_reviews').select('experience_id, rating'),
-      ])
+      // Las experiencias aún no tienen tabla de reseñas propia: se usa experiences.rating
+      const { data: experiencesData, error: expErr } = await supabase
+        .from('experiences')
+        .select('*, images(*), profiles:public_profiles(org_name, first_name, last_name)')
+        .order('created_at', { ascending: false })
 
       if (expErr) {
         console.error('Error cargando experiencias:', expErr)
@@ -103,28 +109,12 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         return
       }
 
-      const reviewsMap: Record<string, number[]> = {}
-      if (reviewsData && Array.isArray(reviewsData)) {
-        for (const r of reviewsData) {
-          if (r.experience_id) {
-            if (!reviewsMap[r.experience_id]) reviewsMap[r.experience_id] = []
-            reviewsMap[r.experience_id].push(r.rating)
-          }
-        }
-      }
+      const processed: Experience[] = (experiencesData || []).map((exp) => {
+        const avg = exp.rating ?? 5
 
-      const processed: Experience[] = (experiencesData || []).map((exp: any) => {
-        const ratings = reviewsMap[exp.id] || []
-        const count = ratings.length
-        const avg = count > 0
-          ? Number((ratings.reduce((sum, val) => sum + val, 0) / count).toFixed(1))
-          : (exp.rating ?? 5)
+        const primaryImg = primaryImageUrl(exp.images, 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format')
 
-        const primaryImg = exp.images?.find((i: any) => i.is_primary)?.image_url 
-          || exp.images?.[0]?.image_url 
-          || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
-
-        const profile = exp.profiles as { org_name?: string; first_name?: string; last_name?: string } | null
+        const profile = exp.profiles
         const hostName = profile
           ? (profile.org_name?.trim() || `${profile.first_name ?? ''} ${profile.last_name ?? ''}`.trim() || exp.host || 'Comunidad local')
           : (exp.host || 'Comunidad local')
@@ -135,7 +125,11 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
           img: primaryImg,
           description: exp.description || '',
           rating: avg,
-          reviews: count,
+          reviews: exp.reviews ?? 0,
+          duration: exp.duration ?? '',
+          capacity: exp.capacity ?? '',
+          tags: exp.tags ?? [],
+          featured: exp.featured ?? false,
         }
       })
 
@@ -150,19 +144,6 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   useEffect(() => {
     loadExperiences()
 
-    const loadRole = async () => {
-      const { data: userData } = await supabase.auth.getUser()
-      const user = userData.user
-      if (!user) return
-
-      const { data } = await supabase
-        .from('profiles')
-        .select('user_type')
-        .eq('id', user.id)
-        .single()
-
-      setUserRole((data?.user_type as any) ?? null)
-    }
 
     const loadAds = async () => {
       try {
@@ -180,7 +161,6 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       }
     }
 
-    loadRole()
     loadAds()
   }, [])
 
@@ -248,8 +228,8 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     }, 320)
   }
 
-  const isAdmin = (userRole || propUserRole) === 'admin'
-  const isTurismo = (userRole || propUserRole) === 'turismo'
+  const isAdmin = userRole === 'admin'
+  const isTurismo = userRole === 'turismo'
   const canCreateExperience = isTurismo
   const filteredExperiences = experiences.filter((experience) => {
     const query = searchVal.trim().toLowerCase()
@@ -273,7 +253,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     description: string
     entityType?: string
     entityId?: string | null
-    metadata?: Record<string, unknown>
+    metadata?: Json
   }) => {
     try {
       const { error } = await supabase.from('activities').insert([
@@ -368,7 +348,19 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     return activitySaved
   }
 
-  const handleCreateExperience = async (formData: any) => {
+  // Validación documental antes de abrir el formulario (la BD también lo bloquea al guardar)
+  const openPublishForm = async () => {
+    if (!(await canCurrentUserPublish())) {
+      if (await confirmGoToDocuments()) {
+        requestPanelSection('settings')
+        onNavigate?.('admin')
+      }
+      return
+    }
+    setShowForm(true)
+  }
+
+  const handleCreateExperience = async (formData: ExperienceFormData) => {
     if (!canCreateExperience) {
       setSubmitMessage('Tu perfil no permite registrar experiencias')
       return
@@ -400,8 +392,6 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
       description: formData.description ? formData.description.trim() : null,
       tags: formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean),
       featured: formData.featured,
-      rating: 5,
-      reviews: 0,
     }
 
     const { data: insertedExperience, error } = await supabase.from('experiences').insert([payload]).select()
@@ -409,11 +399,12 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     if (error) {
       setSubmitMessage(error.message)
       setSaving(false)
+      await alertDialog({ title: 'No se pudo crear la experiencia', message: error.message, tone: 'danger' })
       return
     }
 
     if (insertedExperience?.[0]?.id && formData.uploadedImages && formData.uploadedImages.length > 0) {
-      const imageRows = formData.uploadedImages.map((img: any) => ({
+      const imageRows = formData.uploadedImages.map((img) => ({
         product_id: null,
         experience_id: insertedExperience[0].id,
         storage_path: img.storagePath,
@@ -422,7 +413,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         sort_order: img.sortOrder,
       }))
       const { error: imgErr } = await supabase.from('images').insert(imageRows)
-      if (imgErr) console.error('Error al registrar imágenes de experiencia en public.images:', imgErr.message)
+      if (imgErr) await alertDialog({ title: 'La experiencia se creó, pero sus imágenes no', message: imgErr.message, tone: 'warning' })
     }
 
     const activitySaved = await recordActivity({
@@ -470,7 +461,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
         activeNav={activeNav ?? 'tourism'}
         onNavigate={onNavigate}
         onProfileClick={onProfileClick}
-        userRole={userRole || propUserRole}
+        userRole={userRole}
         contentStyle={{ paddingBottom: 20 }}
       >
         {selectedExperience ? (
@@ -1159,7 +1150,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                   {ad.image_url && (
                     <img
                       src={ad.image_url}
-                      alt={ad.title}
+                      alt={ad.title ?? ''}
                       style={{
                         width: 84,
                         height: 84,
@@ -1410,7 +1401,7 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
                   Registra tu servicio de turismo comunitario y conecta con viajeros
                 </p>
                 <button
-                  onClick={() => setShowForm(true)}
+                  onClick={openPublishForm}
                   style={{
                     padding: '11px 24px',
                     borderRadius: 12,

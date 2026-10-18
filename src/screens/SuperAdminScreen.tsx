@@ -10,18 +10,36 @@ import {
   getColombiaNowForInput,
 } from '../lib/dateColombia'
 import logoSrc from '../assets/logo-nofond.png'
-import ProductModal from '../components/ProductModal'
-import ExperienceModal from '../components/ExperienceModal'
+import ProductModal, { type ProductFormData, type ProductInitialData } from '../components/ProductModal'
+import ExperienceModal, { type ExperienceFormData, type ExperienceInitialData } from '../components/ExperienceModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import TempPasswordModal from '../components/TempPasswordModal'
 import { fetchAllTickets, type SupportTicket } from '../lib/buyer'
+import NotificationBell from '../components/NotificationBell'
+import { usePanelSectionRequest } from '../lib/notifications'
+import CertifiedBadge from '../components/CertifiedBadge'
+import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
+import { generateTempPassword } from '../components/TempPasswordModal'
+import { fetchDocuments, validationState } from '../lib/producerDocuments'
+import { useStores } from '../lib/storesContext'
+import { uploadPublicImage } from '../lib/imageUpload'
+import { primaryImageUrl } from '../lib/catalog'
+import type { TablesInsert as TableInsert } from '../lib/database.types'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
+import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, SItem, StatCard, I } from '../components/superadmin/ui'
+import MyAccountCard from '../components/MyAccountCard'
+import StoresManager from '../components/superadmin/StoresManager'
+import { APP_VERSION } from '../lib/version'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'settings'
+type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'stores' | 'settings'
 
 interface UserRow {
   id: string
@@ -29,8 +47,12 @@ interface UserRow {
   last_name: string
   org_name: string
   user_type: string
+  // Tienda del productor o del administrador de tienda (profiles.store)
+  store?: string
   department: string
   municipality: string
+  document_type?: string | null
+  document_number?: string | null
   email?: string
   phone?: string | null
   created_at: string
@@ -44,9 +66,7 @@ interface ProductRow {
   price: number
   stock: string
   unit: string
-  category: string
   category_id: string
-  origin: string
   description: string
   img: string
   certified?: boolean
@@ -80,190 +100,25 @@ interface AdRow {
 }
 
 interface Props {
-  onNavigate: (tab: any) => void
-  activeNav?: string
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
-}
-
-// ─── Brand Tokens — Manual de Identidad "Campo Contemporáneo" ─────────────────
-
-const B = {
-  bg: '#FAF8F5',           // Crema cálido de lectura y fondo principal
-  bgCard: '#FFFFFF',       // Superficie tarjetas blanca limpia
-  bgCardAlt: '#F5EEE6',    // Crema suave secundario
-  border: '#EDE5DA',       // Borde sutil contemporáneo
-  borderStrong: '#D9CFBF', // Borde reforzado
-  sidebarBg: 'linear-gradient(180deg, #153823 0%, #0F2819 100%)', // Verde profundo institucional
-  green: '#205134',        // Verde profundo oficial
-  greenHover: '#183E27',
-  greenLight: '#6BAA3D',   // Verde acento
-  greenSoft: '#EAF4ED',    // Píldora verde suave
-  terra: '#BA5A30',        // Terracota marca
-  terraDark: '#9B4728',    // Terracota digital para UI y contraste
-  terraSoft: '#FDEEE9',    // Píldora terracota suave
-  gold: '#E5AE30',         // Dorado marca
-  goldSoft: '#FEF8E8',     // Píldora dorada suave
-  text: '#1C2B22',         // Texto principal oscuro nítido
-  textMuted: '#685F54',    // Texto secundario cálido
-  textFaint: '#9E9384',    // Texto tenue / placeholder
-  fontDisplay: "'Poppins', sans-serif",
-  fontBody: "'Nunito Sans', sans-serif",
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
-}
-function ago(iso: string) {
-  const d = (Date.now() - new Date(iso).getTime()) / 1000
-  if (d < 60) return 'Ahora'
-  if (d < 3600) return `${Math.floor(d / 60)} min`
-  if (d < 86400) return `${Math.floor(d / 3600)} h`
-  return `${Math.floor(d / 86400)} días`
-}
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Super Admin',
-  asociacion: 'Asociación',
-  turismo: 'Turismo',
-  comprador: 'Comprador',
-}
-
-const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  admin: { bg: B.terraSoft, color: B.terraDark, border: 'rgba(155,71,40,0.25)' },
-  asociacion: { bg: B.greenSoft, color: B.green, border: 'rgba(32,81,52,0.25)' },
-  turismo: { bg: '#F0F8EC', color: '#3F7B25', border: 'rgba(63,123,37,0.25)' },
-  comprador: { bg: B.goldSoft, color: '#9E740E', border: 'rgba(158,116,14,0.25)' },
-}
-
-const PAGE = 12
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SItem({ icon, label, active, count, onClick }: {
-  icon: React.ReactNode; label: string; active: boolean; count?: number; onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 14px',
-        borderRadius: 12,
-        border: 'none',
-        cursor: 'pointer',
-        width: '100%',
-        textAlign: 'left',
-        background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
-        color: active ? '#FFFFFF' : 'rgba(255,255,255,0.72)',
-        fontFamily: B.fontBody,
-        fontSize: 14,
-        fontWeight: active ? 700 : 600,
-        transition: 'all 180ms ease',
-        position: 'relative',
-      }}
-      className="hover:bg-white/10 hover:text-white"
-    >
-      <span style={{ opacity: active ? 1 : 0.8, flexShrink: 0 }}>{icon}</span>
-      <span style={{ flex: 1 }}>{label}</span>
-      {count !== undefined && (
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            background: active ? '#E5AE30' : 'rgba(255,255,255,0.15)',
-            color: active ? '#153823' : '#FFFFFF',
-            padding: '2px 8px',
-            borderRadius: 20,
-          }}
-        >
-          {count}
-        </span>
-      )}
-      {active && (
-        <span
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: '20%',
-            bottom: '20%',
-            width: 3.5,
-            borderRadius: '0 4px 4px 0',
-            background: '#E5AE30',
-          }}
-        />
-      )}
-    </button>
-  )
-}
-
-function StatCard({ emoji, value, label, sub, accent }: { emoji: string; value: string | number; label: string; sub?: string; accent: string }) {
-  return (
-    <div
-      style={{
-        background: B.bgCard,
-        border: `1px solid ${B.border}`,
-        borderRadius: 18,
-        padding: '20px 22px',
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: '0 4px 16px rgba(32,81,52,0.04)',
-      }}
-    >
-      <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: accent, opacity: 0.08 }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: accent + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-          {emoji}
-        </div>
-        {sub && (
-          <span style={{ fontSize: 11, color: accent, fontWeight: 800, background: accent + '14', padding: '3px 8px', borderRadius: 12 }}>
-            {sub}
-          </span>
-        )}
-      </div>
-      <div style={{ fontFamily: B.fontDisplay, fontSize: 26, fontWeight: 800, color: B.text, lineHeight: 1.1 }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 13, color: B.textMuted, marginTop: 4, fontWeight: 600 }}>
-        {label}
-      </div>
-    </div>
-  )
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-const I = {
-  dash: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>,
-  users: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>,
-  box: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" /></svg>,
-  exp: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg>,
-  ads: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>,
-  cog: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>,
-  logout: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>,
-  trash: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>,
-  edit: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>,
-  plus: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
-  store: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" /></svg>,
-  menu: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>,
+  userRole?: UserRole | null
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SuperAdminScreen({ onNavigate }: Props) {
+  const { storeName, allStores } = useStores()
   const [section, setSection] = useState<SuperSection>('dashboard')
+  // Una notificación de solicitud nueva abre Solicitudes con la lista actualizada
+  usePanelSectionRequest<SuperSection>((s) => { setSection(s); fetchAllTickets().then(setTickets) }, ['tickets'])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   const [users, setUsers] = useState<UserRow[]>([])
+  // Productores y anfitriones con RUT y Cámara de Comercio aprobados
+  const [certifiedIds, setCertifiedIds] = useState<Set<string>>(new Set())
   const [products, setProducts] = useState<ProductRow[]>([])
   const [experiences, setExperiences] = useState<ExperienceRow[]>([])
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
@@ -272,14 +127,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, reservations: 0, income: 0 })
 
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
-  const [productModal, setProductModal] = useState<{ open: boolean; editId: string | null; initialData?: any }>({ open: false, editId: null })
-  const [expModal, setExpModal] = useState<{ open: boolean; editId: string | null; initialData?: any }>({ open: false, editId: null })
+  const [productModal, setProductModal] = useState<{ open: boolean; editId: string | null; initialData?: ProductInitialData }>({ open: false, editId: null })
+  const [expModal, setExpModal] = useState<{ open: boolean; editId: string | null; initialData?: ExperienceInitialData }>({ open: false, editId: null })
 
   // Ad Modal State
   const [adModal, setAdModal] = useState<Partial<AdRow> | null>(null)
@@ -298,8 +152,11 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     email: '',
     password: '',
     user_type: 'asociacion',
+    store: 'campo',
     department: '',
     municipality: '',
+    document_type: '',
+    document_number: '',
   })
   const [userCreating, setUserCreating] = useState(false)
 
@@ -318,19 +175,20 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: expsData },
         { data: adsData },
         { data: catsData },
-        { data: resData },
-        { data: deptsData },
+        { data: ordersData },
+        { count: reservationsCount },
         statusesData,
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name, business_type').eq('active', true),
-        supabase.from('reservations').select('id, total'),
-        supabase.from('departments').select('id, name').order('name', { ascending: true }),
+        // reservations no tiene columna total: los ingresos salen de orders
+        supabase.from('orders').select('total, payment_status'),
+        supabase.from('reservations').select('id', { count: 'exact', head: true }),
         fetchOrderStatuses(),
         fetchOrderItems(),
         fetchAllTickets(),
@@ -340,41 +198,59 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       setOrderItems(itemsData)
       setTickets(ticketsData)
       setUsers((usersData || []) as UserRow[])
-      setDepartments((deptsData || []) as { id: string; name: string }[])
+      const sellerIds = ((usersData || []) as UserRow[]).filter(u => u.user_type === 'asociacion' || u.user_type === 'turismo').map(u => u.id)
+      fetchDocuments(sellerIds).then((docs) => {
+        setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id)) === 'validado')))
+      })
 
-      const userMap = new Map((usersData || []).map((u: any) => [u.id, u]))
+      const userMap = new Map((usersData || []).map((u) => [u.id, u]))
 
-      const mappedProds = (prodsData || []).map((p: any) => {
-        const u = userMap.get(p.producer_id)
-        const producerName = p.producer?.trim() || u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || 'Productor'
-        return {
-          ...p,
-          producer: producerName,
-          img: p.images?.find((i: any) => i.is_primary)?.image_url || p.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop',
-        }
-      }) as ProductRow[]
+      const displayName = (id: string | null, fallback: string) => {
+        const u = id ? userMap.get(id) : undefined
+        return u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || fallback
+      }
+
+      const mappedProds: ProductRow[] = (prodsData || []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        producer: p.producer?.trim() || displayName(p.producer_id, 'Productor'),
+        producer_id: p.producer_id ?? '',
+        price: p.price,
+        stock: p.stock ?? '',
+        unit: p.unit ?? '',
+        category_id: p.category_id ?? '',
+        description: p.description ?? '',
+        img: primaryImageUrl(p.images, 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop'),
+        certified: p.certified ?? undefined,
+      }))
       setProducts(mappedProds)
 
-      const mappedExps = (expsData || []).map((e: any) => {
-        const u = userMap.get(e.host_id)
-        const hostName = e.host?.trim() || u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || 'Comunidad local'
-        return {
-          ...e,
-          host: hostName,
-          img: e.images?.find((i: any) => i.is_primary)?.image_url || e.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400&h=300&fit=crop',
-        }
-      }) as ExperienceRow[]
+      const mappedExps: ExperienceRow[] = (expsData || []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        host: e.host?.trim() || displayName(e.host_id, 'Comunidad local'),
+        host_id: e.host_id ?? '',
+        price: e.price,
+        capacity: e.capacity ?? '',
+        duration: e.duration ?? '',
+        description: e.description ?? '',
+        img: primaryImageUrl(e.images, 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400&h=300&fit=crop'),
+        tags: e.tags ?? [],
+      }))
       setExperiences(mappedExps)
 
       setAds((adsData || []) as AdRow[])
       setCategories((catsData || []) as { id: string; name: string; business_type: string }[])
 
-      const totalIncome = (resData || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0)
+      // Ingresos = pedidos pagados (contraentrega y transferencias quedan 'Pending' hasta confirmarse)
+      const totalIncome = (ordersData || [])
+        .filter((o) => o.payment_status === 'Paid')
+        .reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       setStats({
         users: (usersData || []).length,
         products: mappedProds.length,
         experiences: mappedExps.length,
-        reservations: resData?.length || 0,
+        reservations: (ordersData?.length || 0) + (reservationsCount || 0),
         income: totalIncome,
       })
     } catch (e) {
@@ -391,7 +267,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const handleConfirmDelete = async () => {
     if (!confirmDelete) return
     const { type, id } = confirmDelete
-    let error: any = null
+    let error: { message: string } | null = null
     if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
     else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
     else if (type === 'user') {
@@ -408,6 +284,15 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (e) e.preventDefault()
     if (!newUserData.first_name.trim()) {
       showToast('⚠️ Por favor ingresa el nombre')
+      return
+    }
+    const docError = validateDocument(newUserData.document_type, newUserData.document_number)
+    if (docError) {
+      showToast('⚠️ ' + docError)
+      return
+    }
+    if (!newUserData.department || !newUserData.municipality) {
+      showToast('⚠️ Selecciona el departamento y el municipio')
       return
     }
     if (!newUserData.email.trim() || !newUserData.password.trim()) {
@@ -429,10 +314,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         first_name: newUserData.first_name.trim(),
         last_name: newUserData.last_name.trim(),
         org_name: newUserData.org_name.trim(),
-        phone: newUserData.phone.trim(),
+        phone: onlyPhoneDigits(newUserData.phone),
         user_type: newUserData.user_type,
-        department: newUserData.department.trim(),
-        municipality: newUserData.municipality.trim(),
+        store: STORE_ROLES.includes(newUserData.user_type) ? newUserData.store : 'campo',
+        department: newUserData.department,
+        municipality: newUserData.municipality,
+        document_type: newUserData.document_type,
+        document_number: normalizeDocumentNumber(newUserData.document_number),
         must_change_password: true,
       })
 
@@ -453,25 +341,28 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         email: '',
         password: '',
         user_type: 'asociacion',
+        store: 'campo',
         department: '',
         municipality: '',
+        document_type: '',
+        document_number: '',
       })
       loadAll()
-    } catch (err: any) {
-      showToast('❌ Excepción: ' + (err.message || String(err)))
+    } catch (err) {
+      showToast('❌ Excepción: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setUserCreating(false)
     }
   }
 
-  const handleSaveProduct = async (formData: any) => {
+  const handleSaveProduct = async (formData: ProductFormData) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const targetProducerId = formData.producer_id || user.id
     const producerName = formData.producer?.trim() || 'Productor'
 
-    const payload: any = {
+    const payload: TableInsert<'products'> = {
       title: formData.title.trim(),
       price: Number(formData.price),
       unit: formData.unit || 'uds',
@@ -486,10 +377,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (productModal.editId) {
       await supabase.from('products').update(payload).eq('id', productModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
-        if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+        if (formData.uploadedImages.some((i) => i.isPrimary)) {
           await supabase.from('images').update({ is_primary: false }).eq('product_id', productModal.editId)
         }
-        const rows = formData.uploadedImages.map((img: any) => ({
+        const rows = formData.uploadedImages.map((img) => ({
           product_id: productModal.editId,
           experience_id: null,
           storage_path: img.storagePath,
@@ -507,7 +398,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         return
       }
       if (newProd && formData.uploadedImages?.length > 0) {
-        const rows = formData.uploadedImages.map((img: any) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
+        const rows = formData.uploadedImages.map((img) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
       }
     }
@@ -516,14 +407,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     loadAll()
   }
 
-  const handleSaveExperience = async (formData: any) => {
+  const handleSaveExperience = async (formData: ExperienceFormData) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const targetHostId = formData.host_id || user.id
     const hostName = formData.host?.trim() || 'Comunidad local'
 
-    const payload: any = {
+    const payload: TableInsert<'experiences'> = {
       title: formData.title.trim(),
       price: Number(formData.price),
       capacity: `${formData.capacity || '10'} personas`,
@@ -538,10 +429,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (expModal.editId) {
       await supabase.from('experiences').update(payload).eq('id', expModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
-        if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+        if (formData.uploadedImages.some((i) => i.isPrimary)) {
           await supabase.from('images').update({ is_primary: false }).eq('experience_id', expModal.editId)
         }
-        const rows = formData.uploadedImages.map((img: any) => ({
+        const rows = formData.uploadedImages.map((img) => ({
           product_id: null,
           experience_id: expModal.editId,
           storage_path: img.storagePath,
@@ -559,7 +450,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         return
       }
       if (newExp && formData.uploadedImages?.length > 0) {
-        const rows = formData.uploadedImages.map((img: any) => ({ product_id: null, experience_id: newExp.id, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
+        const rows = formData.uploadedImages.map((img) => ({ product_id: null, experience_id: newExp.id, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
       }
     }
@@ -570,15 +461,26 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const handleSaveUser = async () => {
     if (!userEditModal) return
+    const docError = validateOptionalDocument(userEditModal.document_type ?? '', userEditModal.document_number ?? '')
+    if (docError) {
+      showToast('⚠️ ' + docError)
+      return
+    }
+    if (!userEditModal.department || !userEditModal.municipality) {
+      showToast('⚠️ Selecciona el departamento y el municipio')
+      return
+    }
     setUserSaving(true)
     const { error } = await supabase.from('profiles').update({
       first_name: userEditModal.first_name,
       last_name: userEditModal.last_name,
       org_name: userEditModal.org_name,
-      phone: userEditModal.phone?.trim() || null,
+      phone: onlyPhoneDigits(userEditModal.phone || "") || null,
       user_type: userEditModal.user_type,
+      store: STORE_ROLES.includes(userEditModal.user_type) ? (userEditModal.store ?? 'campo') : 'campo',
       department: userEditModal.department || null,
-      municipality: userEditModal.municipality || null,
+      municipality: userEditModal.municipality,
+      ...documentColumns(userEditModal.document_type ?? '', userEditModal.document_number ?? ''),
     }).eq('id', userEditModal.id)
 
     if (!error) {
@@ -604,21 +506,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (!file) return
     setAdUploading(true)
     try {
-      const ext = file.name.split('.').pop() || 'jpg'
-      const storagePath = `ads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const { error: upErr } = await supabase.storage.from('product-images').upload(storagePath, file, {
-        contentType: file.type,
-        upsert: false,
-      })
-      if (upErr) {
-        showToast('❌ Error al subir imagen: ' + upErr.message)
+      const result = await uploadPublicImage('product-images', file, 'ads')
+      if (result.error !== undefined) {
+        showToast('❌ Error al subir imagen: ' + result.error)
         return
       }
-      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(storagePath)
+      const { publicUrl } = result
       setAdModal(prev => prev ? { ...prev, image_url: publicUrl } : null)
       showToast('✅ Imagen subida correctamente')
-    } catch (err: any) {
-      showToast('❌ Error: ' + err.message)
+    } catch (err) {
+      showToast('❌ Error: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setAdUploading(false)
     }
@@ -629,7 +526,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     setAdSaving(true)
     // Se excluye link_url: el anuncio redirige directamente al producto o experiencia
     // Se guardan las fechas siempre con la zona horaria de Colombia (-05:00)
-    const payload: any = {
+    const payload: TableInsert<'advertisements'> = {
       type: adModal.type || 'product',
       title: adModal.title?.trim() || '',
       image_url: adModal.image_url || null,
@@ -639,7 +536,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       product_id: adModal.type === 'product' ? adModal.product_id || null : null,
       experience_id: adModal.type === 'experience' ? adModal.experience_id || null : null,
     }
-    let error: any = null
+    let error: { message: string } | null = null
     if (adModal.id) {
       ({ error } = await supabase.from('advertisements').update(payload).eq('id', adModal.id))
     } else {
@@ -682,7 +579,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       org_name: u.org_name,
     }))
 
-  const getPagedData = (data: any[]) => {
+  const getPagedData = <T,>(data: T[]) => {
     const total = Math.max(1, Math.ceil(data.length / PAGE))
     const pg = Math.min(page, total)
     return { items: data.slice((pg - 1) * PAGE, pg * PAGE), total, pg }
@@ -766,6 +663,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     { id: 'orders' as SuperSection, label: 'Pedidos', icon: I.store, count: orderItems.length },
     { id: 'tickets' as SuperSection, label: 'Solicitudes', icon: I.users, count: tickets.filter(t => t.status === 'abierto' || t.status === 'en_revision').length },
     { id: 'ads' as SuperSection, label: 'Anuncios', icon: I.ads, count: ads.length },
+    { id: 'stores' as SuperSection, label: 'Tiendas', icon: I.store, count: allStores.length },
     { id: 'settings' as SuperSection, label: 'Configuración', icon: I.cog },
   ]
 
@@ -779,6 +677,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     orders: 'Gestión de Pedidos',
     tickets: 'Solicitudes y Reportes',
     ads: 'Gestión de Anuncios',
+    stores: 'Tiendas de la plataforma',
     settings: 'Configuración del Sistema',
   }
 
@@ -893,7 +792,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
           left: 0,
           bottom: 0,
           zIndex: 50,
-          boxShadow: '4px 0 24px rgba(21,56,35,0.12)',
+          boxShadow: '4px 0 24px rgba(11,35,64,0.25)',
         }}
       >
         {/* Logo area */}
@@ -969,17 +868,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       </aside>
 
       {/* ── MAIN CONTENT AREA ── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh' }} className="md:ml-[250px]">
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }} className="md:ml-[250px]">
 
         {/* Sticky Clean Topbar */}
         <header
+          className="px-4 md:px-7"
           style={{
             position: 'sticky',
             top: 0,
             zIndex: 30,
             background: '#FFFFFF',
             borderBottom: `1px solid ${B.border}`,
-            padding: '0 28px',
             height: 70,
             display: 'flex',
             alignItems: 'center',
@@ -988,37 +887,36 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
             boxShadow: '0 2px 10px rgba(32,81,52,0.03)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            {/* Menú (solo móvil). Sin display en línea: anularía md:hidden */}
             <button
-              className="flex md:hidden"
+              className="flex md:hidden items-center justify-center"
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               style={{
                 width: 38,
                 height: 38,
+                flexShrink: 0,
                 borderRadius: 10,
                 border: `1px solid ${B.borderStrong}`,
                 background: '#FAF8F5',
                 cursor: 'pointer',
                 color: B.green,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
             >
               {I.menu}
             </button>
-            <div>
-              <h1 style={{ margin: 0, fontFamily: B.fontDisplay, fontSize: 20, fontWeight: 700, color: B.green, lineHeight: 1.2 }}>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontFamily: B.fontDisplay, fontSize: 20, fontWeight: 700, color: B.green, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {sectionLabels[section]}
               </h1>
-              <p style={{ margin: 0, fontSize: 12, color: B.textMuted, fontWeight: 600 }}>
+              <p className="hidden sm:block" style={{ margin: 0, fontSize: 12, color: B.textMuted, fontWeight: 600 }}>
                 Control y superpoderes sobre toda la plataforma
               </p>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <button
               type="button"
               onClick={() => onNavigate('market')}
@@ -1043,19 +941,21 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <span className="hidden sm:inline">Ver Tienda</span>
             </button>
 
+            <NotificationBell buttonStyle={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${B.borderStrong}`, background: '#FAF8F5' }} />
+
             {section === 'users' && (
               <button type="button" onClick={() => setUserCreateModal(true)} style={btnPrimary}>
-                {I.plus} <span>Nuevo Usuario</span>
+                {I.plus} <span className="hidden sm:inline">Nuevo Usuario</span>
               </button>
             )}
             {section === 'products' && (
               <button type="button" onClick={() => setProductModal({ open: true, editId: null })} style={btnPrimary}>
-                {I.plus} <span>Nuevo Producto</span>
+                {I.plus} <span className="hidden sm:inline">Nuevo Producto</span>
               </button>
             )}
             {section === 'experiences' && (
               <button type="button" onClick={() => setExpModal({ open: true, editId: null })} style={btnPrimary}>
-                {I.plus} <span>Nueva Experiencia</span>
+                {I.plus} <span className="hidden sm:inline">Nueva Experiencia</span>
               </button>
             )}
             {section === 'ads' && (
@@ -1069,14 +969,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 })}
                 style={btnPrimary}
               >
-                {I.plus} <span>Nuevo Anuncio</span>
+                {I.plus} <span className="hidden sm:inline">Nuevo Anuncio</span>
               </button>
             )}
           </div>
         </header>
 
         {/* Content View */}
-        <main style={{ flex: 1, padding: '28px', boxSizing: 'border-box' }}>
+        <main className="p-4 md:p-7" style={{ flex: 1, boxSizing: 'border-box', minWidth: 0 }}>
           {loading ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
               {Array.from({ length: 6 }).map((_, i) => (
@@ -1148,7 +1048,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     Distribución de Usuarios por Rol
                   </h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14 }}>
-                    {['admin', 'asociacion', 'turismo', 'comprador'].map(role => {
+                    {['admin', 'admin_tienda', 'asociacion', 'turismo', 'comprador'].map(role => {
                       const count = users.filter(u => u.user_type === role).length
                       const pct = stats.users > 0 ? Math.round((count / stats.users) * 100) : 0
                       const st = ROLE_STYLES[role] || { bg: '#F5F5F5', color: '#333', border: '#ddd' }
@@ -1202,7 +1102,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                         {(u.first_name?.[0] || u.org_name?.[0] || '?').toUpperCase()}
                                       </div>
                                       <div>
-                                        <div style={{ fontWeight: 700, color: B.text, fontSize: 14 }}>{u.first_name} {u.last_name}</div>
+                                        <div style={{ fontWeight: 700, color: B.text, fontSize: 14, display: 'flex', alignItems: 'center', gap: 6 }}>{u.first_name} {u.last_name}{certifiedIds.has(u.id) && <CertifiedBadge />}</div>
                                         <div style={{ fontSize: 11, color: B.textFaint }}>{u.email ? `${u.email} • ` : ''}ID: {u.id.slice(0, 8)}…</div>
                                       </div>
                                     </div>
@@ -1212,6 +1112,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                     <span style={{ background: st.bg, color: st.color, border: `1px solid ${st.border}`, fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20 }}>
                                       {ROLE_LABELS[u.user_type] || u.user_type}
                                     </span>
+                                    {u.store && (u.store !== 'campo' || u.user_type === 'admin_tienda') && (
+                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{storeName(u.store)}</span>
+                                    )}
                                   </TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{[u.municipality, u.department].filter(Boolean).join(', ') || '—'}</TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{ago(u.created_at)}</TD>
@@ -1516,14 +1419,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                               <div style={{ display: 'flex', gap: 8, paddingTop: 10, borderTop: `1px solid ${B.border}` }}>
                                 <button
                                   type="button"
-                                  style={{ ...btnEdit, flex: 1, justifyContent: 'center' } as any}
+                                  style={{ ...btnEdit, flex: 1, justifyContent: 'center' }}
                                   onClick={() => setAdModal({ ...ad })}
                                 >
                                   ✏️ Editar
                                 </button>
                                 <button
                                   type="button"
-                                  style={{ ...btnDanger, flex: 1, justifyContent: 'center' } as any}
+                                  style={{ ...btnDanger, flex: 1, justifyContent: 'center' }}
                                   onClick={() => setConfirmDelete({ type: 'ad', id: ad.id, name: ad.title })}
                                 >
                                   {I.trash} Eliminar
@@ -1550,13 +1453,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <h3 style={{ fontFamily: B.fontDisplay, fontSize: 22, color: B.green, margin: '0 0 8px', fontWeight: 700 }}>
                     Configuración de Super Administrador
                   </h3>
-                  <p style={{ color: B.textMuted, fontSize: 14, margin: '0 0 28px' }}>
+                  <p style={{ color: B.textMuted, fontSize: 14, margin: '0 0 8px' }}>
                     Ajustes de infraestructura, pasarela de pagos y catálogo general.
+                  </p>
+                  <p style={{ margin: '0 0 28px' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: B.green, background: B.greenSoft, padding: '4px 10px', borderRadius: 20 }}>Versión {APP_VERSION}</span>
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
                     {[
                       { emoji: '🏷️', label: 'Gestión de Categorías', desc: 'Activar, pausar o crear categorías de mercado y turismo', coming: false, count: `${categories.length} activas` },
-                      { emoji: '💳', label: 'Pasarela Wompi / Pagos', desc: 'Validación de webhook e integración segura en backend', coming: false, count: 'Conectado' },
+                      { emoji: '💳', label: 'Pasarela Wompi / Pagos en línea', desc: 'Pago con tarjeta y PSE mediante una Edge Function de Supabase', coming: true },
                       { emoji: '📊', label: 'Reportes y Auditoría', desc: 'Exportación de reservas e historial financiero consolidado', coming: true },
                       { emoji: '🔔', label: 'Notificaciones y Alertas', desc: 'Alertas automáticas de stock agotado para asociaciones', coming: true },
                     ].map(item => (
@@ -1580,7 +1486,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     ))}
                   </div>
                 </div>
+                <MyAccountCard style={{ marginTop: 18 }} />
                 <ChangePasswordCard style={{ marginTop: 18 }} />
+              </div>
+            )}
+
+            {section === 'stores' && (
+              <div style={{ maxWidth: 900, margin: '0 auto' }}>
+                <StoresManager />
               </div>
             )}
           </>}
@@ -1596,12 +1509,12 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       {/* ── MODAL EDITAR USUARIO ── */}
       {userEditModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 32px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: '0 0 20px', fontWeight: 700 }}>
               ✏️ Editar Usuario
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 14 }}>
               <div>
                 <label style={lbl}>Nombre</label>
                 <input style={inp} value={userEditModal.first_name || ''} onChange={e => setUserEditModal({ ...userEditModal, first_name: e.target.value })} />
@@ -1616,39 +1529,30 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <input style={inp} value={userEditModal.org_name || ''} onChange={e => setUserEditModal({ ...userEditModal, org_name: e.target.value })} />
             </div>
             <div style={{ marginBottom: 16 }}>
-              <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
-              <input style={inp} inputMode="tel" placeholder="Ej: 300 123 4567" value={userEditModal.phone || ''} onChange={e => setUserEditModal({ ...userEditModal, phone: e.target.value })} />
+              <label style={lbl}>WhatsApp</label>
+              <input style={inp} {...phoneInputProps} value={onlyPhoneDigits(userEditModal.phone || '')} onChange={e => setUserEditModal({ ...userEditModal, phone: onlyPhoneDigits(e.target.value) })} />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={lbl}>Departamento</label>
-                <select
-                  style={inp}
-                  value={userEditModal.department || ''}
-                  onChange={e => setUserEditModal({ ...userEditModal, department: e.target.value })}
-                >
-                  <option value="">Seleccionar departamento...</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.name}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Municipio</label>
-                <input
-                  style={inp}
-                  placeholder="Ej: Pitalito, Pasto"
-                  value={userEditModal.municipality || ''}
-                  onChange={e => setUserEditModal({ ...userEditModal, municipality: e.target.value })}
-                />
-              </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
+              <DocumentFields
+                documentType={userEditModal.document_type ?? ''}
+                documentNumber={userEditModal.document_number ?? ''}
+                onChange={({ documentType, documentNumber }) => setUserEditModal((u) => (u ? { ...u, document_type: documentType, document_number: documentNumber } : u))}
+                labelStyle={lbl}
+                inputStyle={inp}
+                required={false}
+              />
+              <LocationFields
+                department={userEditModal.department ?? ''}
+                municipality={userEditModal.municipality ?? ''}
+                onChange={(loc) => setUserEditModal((u) => (u ? { ...u, ...loc } : u))}
+                labelStyle={lbl}
+                inputStyle={inp}
+              />
             </div>
             <div style={{ marginBottom: 24 }}>
               <label style={lbl}>Rol en el ecosistema</label>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {['admin', 'asociacion', 'turismo', 'comprador'].map(r => {
+                {['admin', 'admin_tienda', 'asociacion', 'turismo', 'comprador'].map(r => {
                   const sel = userEditModal.user_type === r
                   const st = ROLE_STYLES[r]
                   return (
@@ -1674,6 +1578,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   )
                 })}
               </div>
+              {STORE_ROLES.includes(userEditModal.user_type) && (
+                <StorePicker label={userEditModal.user_type === 'admin_tienda' ? 'Tienda que administra' : undefined} value={userEditModal.store ?? 'campo'} onChange={(s) => setUserEditModal({ ...userEditModal, store: s })} />
+              )}
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <button
@@ -1698,8 +1605,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       {/* ── MODAL CREAR USUARIO ── */}
       {userCreateModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.15)', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 32px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: 0, fontWeight: 700 }}>
                 👤 Crear Nuevo Usuario
@@ -1714,7 +1621,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
             </div>
 
             <form onSubmit={handleCreateUser} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Nombre *</label>
                   <input
@@ -1747,17 +1654,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               </div>
 
               <div>
-                <label style={lbl}>WhatsApp (notificaciones de pedidos)</label>
+                <label style={lbl}>WhatsApp</label>
                 <input
                   style={inp}
-                  inputMode="tel"
-                  placeholder="Ej: 300 123 4567"
+                  {...phoneInputProps}
                   value={newUserData.phone}
-                  onChange={e => setNewUserData({ ...newUserData, phone: e.target.value })}
+                  onChange={e => setNewUserData({ ...newUserData, phone: onlyPhoneDigits(e.target.value) })}
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Correo Electrónico *</label>
                   <input
@@ -1771,22 +1677,26 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 </div>
                 <div>
                   <label style={lbl}>Contraseña Temporal *</label>
-                  <input
-                    type="password"
-                    style={inp}
-                    placeholder="Mínimo 6 caracteres"
-                    required
-                    minLength={6}
-                    value={newUserData.password}
-                    onChange={e => setNewUserData({ ...newUserData, password: e.target.value })}
-                  />
+                  {/* Visible para poder entregársela al usuario; deberá cambiarla al ingresar */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="text"
+                      style={{ ...inp, fontFamily: 'monospace', letterSpacing: 0.5 }}
+                      placeholder="Mínimo 8 caracteres"
+                      required
+                      minLength={8}
+                      value={newUserData.password}
+                      onChange={e => setNewUserData({ ...newUserData, password: e.target.value.trim() })}
+                    />
+                    <button type="button" title="Generar contraseña" onClick={() => setNewUserData({ ...newUserData, password: generateTempPassword() })} style={{ flexShrink: 0, padding: '0 12px', borderRadius: 10, border: `1px solid ${B.borderStrong}`, background: '#FFFFFF', color: B.green, fontWeight: 700, cursor: 'pointer' }}>↻</button>
+                  </div>
                 </div>
               </div>
 
               <div>
                 <label style={lbl}>Rol en el ecosistema</label>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {['asociacion', 'turismo', 'comprador', 'admin'].map(r => {
+                  {['asociacion', 'turismo', 'comprador', 'admin_tienda', 'admin'].map(r => {
                     const sel = newUserData.user_type === r
                     const st = ROLE_STYLES[r]
                     return (
@@ -1812,33 +1722,26 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     )
                   })}
                 </div>
+                {STORE_ROLES.includes(newUserData.user_type) && (
+                  <StorePicker label={newUserData.user_type === 'admin_tienda' ? 'Tienda que administra' : undefined} value={newUserData.store} onChange={(s) => setNewUserData({ ...newUserData, store: s })} />
+                )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                <div>
-                  <label style={lbl}>Departamento</label>
-                  <select
-                    style={inp}
-                    value={newUserData.department}
-                    onChange={e => setNewUserData({ ...newUserData, department: e.target.value })}
-                  >
-                    <option value="">Seleccionar departamento...</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Municipio</label>
-                  <input
-                    style={inp}
-                    placeholder="Ej: Pitalito, Pasto"
-                    value={newUserData.municipality}
-                    onChange={e => setNewUserData({ ...newUserData, municipality: e.target.value })}
-                  />
-                </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <DocumentFields
+                  documentType={newUserData.document_type}
+                  documentNumber={newUserData.document_number}
+                  onChange={({ documentType, documentNumber }) => setNewUserData((n) => ({ ...n, document_type: documentType, document_number: documentNumber }))}
+                  labelStyle={lbl}
+                  inputStyle={inp}
+                />
+                <LocationFields
+                  department={newUserData.department}
+                  municipality={newUserData.municipality}
+                  onChange={(loc) => setNewUserData((n) => ({ ...n, ...loc }))}
+                  labelStyle={lbl}
+                  inputStyle={inp}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
@@ -1865,7 +1768,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       {/* ── MODAL ANUNCIOS (Con subida de imágenes y redirección a producto) ── */}
       {adModal && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(21,56,35,0.45)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 32, width: '100%', maxWidth: 540, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', margin: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 32px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 540, boxShadow: '0 20px 60px rgba(0,0,0,0.18)', margin: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h3 style={{ fontFamily: B.fontDisplay, fontSize: 20, color: B.green, margin: 0, fontWeight: 700 }}>
                 📢 {adModal.id ? 'Editar Anuncio' : 'Nuevo Anuncio'}
@@ -1982,7 +1885,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <input
                 type="file"
                 ref={adFileInputRef}
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png"
                 style={{ display: 'none' }}
                 onChange={e => {
                   const file = e.target.files?.[0]
@@ -2048,7 +1951,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
             {/* Fechas de vigencia */}
             <div style={{ marginBottom: 18 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
                 <div>
                   <label style={lbl}>Fecha de Inicio *</label>
                   <input
@@ -2110,8 +2013,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
       {/* ── MODAL CONFIRM DELETE ── */}
       {confirmDelete && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(21,56,35,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 36, width: '100%', maxWidth: 440, textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(21,56,35,0.5)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>
+          <div style={{ background: '#FFFFFF', border: `1px solid ${B.borderStrong}`, borderRadius: 24, padding: 'clamp(20px, 5vw, 36px)', width: '100%', maxHeight: 'calc(100vh - 32px)', overflowY: 'auto', maxWidth: 440, textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
             <div style={{ width: 60, height: 60, borderRadius: '50%', background: B.terraSoft, color: B.terraDark, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, margin: '0 auto 16px', border: '1px solid rgba(155,71,40,0.2)' }}>
               ⚠️
             </div>
@@ -2175,6 +2078,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
           isOpen
           onClose={() => setProductModal({ open: false, editId: null })}
           onSave={handleSaveProduct}
+          productId={productModal.editId ?? undefined}
           title={productModal.editId ? 'Editar Producto' : 'Nuevo Producto'}
           categories={categories.filter(c => c.business_type === 'asociacion')}
           initialData={productModal.initialData}

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import ScreenShell from '../components/ScreenShell'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
+import { fetchSellerSales } from '../lib/orders'
+import type { Tab, UserRole } from '../lib/types'
 
 const certifications = [
   { label: 'Productor Orgánico', icon: '🌱', active: true },
@@ -9,12 +11,10 @@ const certifications = [
   { label: 'Artesano Certificado', icon: '🎨', active: false },
 ]
 
-type UserRole = 'asociacion' | 'turismo' | 'comprador'
-
 interface ProfileScreenProps {
   userRole?: UserRole | null
-  onNavigate?: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin'
+  onNavigate?: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
 }
 
@@ -97,64 +97,16 @@ export default function ProfileScreen({ userRole: propRole, onNavigate, activeNa
         setOrg(data.org_name || 'Sin organización')
         setLocation(`${data.municipality}, ${data.department}`)
 
-        if (role === 'asociacion') {
-          const { data: productsData } = await supabase
-            .from('products')
-            .select('id, price')
-            .eq('producer_id', user.id)
-
-          const productLookup = new Map((productsData ?? []).map((item) => [item.id, Number(item.price ?? 0)]))
-          const ownedProductIds = (productsData ?? []).map((item) => item.id)
-          let salesCount = 0
-          let incomeAmount = 0
-
-          if (ownedProductIds.length > 0) {
-            const { data: reservationsData } = await supabase
-              .from('reservations')
-              .select('product_id, quantity, total')
-              .in('product_id', ownedProductIds)
-
-            salesCount = reservationsData?.length ?? 0
-            incomeAmount = (reservationsData ?? []).reduce((sum, item) => {
-              const quantity = Number(item.quantity ?? 1)
-              const priceFromProduct = productLookup.get(item.product_id) ?? 0
-              const total = Number(item.total ?? 0)
-              const fallbackValue = Number.isFinite(priceFromProduct) ? priceFromProduct * quantity : 0
-              return sum + (Number.isFinite(total) && total > 0 ? total : fallbackValue)
-            }, 0)
-          }
-
-          setStats({ sales: salesCount, income: incomeAmount, active: productsData?.length ?? 0 })
-        }
-
-        if (role === 'turismo') {
-          const { data: experiencesData } = await supabase
-            .from('experiences')
-            .select('id, price')
-            .eq('host_id', user.id)
-
-          const experienceLookup = new Map((experiencesData ?? []).map((item) => [item.id, Number(item.price ?? 0)]))
-          const ownedExperienceIds = (experiencesData ?? []).map((item) => item.id)
-          let salesCount = 0
-          let incomeAmount = 0
-
-          if (ownedExperienceIds.length > 0) {
-            const { data: reservationsData } = await supabase
-              .from('reservations')
-              .select('experience_id, quantity, total')
-              .in('experience_id', ownedExperienceIds)
-
-            salesCount = reservationsData?.length ?? 0
-            incomeAmount = (reservationsData ?? []).reduce((sum, item) => {
-              const quantity = Number(item.quantity ?? 1)
-              const priceFromExperience = experienceLookup.get(item.experience_id) ?? 0
-              const total = Number(item.total ?? 0)
-              const fallbackValue = Number.isFinite(priceFromExperience) ? priceFromExperience * quantity : 0
-              return sum + (Number.isFinite(total) && total > 0 ? total : fallbackValue)
-            }, 0)
-          }
-
-          setStats({ sales: salesCount, income: incomeAmount, active: experiencesData?.length ?? 0 })
+        if (role === 'asociacion' || role === 'turismo') {
+          // Ventas = ítems de pedidos donde el usuario es el vendedor.
+          // Antes se leía reservations, que solo ve quien reserva y no tiene columna total.
+          const [{ count: activeCount }, sales] = await Promise.all([
+            role === 'asociacion'
+              ? supabase.from('products').select('id', { count: 'exact', head: true }).eq('producer_id', user.id)
+              : supabase.from('experiences').select('id', { count: 'exact', head: true }).eq('host_id', user.id),
+            fetchSellerSales(user.id, role === 'asociacion' ? 'producto' : 'experiencia'),
+          ])
+          setStats({ sales: sales.count, income: sales.income, active: activeCount ?? 0 })
         }
       }
       setLoading(false)

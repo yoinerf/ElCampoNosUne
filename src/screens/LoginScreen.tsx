@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { supabase, authRedirectInfo, authRedirectUrl } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
+import GoogleSignInButton, { AuthDivider } from '../components/GoogleSignInButton'
 
 interface Props {
   onLogin: () => void
@@ -9,6 +10,8 @@ interface Props {
   onBackToHome?: () => void
 }
 
+// Un solo inicio de sesión (El Campo Nos Une) para todas las tiendas: al entrar,
+// cada usuario ve la tienda de su perfil (profiles.store).
 export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBackToHome }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -72,26 +75,6 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
     }
 
     onLogin()
-  }
-
-  const handleSocialAuth = async (provider: 'google' | 'apple') => {
-    try {
-      if (provider === 'google') {
-        const { error: authError } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin,
-          },
-        })
-        if (authError) {
-          setError(`Acceso con ${provider} en configuración. Por favor usa tu correo y contraseña.`)
-        }
-      } else {
-        setError('Acceso con Apple próximamente disponible.')
-      }
-    } catch {
-      setError(`Servicio de autenticación no disponible temporalmente.`)
-    }
   }
 
   return (
@@ -360,7 +343,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="ejemplo@elcamponosune.mx"
+                placeholder="ejemplo@correo.com"
                 autoComplete="email"
                 style={{
                   width: '100%',
@@ -550,114 +533,9 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               {loading ? 'Ingresando...' : 'Entrar'}
             </button>
 
-            {/* Separador "O CONTINUAR CON" */}
-            {/*
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                marginBottom: 18,
-              }}
-            >
-              <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  fontFamily: "'Nunito Sans', sans-serif",
-                  color: '#9CA3AF',
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                O CONTINUAR CON
-              </span>
-              <div style={{ flex: 1, height: 1, backgroundColor: '#E5E7EB' }} />
-            </div>
-            */}
-
-            {/* Botones Sociales */}
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 26 }}>
-              {/* Botón Google */}
-              {/*
-              <button
-                type="button"
-                onClick={() => handleSocialAuth('google')}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1.5px solid #E5E7EB',
-                  background: '#FFFFFF',
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  fontFamily: "'Nunito Sans', sans-serif",
-                  color: '#374151',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24">
-                  <path
-                    fill="#EA4335"
-                    d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.4 9 5 12 5z"
-                  />
-                  <path
-                    fill="#4285F4"
-                    d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
-                  />
-                  <path
-                    fill="#FBBC05"
-                    d="M5.6 14.8c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.3C.7 9.7 0 10.8 0 12s.7 2.3 1.9 4.7l3.7-1.9z"
-                  />
-                  <path
-                    fill="#34A853"
-                    d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.4-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"
-                  />
-                </svg>
-                <span>Acceder con Google</span>
-              </button>
-              */}
-
-              {/* Botón Apple */}
-              {/*
-              <button
-                type="button"
-                onClick={() => handleSocialAuth('apple')}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1.5px solid #E5E7EB',
-                  background: '#FFFFFF',
-                  fontSize: 13.5,
-                  fontWeight: 600,
-                  fontFamily: "'Nunito Sans', sans-serif",
-                  color: '#374151',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  transition: 'background-color 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#F9FAFB')}
-                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#FFFFFF')}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="#111827">
-                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.88c.64-.78 1.08-1.86.96-2.88-.93.04-2.05.62-2.72 1.4-.59.68-1.11 1.77-.97 2.83 1.04.08 2.09-.57 2.73-1.35z" />
-                </svg>
-                <span>Acceder con Apple</span>
-              </button>
-              */}
+            <AuthDivider />
+            <div style={{ marginBottom: 26 }}>
+              <GoogleSignInButton onError={setError} />
             </div>
 
 

@@ -107,7 +107,7 @@ export function isDateRangeActiveInColombia(startsAt?: string | null, endsAt?: s
 /**
  * Valida si un anuncio o destacado está activo y dentro del rango de vigencia de Colombia.
  */
-export function isAdvertisementActive(ad: any): boolean {
+export function isAdvertisementActive(ad: { active?: boolean | null; starts_at?: string | null; ends_at?: string | null } | null | undefined): boolean {
   if (!ad) return false
   if (ad.active === false) return false
   return isDateRangeActiveInColombia(ad.starts_at, ad.ends_at)

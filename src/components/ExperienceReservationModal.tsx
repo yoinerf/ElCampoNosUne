@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import type { StoreSettings } from '../lib/stores'
 
 export interface ExperienceReservationModalProps {
   open: boolean
@@ -54,7 +53,6 @@ export default function ExperienceReservationModal({
     reference: string
     grandTotal: number
     paymentMethod: 'wompi' | 'transferencia'
-    transferInfo?: StoreSettings['transfer_info']
   } | null>(null)
 
   // Parsear capacidad máxima
@@ -145,23 +143,20 @@ export default function ExperienceReservationModal({
     setLoadingPayment(true)
     setErrorMessage('')
 
-    const [{ data: order, error }, { data: settings }] = await Promise.all([
-      supabase.rpc('create_store_order', {
-        p_store: 'campo',
-        p_payment_method: 'BankTransfer',
-        p_items: [{ id: experience.id, type: 'experiencia', quantity: guests }],
-        p_shipping: {
-          fullName,
-          phone,
-          department: 'Presencial',
-          municipality: experience.host,
-          address: `Reserva para el ${reservationDate}. Cupos: ${guests}.`,
-          deliveryNotes: notes || 'Sin notas adicionales',
-        },
-        p_shipping_fee: 0,
-      }),
-      supabase.from('store_settings').select('transfer_info').eq('store', 'campo').maybeSingle(),
-    ])
+    const { data: order, error } = await supabase.rpc('create_store_order', {
+      p_store: 'campo',
+      p_payment_method: 'BankTransfer',
+      p_items: [{ id: experience.id, type: 'experiencia', quantity: guests }],
+      p_shipping: {
+        fullName,
+        phone,
+        department: 'Presencial',
+        municipality: experience.host,
+        address: `Reserva para el ${reservationDate}. Cupos: ${guests}.`,
+        deliveryNotes: notes || 'Sin notas adicionales',
+      },
+      p_shipping_fee: 0,
+    })
     setLoadingPayment(false)
 
     if (error) {
@@ -175,7 +170,6 @@ export default function ExperienceReservationModal({
       reference: String(result?.order_id ?? '').slice(0, 8).toUpperCase(),
       grandTotal: Number(result?.total ?? grandTotal),
       paymentMethod,
-      transferInfo: (settings?.transfer_info as StoreSettings['transfer_info'] | undefined) ?? {},
     })
     setStep('success')
     onSuccess?.()
@@ -993,7 +987,7 @@ export default function ExperienceReservationModal({
                 >
                   {confirmationData?.paymentMethod === 'wompi'
                     ? '¡Reserva confirmada con éxito!'
-                    : '¡Reserva registrada! Realiza tu transferencia'}
+                    : '¡Reserva registrada!'}
                 </h4>
                 <p style={{ margin: 0, fontSize: 13, color: '#666', fontFamily: "'Nunito Sans', sans-serif" }}>
                   Código de referencia:{' '}
@@ -1044,83 +1038,25 @@ export default function ExperienceReservationModal({
                   </div>
                 </div>
 
-                {/* Si es transferencia, mostrar datos bancarios */}
-                {confirmationData?.paymentMethod === 'transferencia' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      borderRadius: 14,
-                      border: '1.5px solid #6BAA3D',
-                      padding: 14,
-                      marginTop: 10,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: '#205134',
-                        marginBottom: 8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      🏦 DATOS PARA LA TRANSFERENCIA
-                    </div>
-                    <div style={{ display: 'grid', gap: 4, fontSize: 12, color: '#444' }}>
-                      <div>
-                        Banco: <strong>{confirmationData.transferInfo?.bank}</strong> ({confirmationData.transferInfo?.accountType})
-                      </div>
-                      <div>
-                        No. de Cuenta: <strong style={{ color: '#205134' }}>{confirmationData.transferInfo?.accountNumber}</strong>
-                      </div>
-                      <div>
-                        Titular: <strong>{confirmationData.transferInfo?.accountHolder}</strong>
-                      </div>
-                      <div>
-                        NIT: <strong>{confirmationData.transferInfo?.nit}</strong>
-                      </div>
-                      <div>
-                        Nequi / Daviplata: <strong style={{ color: '#205134' }}>{confirmationData.transferInfo?.nequi}</strong>
-                      </div>
-                      <div style={{ marginTop: 6, fontSize: 11, color: '#9B4728', fontWeight: 700 }}>
-                        ⚠️ Por favor coloca la referencia <u>{confirmationData.reference}</u> en la descripción de la transferencia.
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div
+                  style={{
+                    background: '#FFF7E8',
+                    border: '1px solid #F0D099',
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    marginTop: 10,
+                    fontSize: 13,
+                    color: '#9B4728',
+                    fontWeight: 600,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  El anfitrión se pondrá en contacto contigo para continuar con el pago y confirmar los detalles de tu visita.
+                </div>
               </div>
 
               {/* Botón de acción final */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {confirmationData?.paymentMethod === 'transferencia' && confirmationData.transferInfo?.whatsapp && (
-                  <a
-                    href={`https://wa.me/${String(confirmationData.transferInfo.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(
-                      `Hola, acabo de reservar la experiencia "${experience.title}" (${guests} personas) para el ${reservationDate}. Mi referencia es ${confirmationData.reference} por valor de ${formatPrice(confirmationData.grandTotal)}. Adjunto el comprobante:`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      borderRadius: 14,
-                      background: '#25D366',
-                      color: '#fff',
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      fontSize: 14,
-                      fontWeight: 800,
-                      textDecoration: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    💬 Enviar comprobante por WhatsApp
-                  </a>
-                )}
                 <button
                   type="button"
                   onClick={onClose}

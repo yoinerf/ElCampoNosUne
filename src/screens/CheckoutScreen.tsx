@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { CartItem } from '../lib/catalog'
 import { supabase } from '../lib/supabase'
 import AuthRequiredModal from '../components/AuthRequiredModal'
-import { MAIN_STORE, isMainStore, type StoreId, type StorePaymentMethod, type TransferInfo } from '../lib/stores'
+import { MAIN_STORE, isMainStore, type StoreId, type StorePaymentMethod } from '../lib/stores'
 import { useStores } from '../lib/storesContext'
 
 interface CheckoutScreenProps {
@@ -110,11 +110,6 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     })
   }, [])
 
-  const [transferData, setTransferData] = useState<{
-    reference: string
-    transferInfo: TransferInfo
-  } | null>(null)
-
   // Cálculos dinámicos
   const isExperienceOnly = items.length > 0 && items.every((item) => item.product.type === 'experiencia')
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
@@ -197,14 +192,8 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
 
     // create_store_order devuelve jsonb: { order_id, store, status, items, subtotal, shipping_fee, total }
     const reference = String((order as { order_id?: string } | null)?.order_id ?? '').slice(0, 8).toUpperCase()
-    if (storeMethod === 'BankTransfer') {
-      setTransferData({ reference, transferInfo: storeConfig.transfer_info })
-      setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nRealiza la transferencia para confirmar tu pedido. El productor lo enviará cuando se confirme el pago.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
-    } else if (storeMethod === 'Cash') {
-      setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nEl productor se pondrá en contacto contigo para coordinar el pago en efectivo y enviará tu pedido cuando lo reciba.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
-    } else {
-      setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! Quedó pendiente de pago y nuestro productor preparará tu envío. \n\n Podrás seguir el estado de tu pedido en el panel de usuario.')
-    }
+    // Por ahora no se muestran datos bancarios: el productor contacta al comprador para el pago
+    setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nEl productor se pondrá en contacto contigo para continuar con el pago y coordinar la entrega.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
     onItemsChange([])
     setLoadingPayment(false)
   }
@@ -262,37 +251,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
               <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 26, margin: '0 0 12px', fontWeight: 700 }}>¡Gracias por tu compra!</h2>
               <p style={{ color: '#444', fontSize: 16, margin: '0 0 20px', lineHeight: 1.6, whiteSpace: 'pre-line', }}>{message}</p>
 
-              {/* Datos bancarios: se configuran por tienda en store_settings.transfer_info */}
-              {transferData && (
-                <div style={{ background: '#FAF7F0', border: '1.5px solid #6BAA3D', borderRadius: 16, padding: 18, textAlign: 'left', marginBottom: 24 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#205134', marginBottom: 8 }}>🏦 DATOS PARA LA TRANSFERENCIA</div>
-                  {transferData.transferInfo?.accountNumber ? (
-                    <div style={{ display: 'grid', gap: 5, fontSize: 13, color: '#3D2B1A' }}>
-                      {transferData.transferInfo.bank && <div>Banco: <strong>{transferData.transferInfo.bank}</strong>{transferData.transferInfo.accountType ? ` (${transferData.transferInfo.accountType})` : ''}</div>}
-                      <div>Cuenta: <strong style={{ color: '#205134' }}>{transferData.transferInfo.accountNumber}</strong></div>
-                      {transferData.transferInfo.accountHolder && <div>Titular: <strong>{transferData.transferInfo.accountHolder}</strong></div>}
-                      {transferData.transferInfo.nit && <div>NIT: <strong>{transferData.transferInfo.nit}</strong></div>}
-                      {transferData.transferInfo.nequi && <div>Nequi / Daviplata: <strong style={{ color: '#205134' }}>{transferData.transferInfo.nequi}</strong></div>}
-                      {transferData.transferInfo.instructions && <div>{transferData.transferInfo.instructions}</div>}
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: 13, color: '#3D2B1A' }}>El productor te enviará los datos de la cuenta para realizar la transferencia.</div>
-                  )}
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#9B4728', fontWeight: 700 }}>
-                    ⚠️ Incluye la referencia <u>{transferData.reference}</u> en la descripción de la transferencia.
-                  </div>
-                  {transferData.transferInfo?.whatsapp && (
-                    <a
-                      href={`https://wa.me/${String(transferData.transferInfo.whatsapp).replace(/\D/g, '')}?text=${encodeURIComponent(`Hola, realicé el pedido con referencia ${transferData.reference}. Adjunto mi comprobante:`)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: '#25D366', color: '#fff', padding: '11px', borderRadius: 12, marginTop: 14, textDecoration: 'none', fontWeight: 800, fontSize: 13 }}
-                    >
-                      💬 Enviar comprobante por WhatsApp
-                    </a>
-                  )}
-                </div>
-              )}
+              {/* Los costos de envío los fija cada vendedor */}
+              <div style={{ background: '#FFF7E8', border: '1px solid #F0D099', borderRadius: 14, padding: '12px 16px', margin: '0 0 24px', fontSize: 13, color: '#9B4728', fontWeight: 600, lineHeight: 1.5 }}>
+                🚚 Los costos de envío pueden ser distintos para cada vendedor. El productor te confirmará el valor final al contactarte.
+              </div>
 
               <button
                 type="button"

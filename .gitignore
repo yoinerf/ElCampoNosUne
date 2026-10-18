@@ -22,3 +22,6 @@ instructions/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# Estado local del CLI de Supabase (no es código del proyecto)
+supabase/.temp/

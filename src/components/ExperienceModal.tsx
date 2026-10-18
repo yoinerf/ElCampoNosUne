@@ -1,11 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { MAX_IMAGE_MB, uploadPublicImage, validateImage, type SavedImage } from '../lib/imageUpload'
+
+/** Experiencia existente con la que se precarga el formulario */
+export interface ExperienceInitialData {
+  title?: string
+  host?: string
+  host_id?: string | null
+  category_id?: string | null
+  price?: number | string
+  capacity?: number | string | null
+  stockNum?: string
+  duration?: string | null
+  description?: string | null
+  tags?: string[] | string | null
+  featured?: boolean | null
+  img?: string
+}
+
+/** Lo que entrega el formulario al guardar */
+export interface ExperienceFormData {
+  title: string
+  host: string
+  host_id: string
+  category_id: string
+  price: string
+  capacity: string
+  duration: string
+  description: string
+  tags: string
+  featured: boolean
+  img: string
+  uploadedImages: SavedImage[]
+}
 
 export interface ExperienceModalProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (data: any) => Promise<void>
-  initialData?: any
+  onSave: (data: ExperienceFormData) => Promise<void>
+  initialData?: ExperienceInitialData
   title?: string
   categories?: { id: string; name: string }[]
   hosts?: { id: string; name: string; org_name?: string }[]
@@ -34,8 +66,6 @@ const labelStyle: React.CSSProperties = {
   fontFamily: "'Nunito Sans', sans-serif",
 }
 
-const ACCEPTED = ['image/jpeg', 'image/jpg', 'image/png']
-const MAX_BYTES = 6 * 1024 * 1024
 
 interface UploadedImage {
   file: File
@@ -121,23 +151,16 @@ export default function ExperienceModal({
 
   if (!isOpen) return null
 
-  const validateFile = (file: File): string | null => {
-    if (!ACCEPTED.includes(file.type)) return 'Solo se permiten JPG y PNG'
-    if (file.size > MAX_BYTES) return 'El archivo supera los 6 MB'
-    return null
-  }
+  const validateFile = validateImage
 
   const uploadFile = async (file: File, idx: number) => {
     setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: true, error: undefined } : img))
-    const { data: { user } } = await supabase.auth.getUser()
-    const ext = file.name.split('.').pop()
-    const storagePath = `${user?.id ?? 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error: upErr } = await supabase.storage.from('experience-images').upload(storagePath, file, { contentType: file.type, upsert: false })
-    if (upErr) {
-      setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, error: upErr.message } : img))
+    const result = await uploadPublicImage('experience-images', file)
+    if (result.error !== undefined) {
+      setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, error: result.error } : img))
       return
     }
-    const { data: { publicUrl } } = supabase.storage.from('experience-images').getPublicUrl(storagePath)
+    const { storagePath, publicUrl } = result
     setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, storagePath, publicUrl } : img))
   }
 
@@ -304,7 +327,7 @@ export default function ExperienceModal({
           <div>
             <label style={labelStyle}>
               Imágenes de la experiencia{' '}
-              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. 6 MB c/u)</span>
+              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. {MAX_IMAGE_MB} MB c/u)</span>
             </label>
 
             <div
@@ -324,7 +347,7 @@ export default function ExperienceModal({
                 <span className="text-[#205134] font-bold">haz clic para seleccionar</span>
               </p>
               <p className="mt-0.5 mb-0 text-[11px] text-[#B0A090] font-['Nunito_Sans']">
-                JPG, PNG · máx. 6 MB por imagen
+                JPG, PNG · máx. {MAX_IMAGE_MB} MB por imagen
               </p>
             </div>
             <input

@@ -35,6 +35,8 @@ export function adminCreateUser(user: {
   store?: string
   department?: string
   municipality?: string
+  document_type: string
+  document_number: string
   must_change_password?: boolean
 }) {
   return callAdminUsers({ action: 'create_user', ...user })

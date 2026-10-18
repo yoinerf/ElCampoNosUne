@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
-import ExperienceModal from '../components/ExperienceModal'
-import ProductModal from '../components/ProductModal'
+import ExperienceModal, { type ExperienceFormData } from '../components/ExperienceModal'
+import ProductModal, { type ProductFormData } from '../components/ProductModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import NotificationBell from '../components/NotificationBell'
@@ -13,7 +13,14 @@ import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { confirmGoToDocuments, fetchDocuments, validationState, VALIDATION_STATE, type ValidationState } from '../lib/producerDocuments'
 import { alertDialog, confirmDialog } from '../components/ConfirmDialog'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
+import { isMainStore, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { DEPARTMENTS } from '../lib/geo'
+import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
+import { primaryImageUrl } from '../lib/catalog'
 
 type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
 
@@ -56,10 +63,10 @@ interface ProfileData {
 }
 
 interface Props {
-  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'amazon') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin'
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
+  userRole?: UserRole | null
   /** Tienda del productor (profiles.store): define la marca del panel y a qué tienda lleva "Ver Tienda" */
   store?: StoreId
 }
@@ -105,7 +112,9 @@ function SidebarItem({ icon, label, active, onClick }: SidebarItemProps) {
 }
 
 export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo' }: Props) {
-  const isAmazon = store === 'amazonica'
+  // Productor de una tienda aliada: su panel lleva la marca de su tienda
+  const isAllied = !isMainStore(store)
+  const { storeName } = useStores()
   const [section, setSection] = useState<AdminSection>('dashboard')
   // Una notificación de pedido nuevo abre la sección de pedidos
   // Notificaciones: pedido nuevo abre Pedidos; revisión de documentos abre Configuración
@@ -128,7 +137,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({ title: '', category_id: '', price: '', unit: 'uds', stockNum: '45', origin: '', description: '', img: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format' })
 
-  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '' })
+  const [profileForm, setProfileForm] = useState({ first_name: '', last_name: '', org_name: '', phone: '', department: '', municipality: '', document_type: '', document_number: '' })
   const [savingProfile, setSavingProfile] = useState(false)
   const [profileMsg, setProfileMsg] = useState('')
 
@@ -145,7 +154,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       // Para turismo actualizamos capacity como texto en experiences
       ;({ error } = await supabase.from('experiences').update({ capacity: `${newVal} personas` }).eq('id', stockModal.product.id))
     } else {
-      ;({ error } = await supabase.from('products').update({ stock: newVal }).eq('id', stockModal.product.id))
+      ;({ error } = await supabase.from('products').update({ stock: String(newVal) }).eq('id', stockModal.product.id))
     }
     if (!error) {
       setProducts(prev => prev.map(p => p.id === stockModal.product.id ? { ...p, stock: String(newVal) } : p))
@@ -156,7 +165,6 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
   // Datos dinámicos desde Supabase
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
 
@@ -168,11 +176,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoading(false); return }
 
-    const [{ data: profileData }, { data: actData }, { data: catsData }, { data: deptsData }, statusesData, itemsData] = await Promise.all([
-      supabase.from('profiles').select('id, first_name, last_name, org_name, phone, department, municipality, user_type').eq('id', user.id).single(),
+    const [{ data: profileData }, { data: actData }, { data: catsData }, statusesData, itemsData] = await Promise.all([
+      supabase.from('profiles').select('id, first_name, last_name, org_name, phone, department, municipality, user_type, document_type, document_number').eq('id', user.id).single(),
       supabase.from('activities').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(8),
       supabase.from('categories').select('id, name, business_type').eq('active', true).eq('business_type', userRole === 'turismo' ? 'turismo' : 'asociacion'),
-      supabase.from('departments').select('id, name').order('name', { ascending: true }),
       fetchOrderStatuses(),
       fetchOrderItems(user.id),
     ])
@@ -183,11 +190,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
     if (profileData) {
       setProfile(profileData as ProfileData)
-      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '' })
+      setProfileForm({ first_name: profileData.first_name ?? '', last_name: profileData.last_name ?? '', org_name: profileData.org_name ?? '', phone: profileData.phone ?? '', department: profileData.department ?? '', municipality: profileData.municipality ?? '', document_type: profileData.document_type ?? '', document_number: profileData.document_number ?? '' })
     }
 
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
-    if (deptsData && deptsData.length > 0) setDepartments(deptsData as { id: string; name: string }[])
 
     const currentOrg = profileData?.org_name?.trim()
       || `${profileData?.first_name ?? ''} ${profileData?.last_name ?? ''}`.trim()
@@ -195,39 +201,41 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     if (isTurismo) {
       // Cargar experiencias desde tabla experiences con sus imagenes
       const { data: expData } = await supabase.from('experiences').select('*, images(*)').eq('host_id', user.id).order('created_at', { ascending: false })
-      const exps = (expData ?? []).map((e: any) => {
-        const primaryImg = e.images?.find((i: any) => i.is_primary)?.image_url || e.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
-        return {
-          id: e.id,
-          title: e.title,
-          producer: currentOrg || e.host || '',
-          price: e.price || 0,
-          stock: String(parseInt(e.capacity) || e.capacity || '0'),
-          unit: 'pers',
-          category: e.tags?.[0] || '',
-          category_id: '',
-          origin: '',
-          description: e.description || '',
-          img: primaryImg,
-          duration: e.duration,
-          capacity: e.capacity,
-          tags: e.tags,
-        }
-      }) as ProductItem[]
+      const exps: ProductItem[] = (expData ?? []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        producer: currentOrg || e.host || '',
+        price: e.price || 0,
+        stock: String(parseInt(e.capacity ?? '') || e.capacity || '0'),
+        unit: 'pers',
+        category: e.tags?.[0] || '',
+        category_id: '',
+        origin: '',
+        description: e.description || '',
+        img: primaryImageUrl(e.images, 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'),
+        duration: e.duration ?? undefined,
+        capacity: e.capacity ?? undefined,
+        tags: e.tags ?? undefined,
+      }))
       setProducts(exps)
       setStats({ activeItems: exps.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: exps.filter(e => (parseInt(e.stock) || 0) < 5).length })
     } else {
       // Cargar productos desde tabla products con sus imagenes
       const { data: userProducts } = await supabase.from('products').select('*, images(*)').eq('producer_id', user.id).order('created_at', { ascending: false })
-      const prods = (userProducts ?? []).map((p: any) => {
-        const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url || p.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'
-        return {
-          ...p,
-          producer: currentOrg || p.producer || 'Productor',
-          img: primaryImg,
-          description: p.description || '',
-        }
-      }) as ProductItem[]
+      const prods: ProductItem[] = (userProducts ?? []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        producer: currentOrg || p.producer || 'Productor',
+        price: p.price,
+        stock: p.stock ?? '0',
+        unit: p.unit ?? 'kg',
+        category: catsData?.find((c) => c.id === p.category_id)?.name ?? '',
+        category_id: p.category_id ?? '',
+        origin: '',
+        description: p.description || '',
+        img: primaryImageUrl(p.images, 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'),
+        certified: p.certified ?? undefined,
+      }))
       setProducts(prods)
       const lowStock = prods.filter((p) => { const n = parseInt(p.stock) || 0; return n < 20 }).length
       setStats({ activeItems: prods.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: lowStock })
@@ -262,7 +270,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     }
     setEditingId(null)
     const defaultCatId = categories.length > 0 ? categories[0].id : ''
-    const defaultDept = departments.length > 0 ? departments[0].name : ''
+    const defaultDept = profile.department || DEPARTMENTS[0]?.name || ''
     setForm({ title: '', category_id: defaultCatId, price: '', unit: isTurismo ? 'pers' : 'uds', stockNum: '45', origin: defaultDept, description: '', img: '' })
     setShowModal(true)
   }
@@ -273,7 +281,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     setShowModal(true)
   }
 
-  const handleSaveProduct = async (formData: any) => {
+  const handleSaveProduct = async (formData: ProductFormData) => {
     if (!formData.title.trim() || !formData.price) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -295,7 +303,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     // Si falla, se avisa y el formulario queda abierto para corregir
     const { data, error } = editingId
       ? await supabase.from('products').update(commonPayload).eq('id', editingId).select('id')
-      : await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id, rating: 5, reviews: 0 }]).select('id')
+      : await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id }]).select('id')
     if (error || !data?.length) {
       setSaving(false)
       await alertDialog({ title: editingId ? 'No se pudo guardar el producto' : 'No se pudo crear el producto', message: error?.message ?? 'No tienes permiso para modificar este producto.', tone: 'danger' })
@@ -304,10 +312,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     savedProductId = data[0].id
 
     if (savedProductId && formData.uploadedImages && formData.uploadedImages.length > 0) {
-      if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+      if (formData.uploadedImages.some((i) => i.isPrimary)) {
         await supabase.from('images').update({ is_primary: false }).eq('product_id', savedProductId)
       }
-      const imageRows = formData.uploadedImages.map((img: any) => ({
+      const imageRows = formData.uploadedImages.map((img) => ({
         product_id: savedProductId,
         experience_id: null,
         storage_path: img.storagePath,
@@ -324,7 +332,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     loadData()
   }
 
-  const handleSaveExperience = async (formData: any) => {
+  const handleSaveExperience = async (formData: ExperienceFormData) => {
     if (!formData.title.trim() || !formData.price) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -340,8 +348,6 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       description: formData.description ? formData.description.trim() : null,
       tags: formData.tags ? formData.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : (categories.find(c => c.id === formData.category_id)?.name ? [categories.find(c => c.id === formData.category_id)!.name] : ['Experiencia']),
       featured: formData.featured ?? true,
-      rating: 5,
-      reviews: 0,
     }
 
     let savedExpId = editingId
@@ -357,10 +363,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     savedExpId = data[0].id
 
     if (savedExpId && formData.uploadedImages && formData.uploadedImages.length > 0) {
-      if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+      if (formData.uploadedImages.some((i) => i.isPrimary)) {
         await supabase.from('images').update({ is_primary: false }).eq('experience_id', savedExpId)
       }
-      const imageRows = formData.uploadedImages.map((img: any) => ({
+      const imageRows = formData.uploadedImages.map((img) => ({
         product_id: null,
         experience_id: savedExpId,
         storage_path: img.storagePath,
@@ -389,8 +395,13 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   }
 
   const handleSaveProfile = async () => {
-    if (!profileForm.municipality.trim()) {
-      setProfileMsg('Error: la ciudad o municipio es obligatoria.')
+    const docError = validateDocument(profileForm.document_type, profileForm.document_number)
+    if (docError) {
+      setProfileMsg('Error: ' + docError)
+      return
+    }
+    if (!profileForm.department || !profileForm.municipality) {
+      setProfileMsg('Error: selecciona el departamento y el municipio.')
       return
     }
     setSavingProfile(true)
@@ -404,6 +415,8 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       phone: onlyPhoneDigits(profileForm.phone) || null,
       department: profileForm.department,
       municipality: profileForm.municipality,
+      document_type: profileForm.document_type,
+      document_number: normalizeDocumentNumber(profileForm.document_number),
     }).eq('id', user.id)
     if (error) {
       setSavingProfile(false)
@@ -464,8 +477,8 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
         style={{ width: 240, flexShrink: 0, background: '#FDFAF6', borderRight: '1px solid #EDE4D8', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 40, boxShadow: '2px 0 16px rgba(32,81,52,0.06)' }}
       >
         <div style={{ padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
-          {isAmazon ? (
-            <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 800, color: '#205134', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{STORE_NAMES.amazonica}</span>
+          {isAllied ? (
+            <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 800, color: '#205134', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{storeName(store)}</span>
           ) : (
             <img src={logoSrc} alt="Logo" style={{ height: 90, width: 'auto', display: 'block' }} />
           )}
@@ -520,7 +533,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                 <span className="inline-flex sm:hidden"><CertifiedBadge size={28} /></span>
               </>
             )}
-            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : isAmazon ? 'amazon' : 'market')} style={{ height: 38, minWidth: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
+            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : isAllied ? 'store' : 'market')} style={{ height: 38, minWidth: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
               <span className="hidden sm:inline">{isTurismo ? 'Ver Experiencias' : 'Ver Tienda'}</span>
             </button>
@@ -819,17 +832,22 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                       <div style={{ fontSize: 12, color: '#8A8070', marginTop: 4 }}>Te avisaremos por WhatsApp cuando recibas un pedido nuevo.</div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
-                      <div>
-                        <label style={labelStyle}>Departamento</label>
-                        <select value={profileForm.department} onChange={(e) => setProfileForm({ ...profileForm, department: e.target.value })} style={inputStyle}>
-                          <option value="">Seleccionar...</option>
-                          {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label style={labelStyle}>Ciudad / Municipio *</label>
-                        <input value={profileForm.municipality} onChange={(e) => setProfileForm({ ...profileForm, municipality: e.target.value })} placeholder="Ej: Pitalito" required style={inputStyle} />
-                      </div>
+                      <DocumentFields
+                        documentType={profileForm.document_type}
+                        documentNumber={profileForm.document_number}
+                        onChange={({ documentType, documentNumber }) => setProfileForm((f) => ({ ...f, document_type: documentType, document_number: documentNumber }))}
+                        labelStyle={labelStyle}
+                        inputStyle={inputStyle}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 16 }}>
+                      <LocationFields
+                        department={profileForm.department}
+                        municipality={profileForm.municipality}
+                        onChange={(loc) => setProfileForm((f) => ({ ...f, ...loc }))}
+                        labelStyle={labelStyle}
+                        inputStyle={inputStyle}
+                      />
                     </div>
                     {profileMsg && (
                       <div style={{ background: profileMsg.includes('Error') ? '#FEE9E1' : '#EAF3EC', color: profileMsg.includes('Error') ? '#C4622D' : '#205134', borderRadius: 12, padding: '10px 16px', fontSize: 13, fontWeight: 700, marginBottom: 16 }}>{profileMsg}</div>

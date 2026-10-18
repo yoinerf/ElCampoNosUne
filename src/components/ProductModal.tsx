@@ -1,11 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
+import { MAX_IMAGE_MB, uploadPublicImage, validateImage, type SavedImage } from '../lib/imageUpload'
+
+/** Producto existente con el que se precarga el formulario (filas de products o vistas de las pantallas) */
+export interface ProductInitialData {
+  title?: string
+  producer?: string
+  producer_id?: string | null
+  category_id?: string | null
+  category?: string
+  price?: number | string
+  stockNum?: number | string
+  stock?: number | string | null
+  unit?: string | null
+  description?: string | null
+  certified?: boolean | null
+  img?: string
+}
+
+/** Lo que entrega el formulario al guardar */
+export interface ProductFormData {
+  title: string
+  producer: string
+  producer_id: string
+  category_id: string
+  price: string
+  stockNum: string
+  unit: string
+  description: string
+  certified: boolean
+  img: string
+  uploadedImages: SavedImage[]
+}
 
 export interface ProductModalProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (data: any) => Promise<void>
-  initialData?: any
+  onSave: (data: ProductFormData) => Promise<void>
+  initialData?: ProductInitialData
   title?: string
   categories?: { id: string; name: string }[]
   producers?: { id: string; name: string; org_name?: string }[]
@@ -36,8 +68,6 @@ const labelStyle: React.CSSProperties = {
   fontFamily: "'Nunito Sans', sans-serif",
 }
 
-const ACCEPTED = ['image/jpeg', 'image/jpg', 'image/png']
-const MAX_BYTES = 5 * 1024 * 1024
 // Máximo de imágenes por producto (la BD también lo valida)
 const MAX_IMAGES = 3
 
@@ -137,23 +167,16 @@ export default function ProductModal({
 
   if (!isOpen) return null
 
-  const validateFile = (file: File): string | null => {
-    if (!ACCEPTED.includes(file.type)) return 'Solo se permiten JPG y PNG'
-    if (file.size > MAX_BYTES) return `"${file.name}" supera los 5 MB`
-    return null
-  }
+  const validateFile = validateImage
 
   const uploadFile = async (file: File, idx: number) => {
     setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: true, error: undefined } : img))
-    const { data: { user } } = await supabase.auth.getUser()
-    const ext = file.name.split('.').pop()
-    const storagePath = `${user?.id ?? 'anon'}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error: upErr } = await supabase.storage.from('product-images').upload(storagePath, file, { contentType: file.type, upsert: false })
-    if (upErr) {
-      setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, error: upErr.message } : img))
+    const result = await uploadPublicImage('product-images', file)
+    if (result.error !== undefined) {
+      setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, error: result.error } : img))
       return
     }
-    const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(storagePath)
+    const { storagePath, publicUrl } = result
     setImages(prev => prev.map((img, i) => i === idx ? { ...img, uploading: false, storagePath, publicUrl } : img))
   }
 
@@ -324,7 +347,7 @@ export default function ProductModal({
           <div>
             <label style={labelStyle}>
               Imágenes del producto{' '}
-              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. {MAX_IMAGES} de 5 MB c/u)</span>
+              <span className="text-[#9B7D5A] font-normal text-xs">(JPG / PNG · máx. {MAX_IMAGES} de {MAX_IMAGE_MB} MB c/u)</span>
             </label>
 
             <div
@@ -345,7 +368,7 @@ export default function ProductModal({
               </p>
               <p className="mt-0.5 mb-0 text-[11px] text-[#B0A090] font-['Nunito_Sans']">
                 {remainingSlots > 0
-                  ? `JPG, PNG · máx. 5 MB por imagen · puedes agregar ${remainingSlots} más`
+                  ? `JPG, PNG · máx. ${MAX_IMAGE_MB} MB por imagen · puedes agregar ${remainingSlots} más`
                   : `Ya tiene el máximo de ${MAX_IMAGES} imágenes`}
               </p>
             </div>

@@ -1,6 +1,6 @@
 allowBuilds:
   cwebp-bin: set this to true or false
-  esbuild: set this to true or false
+  esbuild: true
   gifsicle: set this to true or false
   jpegtran-bin: set this to true or false
   mozjpeg: set this to true or false

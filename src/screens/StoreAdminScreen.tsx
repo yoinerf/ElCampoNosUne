@@ -9,7 +9,8 @@ import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
 import { adminCreateUser, adminDeleteUser } from '../lib/adminUsers'
 import { usePanelSectionRequest } from '../lib/notifications'
-import { AMAZON_PATH } from '../lib/stores'
+import { isMainStore } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
 import {
   DOC_LABELS,
   DOC_STATUS,
@@ -22,18 +23,24 @@ import {
   type ProducerDocument,
 } from '../lib/producerDocuments'
 import logoSrc from '../assets/logo-nofond.png'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
+import MyAccountCard from '../components/MyAccountCard'
+import ChangePasswordCard from '../components/ChangePasswordCard'
 
 // Panel del administrador de tienda: gestiona SOLO los productores de su tienda.
 // Misma distribución que el panel del productor (menú lateral + barra superior).
 // Los permisos reales los aplica la BD (RLS, funciones) y la edge function admin-users.
 
-type Section = 'dashboard' | 'producers' | 'review'
+type Section = 'dashboard' | 'producers' | 'review' | 'account'
 
 interface Props {
-  onNavigate: (tab: any) => void
-  activeNav?: string
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
+  userRole?: UserRole | null
   /** Tienda del administrador (profiles.store) */
   store: string
 }
@@ -47,6 +54,8 @@ interface Producer {
   phone: string | null
   department: string | null
   municipality: string | null
+  document_type: string | null
+  document_number: string | null
   user_type: string
   created_at: string
 }
@@ -82,6 +91,7 @@ const td: CSSProperties = { padding: '12px 16px', fontSize: 13, color: C.text, v
 
 const DashIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
 const UsersIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+const AccountIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
 const DocIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><path d="M9 15l2 2 4-4" /></svg>
 
 function SidebarItem({ icon, label, active, badge, onClick }: { icon: ReactNode; label: string; active: boolean; badge?: number; onClick: () => void }) {
@@ -114,18 +124,17 @@ function formatDate(iso: string) {
 
 const producerName = (p: Producer) => p.org_name?.trim() || `${p.first_name} ${p.last_name}`.trim() || 'Productor'
 
-const EMPTY_FORM = { first_name: '', last_name: '', org_name: '', email: '', phone: '', department: '', municipality: '', password: '' }
+const EMPTY_FORM = { first_name: '', last_name: '', org_name: '', email: '', phone: '', department: '', municipality: '', document_type: '', document_number: '', password: '' }
 
-const SECTION_LABEL: Record<Section, string> = { dashboard: 'Panel Principal', producers: 'Productores', review: 'Revisión de perfiles' }
+const SECTION_LABEL: Record<Section, string> = { dashboard: 'Panel Principal', producers: 'Productores', review: 'Revisión de perfiles', account: 'Mi cuenta' }
 
-export default function StoreAdminScreen({ store }: Props) {
+export default function StoreAdminScreen({ store, onNavigate }: Props) {
   const [section, setSection] = useState<Section>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [storeName, setStoreName] = useState(store)
   const [me, setMe] = useState({ first_name: '', last_name: '' })
   const [producers, setProducers] = useState<Producer[]>([])
   const [documents, setDocuments] = useState<ProducerDocument[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
@@ -140,7 +149,8 @@ export default function StoreAdminScreen({ store }: Props) {
   const [rejecting, setRejecting] = useState<{ docId: string; reason: string } | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
 
-  const isAmazon = store === 'amazonica'
+  const { getStore } = useStores()
+  const storeSlug = getStore(store).slug
 
   const showToast = (type: 'ok' | 'error', text: string) => {
     setToast({ type, text })
@@ -149,23 +159,21 @@ export default function StoreAdminScreen({ store }: Props) {
 
   const loadAll = async () => {
     const { data: { user } } = await supabase.auth.getUser()
-    const [{ data: storeData }, { data: meData }, { data: producersData, error }, { data: deptsData }] = await Promise.all([
+    const [{ data: storeData }, { data: meData }, { data: producersData, error }] = await Promise.all([
       supabase.from('store_settings').select('name').eq('store', store).maybeSingle(),
       supabase.from('profiles').select('first_name, last_name').eq('id', user?.id ?? '').maybeSingle(),
       supabase
         .from('profiles')
-        .select('id, first_name, last_name, org_name, email, phone, department, municipality, user_type, created_at')
+        .select('id, first_name, last_name, org_name, email, phone, department, municipality, document_type, document_number, user_type, created_at')
         .eq('store', store)
         .in('user_type', ['asociacion', 'turismo'])
         .order('created_at', { ascending: false }),
-      supabase.from('departments').select('id, name').order('name', { ascending: true }),
     ])
     if (error) console.error('Error cargando productores:', error.message)
     const list = (producersData ?? []) as Producer[]
     setStoreName(storeData?.name ?? store)
     if (meData) setMe({ first_name: meData.first_name ?? '', last_name: meData.last_name ?? '' })
     setProducers(list)
-    setDepartments((deptsData ?? []) as { id: string; name: string }[])
     setDocuments(await fetchDocuments(list.map((p) => p.id)))
     setLoading(false)
   }
@@ -196,14 +204,17 @@ export default function StoreAdminScreen({ store }: Props) {
   const openEdit = (p: Producer) => setForm({
     open: true,
     editingId: p.id,
-    data: { first_name: p.first_name ?? '', last_name: p.last_name ?? '', org_name: p.org_name ?? '', email: p.email ?? '', phone: p.phone ?? '', department: p.department ?? '', municipality: p.municipality ?? '', password: '' },
+    data: { first_name: p.first_name ?? '', last_name: p.last_name ?? '', org_name: p.org_name ?? '', email: p.email ?? '', phone: p.phone ?? '', department: p.department ?? '', municipality: p.municipality ?? '', document_type: p.document_type ?? '', document_number: p.document_number ?? '', password: '' },
   })
   const closeForm = () => setForm({ open: false, editingId: null, data: EMPTY_FORM })
 
   const saveProducer = async () => {
     const d = form.data
     if (!d.first_name.trim()) return showToast('error', 'El nombre es obligatorio.')
-    if (!d.municipality.trim()) return showToast('error', 'La ciudad o municipio es obligatoria.')
+    // Al crear el documento es obligatorio; al editar productores antiguos puede faltar
+    const docError = form.editingId ? validateOptionalDocument(d.document_type, d.document_number) : validateDocument(d.document_type, d.document_number)
+    if (docError) return showToast('error', docError)
+    if (!d.department || !d.municipality) return showToast('error', 'Selecciona el departamento y el municipio.')
     if (!form.editingId && (d.password.length < MIN_PASSWORD_LENGTH || !/[A-Za-z]/.test(d.password) || !/\d/.test(d.password))) {
       return showToast('error', `La contraseña temporal debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres, con letras y números.`)
     }
@@ -219,7 +230,8 @@ export default function StoreAdminScreen({ store }: Props) {
           org_name: d.org_name.trim() || null,
           phone: onlyPhoneDigits(d.phone) || null,
           department: d.department || null,
-          municipality: d.municipality.trim() || null,
+          municipality: d.municipality || null,
+          ...documentColumns(d.document_type, d.document_number),
         })
         .eq('id', form.editingId)
         .select('id')
@@ -241,7 +253,9 @@ export default function StoreAdminScreen({ store }: Props) {
         org_name: d.org_name.trim(),
         phone: onlyPhoneDigits(d.phone),
         department: d.department,
-        municipality: d.municipality.trim(),
+        municipality: d.municipality,
+        document_type: d.document_type,
+        document_number: normalizeDocumentNumber(d.document_number),
         must_change_password: true,
       })
       setSaving(false)
@@ -301,6 +315,7 @@ export default function StoreAdminScreen({ store }: Props) {
     { id: 'dashboard', label: 'Panel Principal', icon: <DashIcon /> },
     { id: 'producers', label: 'Productores', icon: <UsersIcon /> },
     { id: 'review', label: 'Revisión de perfiles', icon: <DocIcon />, badge: pendingProducers.length },
+    { id: 'account', label: 'Mi cuenta', icon: <AccountIcon /> },
   ]
 
   const searchBox = (
@@ -320,7 +335,7 @@ export default function StoreAdminScreen({ store }: Props) {
         style={{ width: 240, flexShrink: 0, background: SIDEBAR.bg, flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 40, boxShadow: '4px 0 24px rgba(21,56,35,0.18)' }}
       >
         <div style={{ padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
-          {isAmazon || store !== 'campo' ? (
+          {!isMainStore(store) ? (
             <span style={{ fontFamily: C.display, fontSize: 22, fontWeight: 800, color: '#fff', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{storeName}</span>
           ) : (
             // El logo va sobre fondo claro para conservar su contraste (manual de identidad)
@@ -349,7 +364,7 @@ export default function StoreAdminScreen({ store }: Props) {
               </div>
               <div style={{ fontSize: 11, color: SIDEBAR.text }}>Admin de tienda</div>
             </div>
-            <button type="button" onClick={async () => { clearPromoSession(); await supabase.auth.signOut(); window.location.href = isAmazon ? AMAZON_PATH : '/' }} title="Cerrar sesión" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFD3BF', padding: 4 }}>
+            <button type="button" onClick={async () => { clearPromoSession(); await supabase.auth.signOut(); window.location.href = !isMainStore(store) && storeSlug ? `/${storeSlug}` : '/' }} title="Cerrar sesión" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFD3BF', padding: 4 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
               </svg>
@@ -374,6 +389,11 @@ export default function StoreAdminScreen({ store }: Props) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <NotificationBell buttonStyle={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff' }} />
+            {/* Vitrina de la tienda que administra (para volver: el logo lleva a su panel) */}
+            <button type="button" onClick={() => onNavigate(isMainStore(store) ? 'market' : 'store')} title="Ver la tienda como la ven los compradores" style={{ ...btnGhost, display: 'flex', alignItems: 'center', gap: 6, height: 38 }}>
+              <span aria-hidden="true">🛍️</span>
+              <span className="hidden sm:inline">Ver tienda</span>
+            </button>
             {section === 'producers' && (
               <button type="button" onClick={openCreate} style={btnPrimary}>
                 <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>
@@ -572,6 +592,14 @@ export default function StoreAdminScreen({ store }: Props) {
                   )}
                 </>
               )}
+
+              {/* Datos personales y contraseña del propio administrador */}
+              {section === 'account' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 760 }}>
+                  <MyAccountCard onSaved={loadAll} />
+                  <ChangePasswordCard />
+                </div>
+              )}
             </>
           )}
         </main>
@@ -640,17 +668,24 @@ export default function StoreAdminScreen({ store }: Props) {
               )}
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-                <div>
-                  <label style={labelStyle}>Departamento</label>
-                  <select style={inputStyle} value={form.data.department} onChange={(e) => setForm({ ...form, data: { ...form.data, department: e.target.value } })}>
-                    <option value="">Seleccionar departamento...</option>
-                    {departments.map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label style={labelStyle}>Ciudad / Municipio *</label>
-                  <input style={inputStyle} placeholder="Ej: Pitalito, Pasto" required value={form.data.municipality} onChange={(e) => setForm({ ...form, data: { ...form.data, municipality: e.target.value } })} />
-                </div>
+                <DocumentFields
+                  documentType={form.data.document_type}
+                  documentNumber={form.data.document_number}
+                  onChange={({ documentType, documentNumber }) => setForm((f) => ({ ...f, data: { ...f.data, document_type: documentType, document_number: documentNumber } }))}
+                  labelStyle={labelStyle}
+                  inputStyle={inputStyle}
+                  required={!form.editingId}
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+                <LocationFields
+                  department={form.data.department}
+                  municipality={form.data.municipality}
+                  onChange={(loc) => setForm((f) => ({ ...f, data: { ...f.data, ...loc } }))}
+                  labelStyle={labelStyle}
+                  inputStyle={inputStyle}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>

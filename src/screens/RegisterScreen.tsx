@@ -1,24 +1,51 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import GoogleSignInButton, { AuthDivider } from '../components/GoogleSignInButton'
+import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
+
+// Estilos de los campos del formulario (los selects de ubicación y documento usan los mismos)
+const FIELD_LABEL: React.CSSProperties = {
+  display: 'block',
+  fontSize: 11.5,
+  fontWeight: 800,
+  fontFamily: "'Nunito Sans', sans-serif",
+  letterSpacing: '0.06em',
+  textTransform: 'uppercase',
+  color: '#205134',
+  marginBottom: 5,
+}
+const FIELD_INPUT: React.CSSProperties = {
+  width: '100%',
+  padding: '11px 14px',
+  borderRadius: 8,
+  border: '1.5px solid #D1D5DB',
+  background: '#FFFFFF',
+  fontSize: 14,
+  fontFamily: "'Nunito Sans', sans-serif",
+  color: '#1F2937',
+  outline: 'none',
+  boxSizing: 'border-box',
+}
 
 interface Props {
   onComplete: () => void
   onLogin: () => void
   onBackToStore?: () => void
   onBackToHome?: () => void
-  /** En 'amazonica' no se muestra la marca El Campo Nos Une y solo se registran compradores */
-  store?: StoreId
 }
 
 type UserType = 'comprador' | 'asociacion' | 'turismo'
 
-export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome, store = 'campo' }: Props) {
-  const isAmazon = store === 'amazonica'
+// Registro único en El Campo Nos Une. Los productores de otras tiendas (p. ej. la Tienda
+// Amazónica) se registran aquí y el superadmin les asigna la tienda.
+export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onBackToHome }: Props) {
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
-  const [municipality, setMunicipality] = useState('')
+  const [location, setLocation] = useState({ department: '', municipality: '' })
+  const [doc, setDoc] = useState({ documentType: '', documentNumber: '' })
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [userType, setUserType] = useState<UserType>('comprador')
@@ -41,8 +68,13 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
       setError('Por favor ingresa tu nombre completo')
       return
     }
-    if (!municipality.trim()) {
-      setError('Por favor ingresa tu ciudad o municipio')
+    const docError = validateDocument(doc.documentType, doc.documentNumber)
+    if (docError) {
+      setError(docError)
+      return
+    }
+    if (!location.department || !location.municipality) {
+      setError('Por favor selecciona tu departamento y municipio')
       return
     }
     if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
@@ -70,7 +102,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
     const lastName = nameParts.slice(1).join(' ') || ''
 
     // 1. Registro en Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const { error: authError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -78,7 +110,10 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
           first_name: firstName,
           last_name: lastName,
           user_type: userType,
-          municipality: municipality.trim(),
+          department: location.department,
+          municipality: location.municipality,
+          document_type: doc.documentType,
+          document_number: normalizeDocumentNumber(doc.documentNumber),
         },
       },
     })
@@ -89,22 +124,8 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
       return
     }
 
-    // 2. Inserción en tabla profiles
-    if (authData.user) {
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: authData.user.id,
-        first_name: firstName,
-        last_name: lastName,
-        email: email.trim(),
-        user_type: userType,
-        municipality: municipality.trim(),
-        created_at: new Date().toISOString(),
-      })
-
-      if (profileError) {
-        console.warn('Advertencia al guardar perfil:', profileError)
-      }
-    }
+    // El perfil lo crea el trigger handle_new_user con los datos de options.data
+    // (solo acepta roles públicos), así el navegador no escribe el rol directamente.
 
     setLoading(false)
     setSuccess(true)
@@ -176,21 +197,17 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
         >
           {/* Logo Central de El Campo Nos Une */}
           <div style={{ marginBottom: 16, textAlign: 'center' }}>
-            {isAmazon ? (
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: 28, fontWeight: 800, color: '#205134' }}>{STORE_NAMES.amazonica}</div>
-            ) : (
-              <img
-                src={logoSrc}
-                alt="El Campo Nos Une"
-                style={{
-                  height: 120,
-                  width: 'auto',
-                  display: 'block',
-                  margin: '0 auto',
-                  filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
-                }}
-              />
-            )}
+            <img
+              src={logoSrc}
+              alt="El Campo Nos Une"
+              style={{
+                height: 120,
+                width: 'auto',
+                display: 'block',
+                margin: '0 auto',
+                filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
+              }}
+            />
           </div>
 
           {/* Título y Subtítulo idénticos al manual de identidad */}
@@ -243,7 +260,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   margin: '0 0 8px',
                 }}
               >
-                {isAmazon ? `¡Bienvenido a la ${STORE_NAMES.amazonica}!` : '¡Bienvenido al Campo!'}
+                ¡Bienvenido al Campo!
               </h2>
               <p
                 style={{
@@ -352,50 +369,21 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   />
                 </div>
 
-                {/* Campo: Ciudad (obligatoria) */}
-                <div style={{ marginBottom: 15 }}>
-                  <label htmlFor="register-city" style={{
-                      display: 'block',
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      letterSpacing: '0.06em',
-                      textTransform: 'uppercase',
-                      color: '#205134',
-                      marginBottom: 5,
-                    }}>
-                    CIUDAD O MUNICIPIO
-                  </label>
-                  <input
-                    id="register-city"
-                    type="text"
-                    value={municipality}
-                    onChange={(e) => setMunicipality(e.target.value)}
-                    placeholder="Ej: Pitalito"
-                    autoComplete="address-level2"
-                    style={{
-                      width: '100%',
-                      padding: '11px 14px',
-                      borderRadius: 8,
-                      border: '1.5px solid #D1D5DB',
-                      background: '#FFFFFF',
-                      fontSize: 14,
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      color: '#1F2937',
-                      outline: 'none',
-                      boxSizing: 'border-box',
-                      transition: 'border-color 0.2s, box-shadow 0.2s',
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.borderColor = '#205134'
-                      e.target.style.boxShadow = '0 0 0 3px rgba(32, 81, 52, 0.12)'
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.borderColor = '#D1D5DB'
-                      e.target.style.boxShadow = 'none'
-                    }}
-                  />
-                </div>
+                {/* Documento de identidad y ubicación (obligatorios) */}
+                <DocumentFields
+                  {...doc}
+                  onChange={setDoc}
+                  labelStyle={FIELD_LABEL}
+                  inputStyle={FIELD_INPUT}
+                  fieldStyle={{ marginBottom: 15 }}
+                />
+                <LocationFields
+                  {...location}
+                  onChange={setLocation}
+                  labelStyle={FIELD_LABEL}
+                  inputStyle={FIELD_INPUT}
+                  fieldStyle={{ marginBottom: 15 }}
+                />
 
                 {/* Campo: Correo Electrónico */}
                 <div style={{ marginBottom: 15 }}>
@@ -419,7 +407,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder={isAmazon ? 'ejemplo@correo.com' : 'ejemplo@elcamponosune.mx'}
+                    placeholder="ejemplo@correo.com"
                     autoComplete="email"
                     style={{
                       width: '100%',
@@ -445,8 +433,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   />
                 </div>
 
-                {/* Selector sutil de Tipo de Cuenta (en la Tienda Amazónica solo compradores: los productores los crea el admin) */}
-                {!isAmazon && (
+                {/* Selector sutil de Tipo de Cuenta */}
                 <div style={{ marginBottom: 15 }}>
                   <label
                     style={{
@@ -507,8 +494,12 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                       )
                     })}
                   </div>
+                  {userType !== 'comprador' && (
+                    <p style={{ margin: '8px 2px 0', fontSize: 12, lineHeight: 1.45, color: '#6B7280', fontFamily: "'Nunito Sans', sans-serif" }}>
+                      ¿Vendes en la Tienda Amazónica u otra tienda aliada? Regístrate aquí y pide al administrador que te asigne a tu tienda. Al ingresar verás solo la tienda que te corresponde.
+                    </p>
+                  )}
                 </div>
-                )}
 
                 {/* Campo: Contraseña */}
                 <div style={{ marginBottom: 15 }}>
@@ -730,6 +721,11 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                   {loading ? 'Creando cuenta...' : 'Registrarse'}
                 </button>
 
+                {/* Con Google los datos obligatorios se piden al volver (CompleteProfileScreen) */}
+                <div style={{ height: 16 }} />
+                <AuthDivider />
+                <GoogleSignInButton label="Registrarse con Google" onError={setError} />
+
                 <div style={{ height: 20 }} />
 
                 {/* Switcher a Iniciar Sesión */}
@@ -859,7 +855,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
               marginBottom: 20,
             }}
           >
-            {isAmazon ? '"Productos de la Amazonía, directo de quienes los cultivan."' : '"Sembrando hoy la cooperación del mañana."'}
+            "Sembrando hoy la cooperación del mañana."
           </blockquote>
 
           {/* Subtítulo institucional según manual */}
@@ -874,7 +870,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
               color: 'rgba(255, 255, 255, 0.88)',
             }}
           >
-            {isAmazon ? STORE_NAMES.amazonica : 'CULTIVO INTELIGENTE & INTEGRADO • EL CAMPO NOS UNE'}
+            CULTIVO INTELIGENTE & INTEGRADO • EL CAMPO NOS UNE
           </p>
         </div>
       </div>

@@ -2,15 +2,15 @@
 import ScreenShell from '../components/ScreenShell'
 import { useState } from 'react'
 import bannerImg from '../assets/banner-campo.webp'
+import type { Tab, UserRole } from '../lib/types'
 
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'about'
 
 interface Props {
   onNavigate: (tab: Tab) => void
   activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string | null
+  userRole?: UserRole | null
 }
 
 
@@ -90,7 +90,7 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
     activeNav={activeNav ?? 'about'}
     onNavigate={onNavigate}
     onProfileClick={onProfileClick}
-    userRole={userRole as any}
+    userRole={userRole}
     contentStyle={{ paddingBottom: 32 }}
   >
      {/* ══════ 1. HERO ══════ */}

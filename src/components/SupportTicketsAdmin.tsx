@@ -59,12 +59,12 @@ export default function SupportTicketsAdmin({ tickets, onTicketsChange }: Suppor
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <input type="text" placeholder="Buscar por asunto, cliente, correo o pedido..." value={search} onChange={(e) => setSearch(e.target.value)} style={{ ...inputStyle, flex: '1 1 260px' }} />
-        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as any)} style={{ ...inputStyle, flex: '0 1 180px' }}>
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)} style={{ ...inputStyle, flex: '0 1 180px' }}>
           <option value="all">Todos los tipos</option>
           <option value="problema">Problemas</option>
           <option value="solicitud">Solicitudes</option>
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} style={{ ...inputStyle, flex: '0 1 180px' }}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)} style={{ ...inputStyle, flex: '0 1 180px' }}>
           <option value="all">Todos los estados</option>
           {(Object.keys(TICKET_STATUS) as TicketStatus[]).map((s) => <option key={s} value={s}>{TICKET_STATUS[s].label}</option>)}
         </select>

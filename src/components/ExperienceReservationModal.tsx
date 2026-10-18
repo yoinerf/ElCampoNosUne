@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 
 export interface ExperienceReservationModalProps {
@@ -30,7 +31,7 @@ export default function ExperienceReservationModal({
   onSuccess,
 }: ExperienceReservationModalProps) {
   const [step, setStep] = useState<'details' | 'payment' | 'success'>('details')
-  const [currentUser, setCurrentUser] = useState<any>(null)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [loadingUser, setLoadingUser] = useState(true)
 
   // Formulario de reserva
@@ -43,7 +44,7 @@ export default function ExperienceReservationModal({
   const [notes, setNotes] = useState('')
 
   // Métodos de pago
-  const [paymentMethod, setPaymentMethod] = useState<'wompi' | 'transferencia'>('wompi')
+  const [paymentMethod, setPaymentMethod] = useState<'wompi' | 'transferencia'>('transferencia')
   const [loadingPayment, setLoadingPayment] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -52,15 +53,6 @@ export default function ExperienceReservationModal({
     reference: string
     grandTotal: number
     paymentMethod: 'wompi' | 'transferencia'
-    transferInfo?: {
-      bank: string
-      accountType: string
-      accountNumber: string
-      accountHolder: string
-      nit: string
-      nequi?: string
-      daviplata?: string
-    }
   } | null>(null)
 
   // Parsear capacidad máxima
@@ -136,95 +128,51 @@ export default function ExperienceReservationModal({
     setStep('payment')
   }
 
-  // Ejecución del pago en backend
+  // Registro de la reserva: create_store_order (Supabase) toma el precio y descuenta los
+  // cupos en la base. Queda pendiente de pago hasta que el anfitrión/admin confirme la transferencia.
   const handleFinalizeReservation = async () => {
     if (!currentUser) {
       setErrorMessage('Debes iniciar sesión para finalizar la reserva.')
+      return
+    }
+    if (paymentMethod === 'wompi') {
+      setErrorMessage('El pago con Wompi estará disponible próximamente. Elige transferencia.')
       return
     }
 
     setLoadingPayment(true)
     setErrorMessage('')
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
+    const { data: order, error } = await supabase.rpc('create_store_order', {
+      p_store: 'campo',
+      p_payment_method: 'BankTransfer',
+      p_items: [{ id: experience.id, type: 'experiencia', quantity: guests }],
+      p_shipping: {
+        fullName,
+        phone,
+        department: 'Presencial',
+        municipality: experience.host,
+        address: `Reserva para el ${reservationDate}. Cupos: ${guests}.`,
+        deliveryNotes: notes || 'Sin notas adicionales',
+      },
+      p_shipping_fee: 0,
+    })
+    setLoadingPayment(false)
 
-    try {
-      const response = await fetch(`${backendUrl}/api/payments/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          payment_method: paymentMethod,
-          customer_email: email || currentUser.email,
-          customer_name: fullName,
-          customer_phone: phone,
-          shipping_address: {
-            fullName,
-            phone,
-            department: 'Presencial',
-            municipality: experience.host,
-            address: `Reserva para el ${reservationDate}. Cupos: ${guests}.`,
-            deliveryNotes: notes || 'Sin notas adicionales',
-          },
-          shipping_fee: 0,
-          items: [
-            {
-              id: experience.id,
-              type: 'experiencia',
-              quantity: guests,
-              price: unitPrice,
-            },
-          ],
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        const err = data.errors?.join(' ') || data.message || 'No fue posible registrar la reserva.'
-        setErrorMessage(`❌ Error: ${err}`)
-        setLoadingPayment(false)
-        return
-      }
-
-      // Si es Wompi, simular confirmación o procesar
-      if (paymentMethod === 'wompi') {
-        // Confirmar en backend
-        await fetch(`${backendUrl}/api/payments/confirm`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reference: data.reference,
-            status: 'APPROVED',
-            paymentMethodType: 'WOMPI_CARD',
-            customerEmail: email || currentUser.email,
-          }),
-        })
-      }
-
-      setConfirmationData({
-        reference: data.reference,
-        grandTotal,
-        paymentMethod,
-        transferInfo: data.transferInfo || {
-          bank: 'Bancolombia',
-          accountType: 'Cuenta de Ahorros',
-          accountNumber: '458-920184-12',
-          accountHolder: 'El Campo Nos Une S.A.S',
-          nit: '901.582.419-3',
-          nequi: '315 482 9102',
-          daviplata: '315 482 9102',
-        },
-      })
-
-      setStep('success')
-      onSuccess?.()
-    } catch (err: any) {
-      console.error('Error al procesar reserva:', err)
-      setErrorMessage(`❌ Error de conexión con el servidor de pagos (${backendUrl}).`)
-    } finally {
-      setLoadingPayment(false)
+    if (error) {
+      console.error('Error al registrar la reserva:', error)
+      setErrorMessage(`❌ No fue posible registrar la reserva: ${error.message}`)
+      return
     }
+
+    const result = order as { order_id?: string; total?: number } | null
+    setConfirmationData({
+      reference: String(result?.order_id ?? '').slice(0, 8).toUpperCase(),
+      grandTotal: Number(result?.total ?? grandTotal),
+      paymentMethod,
+    })
+    setStep('success')
+    onSuccess?.()
   }
 
   return (
@@ -814,14 +762,14 @@ export default function ExperienceReservationModal({
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {/* Wompi */}
                   <div
-                    onClick={() => setPaymentMethod('wompi')}
+                    aria-disabled="true"
                     style={{
-                      border: paymentMethod === 'wompi' ? '2px solid #205134' : '1.5px solid #EDE4D8',
-                      background: paymentMethod === 'wompi' ? '#F2F7F4' : '#fff',
+                      border: '1.5px solid #EDE4D8',
+                      background: '#fff',
                       borderRadius: 16,
                       padding: 14,
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
+                      cursor: 'not-allowed',
+                      opacity: 0.6,
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
@@ -829,9 +777,9 @@ export default function ExperienceReservationModal({
                         <input
                           type="radio"
                           name="experiencePayment"
-                          checked={paymentMethod === 'wompi'}
-                          onChange={() => setPaymentMethod('wompi')}
-                          style={{ accentColor: '#205134', width: 16, height: 16, cursor: 'pointer' }}
+                          checked={false}
+                          disabled
+                          style={{ accentColor: '#205134', width: 16, height: 16, cursor: 'not-allowed' }}
                         />
                         <span style={{ fontWeight: 700, fontSize: 14, color: '#1C3A14' }}>
                           💳 Wompi (Bancolombia, PSE, Tarjeta, Nequi)
@@ -847,7 +795,7 @@ export default function ExperienceReservationModal({
                           borderRadius: 6,
                         }}
                       >
-                        DIGITAL
+                        PRÓXIMAMENTE
                       </span>
                     </div>
                     <p style={{ margin: '4px 0 0 24px', fontSize: 12, color: '#666', lineHeight: 1.4 }}>
@@ -856,7 +804,7 @@ export default function ExperienceReservationModal({
                   </div>
 
                   {/* Transferencia */}
-                  {/* <div
+                  <div
                     onClick={() => setPaymentMethod('transferencia')}
                     style={{
                       border: paymentMethod === 'transferencia' ? '2px solid #205134' : '1.5px solid #EDE4D8',
@@ -896,7 +844,7 @@ export default function ExperienceReservationModal({
                     <p style={{ margin: '4px 0 0 24px', fontSize: 12, color: '#666', lineHeight: 1.4 }}>
                       Transfiere directamente a la cuenta comunitaria por Bancolombia, Nequi o Daviplata sin costo extra.
                     </p>
-                  </div>*/}
+                  </div>
                 </div>
               </div>
 
@@ -1039,7 +987,7 @@ export default function ExperienceReservationModal({
                 >
                   {confirmationData?.paymentMethod === 'wompi'
                     ? '¡Reserva confirmada con éxito!'
-                    : '¡Reserva registrada! Realiza tu transferencia'}
+                    : '¡Reserva registrada!'}
                 </h4>
                 <p style={{ margin: 0, fontSize: 13, color: '#666', fontFamily: "'Nunito Sans', sans-serif" }}>
                   Código de referencia:{' '}
@@ -1090,83 +1038,25 @@ export default function ExperienceReservationModal({
                   </div>
                 </div>
 
-                {/* Si es transferencia, mostrar datos bancarios */}
-                {confirmationData?.paymentMethod === 'transferencia' && (
-                  <div
-                    style={{
-                      background: '#fff',
-                      borderRadius: 14,
-                      border: '1.5px solid #6BAA3D',
-                      padding: 14,
-                      marginTop: 10,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 800,
-                        color: '#205134',
-                        marginBottom: 8,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      🏦 DATOS PARA LA TRANSFERENCIA
-                    </div>
-                    <div style={{ display: 'grid', gap: 4, fontSize: 12, color: '#444' }}>
-                      <div>
-                        Banco: <strong>{confirmationData.transferInfo?.bank || 'Bancolombia'}</strong> ({confirmationData.transferInfo?.accountType || 'Ahorros'})
-                      </div>
-                      <div>
-                        No. de Cuenta: <strong style={{ color: '#205134' }}>{confirmationData.transferInfo?.accountNumber || '458-920184-12'}</strong>
-                      </div>
-                      <div>
-                        Titular: <strong>{confirmationData.transferInfo?.accountHolder || 'El Campo Nos Une S.A.S'}</strong>
-                      </div>
-                      <div>
-                        NIT: <strong>{confirmationData.transferInfo?.nit || '901.582.419-3'}</strong>
-                      </div>
-                      <div>
-                        Nequi / Daviplata: <strong style={{ color: '#205134' }}>{confirmationData.transferInfo?.nequi || '315 482 9102'}</strong>
-                      </div>
-                      <div style={{ marginTop: 6, fontSize: 11, color: '#9B4728', fontWeight: 700 }}>
-                        ⚠️ Por favor coloca la referencia <u>{confirmationData.reference}</u> en la descripción de la transferencia.
-                      </div>
-                    </div>
-                  </div>
-                )}
+                <div
+                  style={{
+                    background: '#FFF7E8',
+                    border: '1px solid #F0D099',
+                    borderRadius: 14,
+                    padding: '12px 14px',
+                    marginTop: 10,
+                    fontSize: 13,
+                    color: '#9B4728',
+                    fontWeight: 600,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  El anfitrión se pondrá en contacto contigo para continuar con el pago y confirmar los detalles de tu visita.
+                </div>
               </div>
 
               {/* Botón de acción final */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {confirmationData?.paymentMethod === 'transferencia' && (
-                  <a
-                    href={`https://wa.me/573154829102?text=${encodeURIComponent(
-                      `Hola, acabo de reservar la experiencia "${experience.title}" (${guests} personas) para el ${reservationDate}. Mi referencia es ${confirmationData.reference} por valor de ${formatPrice(confirmationData.grandTotal)}. Adjunto el comprobante:`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      borderRadius: 14,
-                      background: '#25D366',
-                      color: '#fff',
-                      fontFamily: "'Nunito Sans', sans-serif",
-                      fontSize: 14,
-                      fontWeight: 800,
-                      textDecoration: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      boxSizing: 'border-box',
-                    }}
-                  >
-                    💬 Enviar comprobante por WhatsApp
-                  </a>
-                )}
                 <button
                   type="button"
                   onClick={onClose}

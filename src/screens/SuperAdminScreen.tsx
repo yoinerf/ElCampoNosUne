@@ -10,8 +10,8 @@ import {
   getColombiaNowForInput,
 } from '../lib/dateColombia'
 import logoSrc from '../assets/logo-nofond.png'
-import ProductModal from '../components/ProductModal'
-import ExperienceModal from '../components/ExperienceModal'
+import ProductModal, { type ProductFormData, type ProductInitialData } from '../components/ProductModal'
+import ExperienceModal, { type ExperienceFormData, type ExperienceInitialData } from '../components/ExperienceModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 import SupportTicketsAdmin from '../components/SupportTicketsAdmin'
@@ -24,11 +24,22 @@ import CertifiedBadge from '../components/CertifiedBadge'
 import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { generateTempPassword } from '../components/TempPasswordModal'
 import { fetchDocuments, validationState } from '../lib/producerDocuments'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
+import { uploadPublicImage } from '../lib/imageUpload'
+import { primaryImageUrl } from '../lib/catalog'
+import type { TablesInsert as TableInsert } from '../lib/database.types'
+import type { Tab, UserRole } from '../lib/types'
+import LocationFields from '../components/LocationFields'
+import DocumentFields from '../components/DocumentFields'
+import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
+import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, SItem, StatCard, I } from '../components/superadmin/ui'
+import MyAccountCard from '../components/MyAccountCard'
+import StoresManager from '../components/superadmin/StoresManager'
+import { APP_VERSION } from '../lib/version'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'settings'
+type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'stores' | 'settings'
 
 interface UserRow {
   id: string
@@ -40,6 +51,8 @@ interface UserRow {
   store?: string
   department: string
   municipality: string
+  document_type?: string | null
+  document_number?: string | null
   email?: string
   phone?: string | null
   created_at: string
@@ -53,9 +66,7 @@ interface ProductRow {
   price: number
   stock: string
   unit: string
-  category: string
   category_id: string
-  origin: string
   description: string
   img: string
   certified?: boolean
@@ -89,235 +100,16 @@ interface AdRow {
 }
 
 interface Props {
-  onNavigate: (tab: any) => void
-  activeNav?: string
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
-}
-
-// ─── Brand Tokens — Manual de Identidad "Campo Contemporáneo" ─────────────────
-
-const B = {
-  bg: '#FAF8F5',           // Crema cálido de lectura y fondo principal
-  bgCard: '#FFFFFF',       // Superficie tarjetas blanca limpia
-  bgCardAlt: '#F5EEE6',    // Crema suave secundario
-  border: '#EDE5DA',       // Borde sutil contemporáneo
-  borderStrong: '#D9CFBF', // Borde reforzado
-  sidebarBg: 'linear-gradient(180deg, #143A63 0%, #0B2340 100%)', // Azul profundo: distingue el panel del superadmin
-  green: '#205134',        // Verde profundo oficial
-  greenHover: '#183E27',
-  greenLight: '#6BAA3D',   // Verde acento
-  greenSoft: '#EAF4ED',    // Píldora verde suave
-  terra: '#BA5A30',        // Terracota marca
-  terraDark: '#9B4728',    // Terracota digital para UI y contraste
-  terraSoft: '#FDEEE9',    // Píldora terracota suave
-  gold: '#E5AE30',         // Dorado marca
-  goldSoft: '#FEF8E8',     // Píldora dorada suave
-  text: '#1C2B22',         // Texto principal oscuro nítido
-  textMuted: '#685F54',    // Texto secundario cálido
-  textFaint: '#9E9384',    // Texto tenue / placeholder
-  fontDisplay: "'Poppins', sans-serif",
-  fontBody: "'Nunito Sans', sans-serif",
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n)
-}
-function ago(iso: string) {
-  const d = (Date.now() - new Date(iso).getTime()) / 1000
-  if (d < 60) return 'Ahora'
-  if (d < 3600) return `${Math.floor(d / 60)} min`
-  if (d < 86400) return `${Math.floor(d / 3600)} h`
-  return `${Math.floor(d / 86400)} días`
-}
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  admin: 'Super Admin',
-  admin_tienda: 'Admin de tienda',
-  asociacion: 'Asociación',
-  turismo: 'Turismo',
-  comprador: 'Comprador',
-}
-
-const ROLE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  admin: { bg: B.terraSoft, color: B.terraDark, border: 'rgba(155,71,40,0.25)' },
-  asociacion: { bg: B.greenSoft, color: B.green, border: 'rgba(32,81,52,0.25)' },
-  turismo: { bg: '#F0F8EC', color: '#3F7B25', border: 'rgba(63,123,37,0.25)' },
-  comprador: { bg: B.goldSoft, color: '#9E740E', border: 'rgba(158,116,14,0.25)' },
-  admin_tienda: { bg: '#E3F2FD', color: '#1B4D82', border: 'rgba(27,77,130,0.25)' },
-}
-
-// Roles que pertenecen a una tienda: productores y administradores de tienda
-const STORE_ROLES = ['asociacion', 'admin_tienda']
-
-// Tienda del productor: los de la Tienda Amazónica solo venden allí y sus productos no salen en El Campo Nos Une
-// Las tiendas salen de store_settings: una tienda nueva aparece aquí sin cambiar código
-function StorePicker({ value, onChange, label = 'Tienda del productor' }: { value: string; onChange: (store: string) => void; label?: string }) {
-  const [stores, setStores] = useState<{ store: string; name: string }[]>([
-    { store: 'campo', name: STORE_NAMES.campo },
-    { store: 'amazonica', name: STORE_NAMES.amazonica },
-  ])
-  useEffect(() => {
-    supabase.from('store_settings').select('store, name').order('store').then(({ data }) => {
-      if (data && data.length > 0) setStores(data as { store: string; name: string }[])
-    })
-  }, [])
-  return (
-    <div style={{ marginTop: 14 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: B.green, marginBottom: 6, letterSpacing: 0.3, fontFamily: B.fontBody }}>{label}</label>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {stores.map(({ store: s, name }) => {
-          const sel = value === s
-          return (
-            <button
-              key={s}
-              type="button"
-              onClick={() => onChange(s)}
-              style={{
-                flex: '1 1 140px',
-                padding: '10px 8px',
-                borderRadius: 10,
-                border: sel ? `2px solid ${B.green}` : `1.5px solid ${B.border}`,
-                background: sel ? B.greenSoft : '#FFFFFF',
-                color: sel ? B.green : B.textMuted,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: 'pointer',
-                fontFamily: B.fontBody,
-              }}
-            >
-              {name}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-const PAGE = 12
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function SItem({ icon, label, active, count, onClick }: {
-  icon: React.ReactNode; label: string; active: boolean; count?: number; onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        padding: '12px 14px',
-        borderRadius: 12,
-        border: 'none',
-        cursor: 'pointer',
-        width: '100%',
-        textAlign: 'left',
-        background: active ? 'rgba(255,255,255,0.12)' : 'transparent',
-        color: active ? '#FFFFFF' : 'rgba(255,255,255,0.72)',
-        fontFamily: B.fontBody,
-        fontSize: 14,
-        fontWeight: active ? 700 : 600,
-        transition: 'all 180ms ease',
-        position: 'relative',
-      }}
-      className="hover:bg-white/10 hover:text-white"
-    >
-      <span style={{ opacity: active ? 1 : 0.8, flexShrink: 0 }}>{icon}</span>
-      <span style={{ flex: 1 }}>{label}</span>
-      {count !== undefined && (
-        <span
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            background: active ? '#E5AE30' : 'rgba(255,255,255,0.15)',
-            color: active ? '#153823' : '#FFFFFF',
-            padding: '2px 8px',
-            borderRadius: 20,
-          }}
-        >
-          {count}
-        </span>
-      )}
-      {active && (
-        <span
-          style={{
-            position: 'absolute',
-            left: 0,
-            top: '20%',
-            bottom: '20%',
-            width: 3.5,
-            borderRadius: '0 4px 4px 0',
-            background: '#E5AE30',
-          }}
-        />
-      )}
-    </button>
-  )
-}
-
-function StatCard({ emoji, value, label, sub, accent }: { emoji: string; value: string | number; label: string; sub?: string; accent: string }) {
-  return (
-    <div
-      style={{
-        background: B.bgCard,
-        border: `1px solid ${B.border}`,
-        borderRadius: 18,
-        padding: '20px 22px',
-        position: 'relative',
-        overflow: 'hidden',
-        boxShadow: '0 4px 16px rgba(32,81,52,0.04)',
-      }}
-    >
-      <div style={{ position: 'absolute', top: -16, right: -16, width: 80, height: 80, borderRadius: '50%', background: accent, opacity: 0.08 }} />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ width: 42, height: 42, borderRadius: 12, background: accent + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-          {emoji}
-        </div>
-        {sub && (
-          <span style={{ fontSize: 11, color: accent, fontWeight: 800, background: accent + '14', padding: '3px 8px', borderRadius: 12 }}>
-            {sub}
-          </span>
-        )}
-      </div>
-      <div style={{ fontFamily: B.fontDisplay, fontSize: 26, fontWeight: 800, color: B.text, lineHeight: 1.1 }}>
-        {value}
-      </div>
-      <div style={{ fontSize: 13, color: B.textMuted, marginTop: 4, fontWeight: 600 }}>
-        {label}
-      </div>
-    </div>
-  )
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-const I = {
-  dash: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>,
-  users: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>,
-  box: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" /></svg>,
-  exp: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg>,
-  ads: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>,
-  cog: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>,
-  logout: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>,
-  trash: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" /></svg>,
-  edit: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>,
-  plus: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>,
-  store: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" /></svg>,
-  menu: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>,
+  userRole?: UserRole | null
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SuperAdminScreen({ onNavigate }: Props) {
+  const { storeName, allStores } = useStores()
   const [section, setSection] = useState<SuperSection>('dashboard')
   // Una notificación de solicitud nueva abre Solicitudes con la lista actualizada
   usePanelSectionRequest<SuperSection>((s) => { setSection(s); fetchAllTickets().then(setTickets) }, ['tickets'])
@@ -335,14 +127,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
   const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, reservations: 0, income: 0 })
 
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
 
-  const [productModal, setProductModal] = useState<{ open: boolean; editId: string | null; initialData?: any }>({ open: false, editId: null })
-  const [expModal, setExpModal] = useState<{ open: boolean; editId: string | null; initialData?: any }>({ open: false, editId: null })
+  const [productModal, setProductModal] = useState<{ open: boolean; editId: string | null; initialData?: ProductInitialData }>({ open: false, editId: null })
+  const [expModal, setExpModal] = useState<{ open: boolean; editId: string | null; initialData?: ExperienceInitialData }>({ open: false, editId: null })
 
   // Ad Modal State
   const [adModal, setAdModal] = useState<Partial<AdRow> | null>(null)
@@ -364,6 +155,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     store: 'campo',
     department: '',
     municipality: '',
+    document_type: '',
+    document_number: '',
   })
   const [userCreating, setUserCreating] = useState(false)
 
@@ -382,19 +175,20 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: expsData },
         { data: adsData },
         { data: catsData },
-        { data: resData },
-        { data: deptsData },
+        { data: ordersData },
+        { count: reservationsCount },
         statusesData,
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, email, phone, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name, business_type').eq('active', true),
-        supabase.from('reservations').select('id, total'),
-        supabase.from('departments').select('id, name').order('name', { ascending: true }),
+        // reservations no tiene columna total: los ingresos salen de orders
+        supabase.from('orders').select('total, payment_status'),
+        supabase.from('reservations').select('id', { count: 'exact', head: true }),
         fetchOrderStatuses(),
         fetchOrderItems(),
         fetchAllTickets(),
@@ -408,41 +202,55 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       fetchDocuments(sellerIds).then((docs) => {
         setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id)) === 'validado')))
       })
-      setDepartments((deptsData || []) as { id: string; name: string }[])
 
-      const userMap = new Map((usersData || []).map((u: any) => [u.id, u]))
+      const userMap = new Map((usersData || []).map((u) => [u.id, u]))
 
-      const mappedProds = (prodsData || []).map((p: any) => {
-        const u = userMap.get(p.producer_id)
-        const producerName = p.producer?.trim() || u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || 'Productor'
-        return {
-          ...p,
-          producer: producerName,
-          img: p.images?.find((i: any) => i.is_primary)?.image_url || p.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop',
-        }
-      }) as ProductRow[]
+      const displayName = (id: string | null, fallback: string) => {
+        const u = id ? userMap.get(id) : undefined
+        return u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || fallback
+      }
+
+      const mappedProds: ProductRow[] = (prodsData || []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        producer: p.producer?.trim() || displayName(p.producer_id, 'Productor'),
+        producer_id: p.producer_id ?? '',
+        price: p.price,
+        stock: p.stock ?? '',
+        unit: p.unit ?? '',
+        category_id: p.category_id ?? '',
+        description: p.description ?? '',
+        img: primaryImageUrl(p.images, 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=300&fit=crop'),
+        certified: p.certified ?? undefined,
+      }))
       setProducts(mappedProds)
 
-      const mappedExps = (expsData || []).map((e: any) => {
-        const u = userMap.get(e.host_id)
-        const hostName = e.host?.trim() || u?.org_name?.trim() || `${u?.first_name ?? ''} ${u?.last_name ?? ''}`.trim() || 'Comunidad local'
-        return {
-          ...e,
-          host: hostName,
-          img: e.images?.find((i: any) => i.is_primary)?.image_url || e.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400&h=300&fit=crop',
-        }
-      }) as ExperienceRow[]
+      const mappedExps: ExperienceRow[] = (expsData || []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        host: e.host?.trim() || displayName(e.host_id, 'Comunidad local'),
+        host_id: e.host_id ?? '',
+        price: e.price,
+        capacity: e.capacity ?? '',
+        duration: e.duration ?? '',
+        description: e.description ?? '',
+        img: primaryImageUrl(e.images, 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=400&h=300&fit=crop'),
+        tags: e.tags ?? [],
+      }))
       setExperiences(mappedExps)
 
       setAds((adsData || []) as AdRow[])
       setCategories((catsData || []) as { id: string; name: string; business_type: string }[])
 
-      const totalIncome = (resData || []).reduce((sum: number, r: any) => sum + (Number(r.total) || 0), 0)
+      // Ingresos = pedidos pagados (contraentrega y transferencias quedan 'Pending' hasta confirmarse)
+      const totalIncome = (ordersData || [])
+        .filter((o) => o.payment_status === 'Paid')
+        .reduce((sum, o) => sum + (Number(o.total) || 0), 0)
       setStats({
         users: (usersData || []).length,
         products: mappedProds.length,
         experiences: mappedExps.length,
-        reservations: resData?.length || 0,
+        reservations: (ordersData?.length || 0) + (reservationsCount || 0),
         income: totalIncome,
       })
     } catch (e) {
@@ -459,7 +267,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const handleConfirmDelete = async () => {
     if (!confirmDelete) return
     const { type, id } = confirmDelete
-    let error: any = null
+    let error: { message: string } | null = null
     if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
     else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
     else if (type === 'user') {
@@ -478,8 +286,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       showToast('⚠️ Por favor ingresa el nombre')
       return
     }
-    if (!newUserData.municipality.trim()) {
-      showToast('⚠️ La ciudad o municipio es obligatoria')
+    const docError = validateDocument(newUserData.document_type, newUserData.document_number)
+    if (docError) {
+      showToast('⚠️ ' + docError)
+      return
+    }
+    if (!newUserData.department || !newUserData.municipality) {
+      showToast('⚠️ Selecciona el departamento y el municipio')
       return
     }
     if (!newUserData.email.trim() || !newUserData.password.trim()) {
@@ -504,8 +317,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         phone: onlyPhoneDigits(newUserData.phone),
         user_type: newUserData.user_type,
         store: STORE_ROLES.includes(newUserData.user_type) ? newUserData.store : 'campo',
-        department: newUserData.department.trim(),
-        municipality: newUserData.municipality.trim(),
+        department: newUserData.department,
+        municipality: newUserData.municipality,
+        document_type: newUserData.document_type,
+        document_number: normalizeDocumentNumber(newUserData.document_number),
         must_change_password: true,
       })
 
@@ -529,23 +344,25 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         store: 'campo',
         department: '',
         municipality: '',
+        document_type: '',
+        document_number: '',
       })
       loadAll()
-    } catch (err: any) {
-      showToast('❌ Excepción: ' + (err.message || String(err)))
+    } catch (err) {
+      showToast('❌ Excepción: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setUserCreating(false)
     }
   }
 
-  const handleSaveProduct = async (formData: any) => {
+  const handleSaveProduct = async (formData: ProductFormData) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const targetProducerId = formData.producer_id || user.id
     const producerName = formData.producer?.trim() || 'Productor'
 
-    const payload: any = {
+    const payload: TableInsert<'products'> = {
       title: formData.title.trim(),
       price: Number(formData.price),
       unit: formData.unit || 'uds',
@@ -560,10 +377,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (productModal.editId) {
       await supabase.from('products').update(payload).eq('id', productModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
-        if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+        if (formData.uploadedImages.some((i) => i.isPrimary)) {
           await supabase.from('images').update({ is_primary: false }).eq('product_id', productModal.editId)
         }
-        const rows = formData.uploadedImages.map((img: any) => ({
+        const rows = formData.uploadedImages.map((img) => ({
           product_id: productModal.editId,
           experience_id: null,
           storage_path: img.storagePath,
@@ -581,7 +398,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         return
       }
       if (newProd && formData.uploadedImages?.length > 0) {
-        const rows = formData.uploadedImages.map((img: any) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
+        const rows = formData.uploadedImages.map((img) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
       }
     }
@@ -590,14 +407,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     loadAll()
   }
 
-  const handleSaveExperience = async (formData: any) => {
+  const handleSaveExperience = async (formData: ExperienceFormData) => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
     const targetHostId = formData.host_id || user.id
     const hostName = formData.host?.trim() || 'Comunidad local'
 
-    const payload: any = {
+    const payload: TableInsert<'experiences'> = {
       title: formData.title.trim(),
       price: Number(formData.price),
       capacity: `${formData.capacity || '10'} personas`,
@@ -612,10 +429,10 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (expModal.editId) {
       await supabase.from('experiences').update(payload).eq('id', expModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
-        if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+        if (formData.uploadedImages.some((i) => i.isPrimary)) {
           await supabase.from('images').update({ is_primary: false }).eq('experience_id', expModal.editId)
         }
-        const rows = formData.uploadedImages.map((img: any) => ({
+        const rows = formData.uploadedImages.map((img) => ({
           product_id: null,
           experience_id: expModal.editId,
           storage_path: img.storagePath,
@@ -633,7 +450,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         return
       }
       if (newExp && formData.uploadedImages?.length > 0) {
-        const rows = formData.uploadedImages.map((img: any) => ({ product_id: null, experience_id: newExp.id, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
+        const rows = formData.uploadedImages.map((img) => ({ product_id: null, experience_id: newExp.id, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
       }
     }
@@ -644,8 +461,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const handleSaveUser = async () => {
     if (!userEditModal) return
-    if (!userEditModal.municipality?.trim()) {
-      showToast('⚠️ La ciudad o municipio es obligatoria')
+    const docError = validateOptionalDocument(userEditModal.document_type ?? '', userEditModal.document_number ?? '')
+    if (docError) {
+      showToast('⚠️ ' + docError)
+      return
+    }
+    if (!userEditModal.department || !userEditModal.municipality) {
+      showToast('⚠️ Selecciona el departamento y el municipio')
       return
     }
     setUserSaving(true)
@@ -657,7 +479,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       user_type: userEditModal.user_type,
       store: STORE_ROLES.includes(userEditModal.user_type) ? (userEditModal.store ?? 'campo') : 'campo',
       department: userEditModal.department || null,
-      municipality: userEditModal.municipality.trim(),
+      municipality: userEditModal.municipality,
+      ...documentColumns(userEditModal.document_type ?? '', userEditModal.document_number ?? ''),
     }).eq('id', userEditModal.id)
 
     if (!error) {
@@ -683,21 +506,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (!file) return
     setAdUploading(true)
     try {
-      const ext = file.name.split('.').pop() || 'jpg'
-      const storagePath = `ads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const { error: upErr } = await supabase.storage.from('product-images').upload(storagePath, file, {
-        contentType: file.type,
-        upsert: false,
-      })
-      if (upErr) {
-        showToast('❌ Error al subir imagen: ' + upErr.message)
+      const result = await uploadPublicImage('product-images', file, 'ads')
+      if (result.error !== undefined) {
+        showToast('❌ Error al subir imagen: ' + result.error)
         return
       }
-      const { data: { publicUrl } } = supabase.storage.from('product-images').getPublicUrl(storagePath)
+      const { publicUrl } = result
       setAdModal(prev => prev ? { ...prev, image_url: publicUrl } : null)
       showToast('✅ Imagen subida correctamente')
-    } catch (err: any) {
-      showToast('❌ Error: ' + err.message)
+    } catch (err) {
+      showToast('❌ Error: ' + (err instanceof Error ? err.message : String(err)))
     } finally {
       setAdUploading(false)
     }
@@ -708,7 +526,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     setAdSaving(true)
     // Se excluye link_url: el anuncio redirige directamente al producto o experiencia
     // Se guardan las fechas siempre con la zona horaria de Colombia (-05:00)
-    const payload: any = {
+    const payload: TableInsert<'advertisements'> = {
       type: adModal.type || 'product',
       title: adModal.title?.trim() || '',
       image_url: adModal.image_url || null,
@@ -718,7 +536,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       product_id: adModal.type === 'product' ? adModal.product_id || null : null,
       experience_id: adModal.type === 'experience' ? adModal.experience_id || null : null,
     }
-    let error: any = null
+    let error: { message: string } | null = null
     if (adModal.id) {
       ({ error } = await supabase.from('advertisements').update(payload).eq('id', adModal.id))
     } else {
@@ -761,7 +579,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       org_name: u.org_name,
     }))
 
-  const getPagedData = (data: any[]) => {
+  const getPagedData = <T,>(data: T[]) => {
     const total = Math.max(1, Math.ceil(data.length / PAGE))
     const pg = Math.min(page, total)
     return { items: data.slice((pg - 1) * PAGE, pg * PAGE), total, pg }
@@ -845,6 +663,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     { id: 'orders' as SuperSection, label: 'Pedidos', icon: I.store, count: orderItems.length },
     { id: 'tickets' as SuperSection, label: 'Solicitudes', icon: I.users, count: tickets.filter(t => t.status === 'abierto' || t.status === 'en_revision').length },
     { id: 'ads' as SuperSection, label: 'Anuncios', icon: I.ads, count: ads.length },
+    { id: 'stores' as SuperSection, label: 'Tiendas', icon: I.store, count: allStores.length },
     { id: 'settings' as SuperSection, label: 'Configuración', icon: I.cog },
   ]
 
@@ -858,6 +677,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     orders: 'Gestión de Pedidos',
     tickets: 'Solicitudes y Reportes',
     ads: 'Gestión de Anuncios',
+    stores: 'Tiendas de la plataforma',
     settings: 'Configuración del Sistema',
   }
 
@@ -1293,7 +1113,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                       {ROLE_LABELS[u.user_type] || u.user_type}
                                     </span>
                                     {u.store && (u.store !== 'campo' || u.user_type === 'admin_tienda') && (
-                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{STORE_NAMES[u.store as StoreId] ?? u.store}</span>
+                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{storeName(u.store)}</span>
                                     )}
                                   </TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{[u.municipality, u.department].filter(Boolean).join(', ') || '—'}</TD>
@@ -1599,14 +1419,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                               <div style={{ display: 'flex', gap: 8, paddingTop: 10, borderTop: `1px solid ${B.border}` }}>
                                 <button
                                   type="button"
-                                  style={{ ...btnEdit, flex: 1, justifyContent: 'center' } as any}
+                                  style={{ ...btnEdit, flex: 1, justifyContent: 'center' }}
                                   onClick={() => setAdModal({ ...ad })}
                                 >
                                   ✏️ Editar
                                 </button>
                                 <button
                                   type="button"
-                                  style={{ ...btnDanger, flex: 1, justifyContent: 'center' } as any}
+                                  style={{ ...btnDanger, flex: 1, justifyContent: 'center' }}
                                   onClick={() => setConfirmDelete({ type: 'ad', id: ad.id, name: ad.title })}
                                 >
                                   {I.trash} Eliminar
@@ -1633,13 +1453,16 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <h3 style={{ fontFamily: B.fontDisplay, fontSize: 22, color: B.green, margin: '0 0 8px', fontWeight: 700 }}>
                     Configuración de Super Administrador
                   </h3>
-                  <p style={{ color: B.textMuted, fontSize: 14, margin: '0 0 28px' }}>
+                  <p style={{ color: B.textMuted, fontSize: 14, margin: '0 0 8px' }}>
                     Ajustes de infraestructura, pasarela de pagos y catálogo general.
+                  </p>
+                  <p style={{ margin: '0 0 28px' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: B.green, background: B.greenSoft, padding: '4px 10px', borderRadius: 20 }}>Versión {APP_VERSION}</span>
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
                     {[
                       { emoji: '🏷️', label: 'Gestión de Categorías', desc: 'Activar, pausar o crear categorías de mercado y turismo', coming: false, count: `${categories.length} activas` },
-                      { emoji: '💳', label: 'Pasarela Wompi / Pagos', desc: 'Validación de webhook e integración segura en backend', coming: false, count: 'Conectado' },
+                      { emoji: '💳', label: 'Pasarela Wompi / Pagos en línea', desc: 'Pago con tarjeta y PSE mediante una Edge Function de Supabase', coming: true },
                       { emoji: '📊', label: 'Reportes y Auditoría', desc: 'Exportación de reservas e historial financiero consolidado', coming: true },
                       { emoji: '🔔', label: 'Notificaciones y Alertas', desc: 'Alertas automáticas de stock agotado para asociaciones', coming: true },
                     ].map(item => (
@@ -1663,7 +1486,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     ))}
                   </div>
                 </div>
+                <MyAccountCard style={{ marginTop: 18 }} />
                 <ChangePasswordCard style={{ marginTop: 18 }} />
+              </div>
+            )}
+
+            {section === 'stores' && (
+              <div style={{ maxWidth: 900, margin: '0 auto' }}>
+                <StoresManager />
               </div>
             )}
           </>}
@@ -1703,31 +1533,21 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <input style={inp} {...phoneInputProps} value={onlyPhoneDigits(userEditModal.phone || '')} onChange={e => setUserEditModal({ ...userEditModal, phone: onlyPhoneDigits(e.target.value) })} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 16 }}>
-              <div>
-                <label style={lbl}>Departamento</label>
-                <select
-                  style={inp}
-                  value={userEditModal.department || ''}
-                  onChange={e => setUserEditModal({ ...userEditModal, department: e.target.value })}
-                >
-                  <option value="">Seleccionar departamento...</option>
-                  {departments.map((d) => (
-                    <option key={d.id} value={d.name}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>Ciudad / Municipio *</label>
-                <input
-                  style={inp}
-                  placeholder="Ej: Pitalito, Pasto"
-                  required
-                  value={userEditModal.municipality || ''}
-                  onChange={e => setUserEditModal({ ...userEditModal, municipality: e.target.value })}
-                />
-              </div>
+              <DocumentFields
+                documentType={userEditModal.document_type ?? ''}
+                documentNumber={userEditModal.document_number ?? ''}
+                onChange={({ documentType, documentNumber }) => setUserEditModal((u) => (u ? { ...u, document_type: documentType, document_number: documentNumber } : u))}
+                labelStyle={lbl}
+                inputStyle={inp}
+                required={false}
+              />
+              <LocationFields
+                department={userEditModal.department ?? ''}
+                municipality={userEditModal.municipality ?? ''}
+                onChange={(loc) => setUserEditModal((u) => (u ? { ...u, ...loc } : u))}
+                labelStyle={lbl}
+                inputStyle={inp}
+              />
             </div>
             <div style={{ marginBottom: 24 }}>
               <label style={lbl}>Rol en el ecosistema</label>
@@ -1908,31 +1728,20 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-                <div>
-                  <label style={lbl}>Departamento</label>
-                  <select
-                    style={inp}
-                    value={newUserData.department}
-                    onChange={e => setNewUserData({ ...newUserData, department: e.target.value })}
-                  >
-                    <option value="">Seleccionar departamento...</option>
-                    {departments.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={lbl}>Ciudad / Municipio *</label>
-                  <input
-                    style={inp}
-                    placeholder="Ej: Pitalito, Pasto"
-                    required
-                    value={newUserData.municipality}
-                    onChange={e => setNewUserData({ ...newUserData, municipality: e.target.value })}
-                  />
-                </div>
+                <DocumentFields
+                  documentType={newUserData.document_type}
+                  documentNumber={newUserData.document_number}
+                  onChange={({ documentType, documentNumber }) => setNewUserData((n) => ({ ...n, document_type: documentType, document_number: documentNumber }))}
+                  labelStyle={lbl}
+                  inputStyle={inp}
+                />
+                <LocationFields
+                  department={newUserData.department}
+                  municipality={newUserData.municipality}
+                  onChange={(loc) => setNewUserData((n) => ({ ...n, ...loc }))}
+                  labelStyle={lbl}
+                  inputStyle={inp}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: 12, marginTop: 10 }}>
@@ -2076,7 +1885,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
               <input
                 type="file"
                 ref={adFileInputRef}
-                accept="image/jpeg,image/png,image/webp"
+                accept="image/jpeg,image/png"
                 style={{ display: 'none' }}
                 onChange={e => {
                   const file = e.target.files?.[0]

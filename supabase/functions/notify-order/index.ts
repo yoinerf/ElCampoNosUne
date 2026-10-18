@@ -48,12 +48,21 @@ function normalizePhone(raw: string | null | undefined, countryCode: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// Comparación en tiempo constante: no filtra el secreto por tiempos de respuesta
+function safeEqual(a: string, b: string) {
+  const x = new TextEncoder().encode(a)
+  const y = new TextEncoder().encode(b)
+  let diff = x.length ^ y.length
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0)
+  return diff === 0
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405)
 
   // Solo el Database Webhook (o quien tenga la clave) puede invocarla
   const expectedSecret = Deno.env.get('NOTIFY_WEBHOOK_SECRET')
-  if (!expectedSecret || req.headers.get('x-webhook-secret') !== expectedSecret) {
+  if (!expectedSecret || !safeEqual(req.headers.get('x-webhook-secret') ?? '', expectedSecret)) {
     return json({ error: 'No autorizado' }, 401)
   }
 

@@ -140,6 +140,6 @@ export async function reviewDocument(documentId: string, approve: boolean, reaso
   return supabase.rpc('review_producer_document', {
     p_document_id: documentId,
     p_approve: approve,
-    p_reason: reason ?? null,
+    p_reason: reason,
   })
 }

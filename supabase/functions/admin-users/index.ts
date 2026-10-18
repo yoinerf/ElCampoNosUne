@@ -3,7 +3,7 @@
 // aquí (Supabase la inyecta como variable de entorno); nunca llega al navegador.
 //
 // Acciones (POST con JSON { action, ... }):
-//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, store?, department?, municipality?, must_change_password? }
+//   - create_user        { email, password, first_name, last_name?, org_name?, phone?, user_type, store?, department?, municipality?, document_type, document_number, must_change_password? }
 //   - delete_user        { user_id }
 //   - set_temp_password  { user_id, password }
 //
@@ -15,23 +15,28 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+// Orígenes permitidos (secret ALLOWED_ORIGINS, separados por coma). Sin configurar: cualquiera.
+const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get('Origin') ?? ''
+  const allowOrigin = ALLOWED_ORIGINS.length === 0 ? '*' : ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
+  return {
+    'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  }
 }
 
 const USER_TYPES = ['asociacion', 'turismo', 'comprador', 'admin', 'admin_tienda']
 // Roles que pertenecen a una tienda (profiles.store); el resto queda en 'campo'
 const STORE_ROLES = ['asociacion', 'admin_tienda']
 const MIN_PASSWORD_LENGTH = 8
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function validPassword(password: unknown): password is string {
   return typeof password === 'string'
@@ -44,8 +49,27 @@ function clean(value: unknown) {
   return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+// Documento de identidad: mismas reglas que src/lib/identity.ts y el check de profiles
+const DOCUMENT_TYPES = ['CC', 'CE', 'TI', 'PPT', 'PAS', 'NIT']
+
+function parseDocument(type: unknown, rawNumber: unknown): { type: string; number: string } | { error: string } {
+  const docType = typeof type === 'string' ? type.trim().toUpperCase() : ''
+  if (!DOCUMENT_TYPES.includes(docType)) return { error: 'Tipo de documento inválido.' }
+  const number = typeof rawNumber === 'string' ? rawNumber.replace(/[\s.]/g, '').toUpperCase() : ''
+  const valid = docType === 'CC' || docType === 'TI'
+    ? /^\d{5,12}$/.test(number)
+    : docType === 'NIT'
+      ? /^\d{8,12}(-\d)?$/.test(number)
+      : /^[A-Z0-9]{4,20}$/.test(number)
+  return valid ? { type: docType, number } : { error: 'Número de documento inválido.' }
+}
+
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+  const cors = corsHeaders(req)
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
+
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Método no permitido' }, 405)
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -103,6 +127,9 @@ Deno.serve(async (req) => {
         const phone = clean(body.phone)
         if (phone && !/^\d{1,10}$/.test(phone)) return json({ error: 'El WhatsApp debe tener solo números (máximo 10).' }, 400)
 
+        const document = parseDocument(body.document_type, body.document_number)
+        if ('error' in document) return json({ error: document.error }, 400)
+
         const profileData = {
           first_name: firstName,
           last_name: clean(body.last_name) ?? '',
@@ -111,6 +138,8 @@ Deno.serve(async (req) => {
           user_type: userType,
           department: clean(body.department),
           municipality: clean(body.municipality),
+          document_type: document.type,
+          document_number: document.number,
         }
 
         const { data: created, error: createError } = await admin.auth.admin.createUser({
@@ -124,8 +153,10 @@ Deno.serve(async (req) => {
           },
         })
         if (createError || !created.user) {
-          const msg = createError?.message ?? 'No se pudo crear el usuario.'
-          return json({ error: /already been registered|already exists/i.test(msg) ? 'Ya existe un usuario con ese correo.' : msg }, 400)
+          const msg = createError?.message ?? ''
+          if (/already been registered|already exists/i.test(msg)) return json({ error: 'Ya existe un usuario con ese correo.' }, 400)
+          console.error('admin-users create_user:', msg)
+          return json({ error: 'No se pudo crear el usuario.' }, 400)
         }
 
         // Rol y tienda van al perfil con la service key (handle_new_user solo acepta roles públicos)
@@ -133,7 +164,8 @@ Deno.serve(async (req) => {
         if (profileError) {
           // Revertir para no dejar un usuario de Auth sin perfil
           await admin.auth.admin.deleteUser(created.user.id)
-          return json({ error: `No se pudo crear el perfil: ${profileError.message}` }, 400)
+          console.error('admin-users create_user profile:', profileError.message)
+          return json({ error: 'No se pudo crear el perfil del usuario.' }, 400)
         }
 
         return json({ ok: true, user_id: created.user.id })
@@ -142,7 +174,7 @@ Deno.serve(async (req) => {
       // ─── Eliminar usuario ─────────────────────────────────────────────────
       case 'delete_user': {
         const userId = clean(body.user_id)
-        if (!userId) return json({ error: 'Falta el usuario.' }, 400)
+        if (!userId || !UUID_RE.test(userId)) return json({ error: 'Usuario inválido.' }, 400)
         if (userId === caller.id) return json({ error: 'No puedes eliminar tu propia cuenta.' }, 400)
 
         // El admin de tienda solo elimina productores de su tienda (lo decide la BD con su sesión)
@@ -155,10 +187,11 @@ Deno.serve(async (req) => {
         const { error } = await admin.auth.admin.deleteUser(userId)
         if (error) {
           const blocked = /foreign key|violates|restrict/i.test(error.message)
+          if (!blocked) console.error('admin-users delete_user:', error.message)
           return json({
             error: blocked
               ? 'No se puede eliminar: el usuario tiene pedidos u otros registros asociados.'
-              : `No se pudo eliminar el usuario: ${error.message}`,
+              : 'No se pudo eliminar el usuario.',
           }, 400)
         }
         return json({ ok: true })
@@ -168,7 +201,7 @@ Deno.serve(async (req) => {
       case 'set_temp_password': {
         if (!isSuperAdmin) return json({ error: 'Solo un superadministrador puede asignar contraseñas.' }, 403)
         const userId = clean(body.user_id)
-        if (!userId) return json({ error: 'Falta el usuario.' }, 400)
+        if (!userId || !UUID_RE.test(userId)) return json({ error: 'Usuario inválido.' }, 400)
         if (!validPassword(body.password)) {
           return json({ error: `La contraseña debe tener al menos ${MIN_PASSWORD_LENGTH} caracteres, con letras y números.` }, 400)
         }
@@ -178,7 +211,10 @@ Deno.serve(async (req) => {
           // App.tsx detecta esta marca al iniciar sesión y obliga a cambiarla
           user_metadata: { must_change_password: true },
         })
-        if (error) return json({ error: `No se pudo asignar la contraseña: ${error.message}` }, 400)
+        if (error) {
+          console.error('admin-users set_temp_password:', error.message)
+          return json({ error: 'No se pudo asignar la contraseña.' }, 400)
+        }
         return json({ ok: true })
       }
 

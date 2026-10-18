@@ -35,6 +35,7 @@ export interface StoreSettings {
     accountNumber?: string
     accountHolder?: string
     nit?: string
+    nequi?: string
     whatsapp?: string
     instructions?: string
   }

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import type { ShippingAddress } from './catalog'
 
 export interface OrderStatus {
   id: number
@@ -28,7 +29,7 @@ export interface OrderItemRow {
     id: string
     customer_name: string | null
     customer_phone: string | null
-    shipping_address: any
+    shipping_address: ShippingAddress | null
     payment_method: string
     payment_status: string
     // Tienda del pedido ('campo' | 'amazonica'). Puede faltar si no se ha migrado.
@@ -68,7 +69,7 @@ export async function fetchOrderItems(sellerId?: string): Promise<OrderItemRow[]
   let query = supabase
     .from('order_items')
     .select(
-      '*, order:orders(id, customer_name, customer_phone, shipping_address, payment_method, payment_status, store, created_at), seller:profiles(org_name, first_name, last_name)'
+      '*, order:orders(id, customer_name, customer_phone, shipping_address, payment_method, payment_status, store, created_at), seller:public_profiles(org_name, first_name, last_name)'
     )
     .order('created_at', { ascending: false })
   if (sellerId) query = query.eq('seller_id', sellerId)
@@ -132,6 +133,19 @@ export function getNextStatuses(
     }))
     .filter((t): t is { status: OrderStatus; suggested: boolean; sortOrder: number } => !!t.status)
     .sort((a, b) => Number(b.suggested) - Number(a.suggested) || a.sortOrder - b.sortOrder)
+}
+
+// Estados de order_items que no cuentan como venta
+const NOT_SALE_STATUSES = ['Cancelled', 'Returned', 'Refunded']
+
+/** Ventas de un vendedor: ítems de pedidos donde es seller (RLS: seller_id = auth.uid()) */
+export async function fetchSellerSales(sellerId: string, itemType?: 'producto' | 'experiencia') {
+  let query = supabase.from('order_items').select('total, status:order_statuses(code)').eq('seller_id', sellerId)
+  if (itemType) query = query.eq('item_type', itemType)
+  const { data, error } = await query
+  if (error) console.error('Error cargando ventas:', error.message)
+  const sales = (data ?? []).filter((item) => !NOT_SALE_STATUSES.includes(item.status?.code ?? ''))
+  return { count: sales.length, income: sales.reduce((sum, item) => sum + Number(item.total), 0) }
 }
 
 export async function updateOrderItemStatus(itemId: string, statusId: number) {

@@ -22,6 +22,7 @@ import {
   type ProducerDocument,
 } from '../lib/producerDocuments'
 import logoSrc from '../assets/logo-nofond.png'
+import type { Department, Tab, UserRole } from '../lib/types'
 
 // Panel del administrador de tienda: gestiona SOLO los productores de su tienda.
 // Misma distribución que el panel del productor (menú lateral + barra superior).
@@ -30,10 +31,10 @@ import logoSrc from '../assets/logo-nofond.png'
 type Section = 'dashboard' | 'producers' | 'review'
 
 interface Props {
-  onNavigate: (tab: any) => void
-  activeNav?: string
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
+  userRole?: UserRole | null
   /** Tienda del administrador (profiles.store) */
   store: string
 }
@@ -125,7 +126,7 @@ export default function StoreAdminScreen({ store }: Props) {
   const [me, setMe] = useState({ first_name: '', last_name: '' })
   const [producers, setProducers] = useState<Producer[]>([])
   const [documents, setDocuments] = useState<ProducerDocument[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [toast, setToast] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
@@ -165,7 +166,7 @@ export default function StoreAdminScreen({ store }: Props) {
     setStoreName(storeData?.name ?? store)
     if (meData) setMe({ first_name: meData.first_name ?? '', last_name: meData.last_name ?? '' })
     setProducers(list)
-    setDepartments((deptsData ?? []) as { id: string; name: string }[])
+    setDepartments(deptsData ?? [])
     setDocuments(await fetchDocuments(list.map((p) => p.id)))
     setLoading(false)
   }

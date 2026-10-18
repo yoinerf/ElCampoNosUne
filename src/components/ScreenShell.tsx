@@ -4,8 +4,10 @@ import { clearPromoSession } from '../lib/promoSession'
 import { AMAZON_PATH, STORE_NAMES, type StoreId } from '../lib/stores'
 import NotificationBell from './NotificationBell'
 import logoSrc from '../assets/logo-nofond.png'
+import { isTab, type Tab, type UserRole } from '../lib/types'
+import type { User } from '@supabase/supabase-js'
 
-type NavTab = 'home' | 'market' | 'tourism' | 'about' | 'profile' | 'admin' | 'superadmin' | 'amazon' | 'storeadmin'
+type NavTab = Tab
 
 interface NavItem {
   id: NavTab
@@ -21,10 +23,10 @@ const NAV_ITEMS: NavItem[] = [
 ]
 
 interface ScreenShellProps {
-  activeNav?: NavTab | string
-  onNavigate?: (tab: any) => void
+  activeNav?: NavTab
+  onNavigate?: (tab: NavTab) => void
   onProfileClick?: () => void
-  userRole?: 'asociacion' | 'turismo' | 'comprador' | 'admin' | string | null
+  userRole?: UserRole | null
   children: ReactNode
   contentStyle?: CSSProperties
   contentClassName?: string
@@ -70,7 +72,7 @@ export default function ScreenShell({
   const homeTab: NavTab = isStoreAdmin ? 'storeadmin' : isSeller ? 'admin' : isAmazon ? 'amazon' : 'home'
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
-  const [sessionUser, setSessionUser] = useState<any>(null)
+  const [sessionUser, setSessionUser] = useState<User | null>(null)
   const [showScrollTop, setShowScrollTop] = useState(false)
 
   useEffect(() => {
@@ -304,7 +306,7 @@ export default function ScreenShell({
                     Admin
                   </button>
                 )}
-                <NotificationBell onOpen={(tab) => (tab === 'profile' ? handleProfileClick() : onNavigate?.(tab))} />
+                <NotificationBell onOpen={(tab) => (tab === 'profile' ? handleProfileClick() : isTab(tab) && onNavigate?.(tab))} />
                 <div style={{ position: 'relative' }}>
                   <button
                     type="button"

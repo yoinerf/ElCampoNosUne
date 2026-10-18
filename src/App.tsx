@@ -1,9 +1,10 @@
-import { useState, useEffect, lazy, Suspense, type JSX } from 'react'
+import { useState, useEffect, useMemo, useRef, lazy, Suspense, type JSX } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import ScreenShell from './components/ScreenShell'
-import type { CartItem } from './screens/MarketplaceScreen'
+import type { CartItem } from './lib/catalog'
 import { supabase, authRedirectInfo } from './lib/supabase'
-import { AMAZON_PATH, STORE_NAMES, cartKey, isAmazonPath, type StoreId } from './lib/stores'
+import { STORE_NAMES, cartKey, isAmazonPath, type StoreId } from './lib/stores'
+import { pathForTab, routeFromPath } from './lib/routes'
 
 // Pantallas cargadas bajo demanda: no se descargan hasta que se necesitan
 // (los paneles de admin, por ejemplo, no llegan al navegador de un comprador)
@@ -29,9 +30,13 @@ function ScreenLoader() {
 }
 import logoImg from './assets/logo-nofond.png'
 
-type Tab = 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'superadmin' | 'about' | 'amazon' | 'storeadmin'
-type UserRole = 'asociacion' | 'turismo' | 'comprador' | 'admin' | 'admin_tienda'
+import type { Tab, UserRole } from './lib/types'
+import { useAuth } from './lib/auth'
+
 type AppFlow = 'auth' | 'login' | 'app'
+
+// Pantalla y tienda de la URL con la que se abrió la app
+const initialRoute = routeFromPath(window.location.pathname)
 
 const getVisibleTabs = (role?: UserRole, store: StoreId = 'campo'): Tab[] => {
   switch (role) {
@@ -53,82 +58,75 @@ const getVisibleTabs = (role?: UserRole, store: StoreId = 'campo'): Tab[] => {
 
 export default function App() {
   const [flow, setFlow] = useState<AppFlow>('app')
-  const [activeTab, setActiveTab] = useState<Tab>(isAmazonPath() ? 'amazon' : 'home')
-  const [checkingSession, setCheckingSession] = useState(true)
-  const [userRole, setUserRole] = useState<UserRole | undefined>()
-  // Tienda del usuario (profiles.store): define qué tienda gestiona un productor
-  const [userStore, setUserStore] = useState<StoreId>('campo')
-  // Valor real de profiles.store (puede ser una tienda nueva): lo usa el panel del admin de tienda
-  const [userStoreId, setUserStoreId] = useState<string>('campo')
+  const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab)
+  // Redirecciones automáticas (rol, permisos, URL inicial) reemplazan la entrada del
+  // historial en vez de agregar una: así el botón atrás no vuelve a una ruta que redirige.
+  // Guarda la pestaña destino de la redirección ('initial' = normalizar la URL de entrada).
+  const redirectTarget = useRef<Tab | 'initial' | null>('initial')
+  const redirectTo = (tab: Tab) => {
+    redirectTarget.current = tab
+    setActiveTab(tab)
+  }
+  // Sesión y perfil (rol y tienda del usuario) los carga AuthProvider
+  const { session, role: userRole, store: userStore, storeId: userStoreId, loading: checkingSession, profileLoadId } = useAuth()
   // Tienda desde la que el comprador abrió su panel (para mantener la marca)
-  const [panelStore, setPanelStore] = useState<StoreId>('campo')
+  const [panelStore, setPanelStore] = useState<StoreId>(initialRoute.store)
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([])
-  const [checkoutConfirm, setCheckoutConfirm] = useState<((items: CartItem[]) => Promise<boolean>) | null>(null)
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
   const [initialProduct, setInitialProduct] = useState<string | null>(null)
   // recovery: llegó desde el enlace del correo · forced: entró con contraseña temporal del admin
   const [passwordMode, setPasswordMode] = useState<'recovery' | 'forced' | null>(authRedirectInfo.isRecovery ? 'recovery' : null)
 
+  // Eventos de autenticación que solo afectan la interfaz (los datos los maneja AuthProvider)
   useEffect(() => {
-    const loadRole = async (session: { user: { id: string; user_metadata?: Record<string, any> } } | null) => {
-      if (!session) {
-        setUserRole(undefined)
-        setUserStore('campo')
-        setUserStoreId('campo')
-        return
-      }
-
-      // Contraseña temporal asignada por el admin: obligar a cambiarla
-      if (session.user.user_metadata?.must_change_password) {
-        setPasswordMode((prev) => prev ?? 'forced')
-      }
-
-      const { data } = await supabase
-        .from('profiles')
-        .select('user_type, store')
-        .eq('id', session.user.id)
-        .single()
-
-      const role = data?.user_type as UserRole | undefined
-      const store: StoreId = data?.store === 'amazonica' ? 'amazonica' : 'campo'
-      setUserRole(role)
-      setUserStore(store)
-      setUserStoreId(data?.store ?? 'campo')
-
-      if (role === 'admin') {
-        setActiveTab((prev) => {
-          if (prev === 'market' || prev === 'tourism' || prev === 'profile' || prev === 'amazon') return prev
-          return 'superadmin'
-        })
-      } else if (role === 'admin_tienda') {
-        setActiveTab('storeadmin')
-      } else if (role === 'asociacion' || role === 'turismo') {
-        setActiveTab((prev) => {
-          if (role === 'asociacion' && store === 'campo' && prev === 'market') return 'market'
-          if (role === 'asociacion' && store === 'amazonica' && prev === 'amazon') return 'amazon'
-          if (role === 'turismo' && prev === 'tourism') return 'tourism'
-          return 'admin'
-        })
-      }
-    }
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      // Enlace de recuperación vencido o inválido: mostrar el login con el aviso
-      setFlow(!session && authRedirectInfo.error ? 'login' : 'app')
-      await loadRole(session)
-      setCheckingSession(false)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return
       if (event === 'PASSWORD_RECOVERY') setPasswordMode('recovery')
       if (event === 'SIGNED_OUT') setPasswordMode(null)
       setFlow('app')
-      loadRole(session)
     })
-
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  const visibleTabs = getVisibleTabs(userRole, userStore)
+  // Sesión inicial: enlace de recuperación vencido o inválido → mostrar el login con el aviso
+  useEffect(() => {
+    if (!checkingSession && !session && authRedirectInfo.error) setFlow('login')
+    // Solo al terminar la carga inicial
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkingSession])
+
+  // Contraseña temporal asignada por el admin: obligar a cambiarla
+  const mustChangePassword = !!session?.user.user_metadata?.must_change_password
+  useEffect(() => {
+    if (mustChangePassword) setPasswordMode((prev) => prev ?? 'forced')
+  }, [mustChangePassword])
+
+  // Cada vez que se carga un perfil, llevar al usuario a la pestaña de su rol
+  useEffect(() => {
+    if (profileLoadId === 0) return
+    // Primera carga: si la URL apunta a una pantalla permitida para el rol (y no es el
+    // inicio genérico), se respeta el enlace directo
+    if (profileLoadId === 1 && initialRoute.tab !== 'home' && getVisibleTabs(userRole, userStore).includes(initialRoute.tab)) {
+      return
+    }
+    const prev = activeTab
+    let next = prev
+    if (userRole === 'admin') {
+      next = prev === 'market' || prev === 'tourism' || prev === 'profile' || prev === 'amazon' ? prev : 'superadmin'
+    } else if (userRole === 'admin_tienda') {
+      next = 'storeadmin'
+    } else if (userRole === 'asociacion' || userRole === 'turismo') {
+      if (userRole === 'asociacion' && userStore === 'campo' && prev === 'market') next = 'market'
+      else if (userRole === 'asociacion' && userStore === 'amazonica' && prev === 'amazon') next = 'amazon'
+      else if (userRole === 'turismo' && prev === 'tourism') next = 'tourism'
+      else next = 'admin'
+    }
+    if (next !== prev) redirectTo(next)
+    // Solo cuando termina una carga de perfil, no en cada cambio de rol/tienda intermedio
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileLoadId])
+
+  const visibleTabs = useMemo(() => getVisibleTabs(userRole, userStore), [userRole, userStore])
 
   // Tienda que se está viendo: define la marca de login, registro, checkout y paneles.
   // Dentro de la Tienda Amazónica no se muestra nada de El Campo Nos Une.
@@ -139,27 +137,33 @@ export default function App() {
       ? 'amazonica'
       : 'campo'
 
-  // La Tienda Amazónica tiene su propia ruta (se puede compartir y recargar)
   useEffect(() => {
-    if (checkingSession) return
-    const wantsAmazon = viewStore === 'amazonica'
-    document.title = STORE_NAMES[viewStore]
-    if (wantsAmazon === isAmazonPath()) return
-    const path = wantsAmazon ? AMAZON_PATH : '/'
-    window.history.replaceState(window.history.state, '', path + window.location.search + window.location.hash)
+    if (!checkingSession) document.title = STORE_NAMES[viewStore]
   }, [viewStore, checkingSession])
 
+  // La pestaña actual queda en la URL (ver lib/routes)
   useEffect(() => {
-    if (flow !== 'app') return
-    if (!visibleTabs.includes(activeTab)) {
-      setActiveTab(visibleTabs[0] ?? 'home')
-    }
-  }, [flow, visibleTabs, activeTab])
+    if (checkingSession || flow !== 'app') return
+    const path = pathForTab(activeTab, viewStore)
+    const target = redirectTarget.current
+    // Si hay una redirección hacia otra pestaña aún no aplicada, se conserva para cuando llegue
+    const replace = target === 'initial' || target === activeTab
+    if (replace) redirectTarget.current = null
+    if (path === window.location.pathname) return
+    const url = path + window.location.search + window.location.hash
+    if (replace) window.history.replaceState(window.history.state, '', url)
+    else window.history.pushState({ tab: activeTab }, '', url)
+  }, [activeTab, viewStore, checkingSession, flow])
+
+  useEffect(() => {
+    // Mientras carga la sesión aún no se sabe el rol: no redirigir los enlaces directos
+    if (flow !== 'app' || checkingSession) return
+    if (!visibleTabs.includes(activeTab)) redirectTo(visibleTabs[0] ?? 'home')
+  }, [flow, visibleTabs, activeTab, checkingSession])
 
   /** Verifica si el usuario está autenticado antes de mostrar el perfil */
-  const handleProfileClick = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
+  const handleProfileClick = () => {
+    if (!session) {
       setFlow('login')
     } else if (userRole === 'admin_tienda') {
       setActiveTab('storeadmin')
@@ -202,51 +206,55 @@ export default function App() {
     }
   }
 
-  const handleOpenCheckout = (products: CartItem[], onConfirm: (items: CartItem[]) => Promise<boolean>) => {
+  const handleOpenCheckout = (products: CartItem[]) => {
     window.history.pushState({ modal: 'checkout' }, '', window.location.href)
     setCheckoutItems(products)
-    setCheckoutConfirm(() => onConfirm)
+    setCheckoutOpen(true)
   }
 
   const handleCloseCheckout = () => {
-    // Only go back in history; the popstate listener will clear checkoutConfirm
+    // Solo se vuelve atrás en el historial: el listener de popstate cierra el checkout
     window.history.back()
   }
 
   useEffect(() => {
     const handlePopState = () => {
-      // If the browser goes back, close whatever modal is open
-      if (checkoutConfirm) {
-        setCheckoutConfirm(null)
-      } else if (flow !== 'app') {
-        setFlow('app')
+      // Atrás/adelante del navegador: primero cierra lo que esté abierto encima
+      if (checkoutOpen) {
+        setCheckoutOpen(false)
+        return
       }
+      if (flow !== 'app') setFlow('app')
+      // Si no, vuelve a la pestaña de la URL
+      const route = routeFromPath(window.location.pathname)
+      if (route.tab === 'profile') setPanelStore(route.store)
+      setActiveTab(route.tab)
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [checkoutConfirm, flow])
+  }, [checkoutOpen, flow])
 
   const mainScreens: Record<Tab, JSX.Element> = {
     home: (
-      <HomeScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} onSelectProduct={goToProduct} />
+      <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} onSelectProduct={goToProduct} />
     ),
 
 
     admin: (
-      <AdminPanelScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} store={userStore} />
+      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStore} />
     ),
     storeadmin: (
-      <StoreAdminScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStoreId} />
+      <StoreAdminScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStoreId} />
     ),
     superadmin: (
-      <SuperAdminScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
+      <SuperAdminScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
     market: (
       <MarketplaceScreen
-        onNavigate={(t) => setActiveTab(t as Tab)}
-        activeNav={activeTab as any}
+        onNavigate={setActiveTab}
+        activeNav={activeTab}
         onProfileClick={handleProfileClick}
-        userRole={userRole as any}
+        userRole={userRole}
         onOpenCheckout={handleOpenCheckout}
       />
     ),
@@ -254,19 +262,19 @@ export default function App() {
       <MarketplaceScreen
         key="amazonica"
         store="amazonica"
-        onNavigate={(t) => setActiveTab(t as Tab)}
-        activeNav={activeTab as any}
+        onNavigate={setActiveTab}
+        activeNav={activeTab}
         onProfileClick={handleProfileClick}
-        userRole={userRole as any}
+        userRole={userRole}
         onOpenCheckout={handleOpenCheckout}
       />
     ),
-    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole as any} />,
+    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
     // El comprador tiene su propio panel (pedidos, pagos, reseñas, favoritos, solicitudes, datos)
     profile: userRole === 'comprador' ? (
       <BuyerPanelScreen
         userRole={userRole}
-        onNavigate={(t) => setActiveTab(t as Tab)}
+        onNavigate={setActiveTab}
         activeNav={activeTab}
         onProfileClick={handleProfileClick}
         store={panelStore}
@@ -276,10 +284,10 @@ export default function App() {
         }}
       />
     ) : (
-      <ProfileScreen userRole={userRole as any} onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} />
+      <ProfileScreen userRole={userRole} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />
     ),
     about: (
-      <AboutScreen onNavigate={(t) => setActiveTab(t as Tab)} activeNav={activeTab as any} onProfileClick={handleProfileClick} userRole={userRole} />
+      <AboutScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
   }
 
@@ -341,18 +349,18 @@ export default function App() {
               />
             </div>
           )}
-          {flow === 'app' && (checkoutConfirm ? (
+          {flow === 'app' && (checkoutOpen ? (
             // El carrito conserva el header: navegar desde él cierra el checkout
             <ScreenShell
               store={viewStore}
               activeNav={activeTab}
               userRole={userRole}
               onNavigate={(t) => {
-                setCheckoutConfirm(null)
+                setCheckoutOpen(false)
                 setActiveTab(t as Tab)
               }}
               onProfileClick={() => {
-                setCheckoutConfirm(null)
+                setCheckoutOpen(false)
                 handleProfileClick()
               }}
               cartCount={checkoutItems.reduce((sum, item) => sum + item.quantity, 0)}
@@ -370,11 +378,10 @@ export default function App() {
                 localStorage.setItem(cartKey(viewStore), JSON.stringify(newCart))
               }}
               onBack={handleCloseCheckout}
-              onConfirm={checkoutConfirm}
               onRequireAuth={(mode) => setFlow(mode)}
               onViewProduct={(productId) => {
                 setInitialProduct(productId)
-                setCheckoutConfirm(null)
+                setCheckoutOpen(false)
               }}
             />
             </ScreenShell>

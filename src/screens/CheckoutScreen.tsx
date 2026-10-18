@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import PaymentModal from '../components/PaymentModal'
-import type { CartItem } from './MarketplaceScreen'
+import type { CartItem } from '../lib/catalog'
 import { supabase } from '../lib/supabase'
 import AuthRequiredModal from '../components/AuthRequiredModal'
 import type { StoreId, StoreSettings } from '../lib/stores'
@@ -9,7 +8,6 @@ interface CheckoutScreenProps {
   items: CartItem[]
   onItemsChange: (items: CartItem[]) => void
   onBack: () => void
-  onConfirm: (items: CartItem[]) => Promise<boolean>
   onRequireAuth?: (mode: 'login' | 'auth') => void
   onViewProduct?: (productId: string) => void
   /** Tienda del carrito. En la Tienda Amazónica se paga (efectivo o transferencia) antes del envío. */
@@ -18,7 +16,16 @@ interface CheckoutScreenProps {
 
 export type PaymentMethodType = 'contraentrega' | 'wompi' | 'transferencia' | 'efectivo'
 
-export interface ShippingAddressForm {
+// orders.payment_method que acepta create_store_order. Wompi aún no está habilitado.
+const PAYMENT_METHODS: Record<PaymentMethodType, 'CashOnDelivery' | 'Cash' | 'BankTransfer' | null> = {
+  contraentrega: 'CashOnDelivery',
+  efectivo: 'Cash',
+  transferencia: 'BankTransfer',
+  wompi: null,
+}
+
+// type (no interface) para que sea asignable a Json en p_shipping
+export type ShippingAddressForm = {
   fullName: string
   phone: string
   department: string
@@ -27,17 +34,14 @@ export interface ShippingAddressForm {
   deliveryNotes: string
 }
 
-export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm, onRequireAuth, onViewProduct, store = 'campo' }: CheckoutScreenProps) {
+export default function CheckoutScreen({ items, onItemsChange, onBack, onRequireAuth, onViewProduct, store = 'campo' }: CheckoutScreenProps) {
   const isAmazon = store === 'amazonica'
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
-  const [paymentOpen, setPaymentOpen] = useState(false)
   const [authOpen, setAuthOpen] = useState(false)
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [loadingPayment, setLoadingPayment] = useState(false)
   const [isLogged, setIsLogged] = useState<boolean | null>(null)
-  const [userEmail, setUserEmail] = useState<string>('')
-  const [userId, setUserId] = useState<string>('')
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>(isAmazon ? 'transferencia' : 'contraentrega')
   const [addressForm, setAddressForm] = useState<ShippingAddressForm>({
@@ -54,8 +58,6 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     supabase.auth.getUser().then(({ data }) => {
       if (data.user) {
         setIsLogged(true)
-        setUserEmail(data.user.email || '')
-        setUserId(data.user.id)
 
         // Cargar perfil para autodiligenciar formulario de envío
         supabase
@@ -83,7 +85,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
 
   const [transferData, setTransferData] = useState<{
     reference: string
-    transferInfo: any
+    transferInfo: StoreSettings['transfer_info']
   } | null>(null)
 
   // Cálculos dinámicos
@@ -136,150 +138,59 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
     setErrorMessage('')
     setMessage('')
 
-    // Tienda Amazónica: pedido en Supabase (sin backend). Queda 'Pendiente de pago' y el
-    // productor solo lo prepara y envía cuando se confirma el pago (efectivo o transferencia).
-    if (isAmazon) {
-      if (paymentMethod !== 'efectivo' && paymentMethod !== 'transferencia') return
-      const [{ data: order, error }, { data: settings }] = await Promise.all([
-        supabase.rpc('create_store_order', {
-          p_store: 'amazonica',
-          p_payment_method: paymentMethod === 'efectivo' ? 'Cash' : 'BankTransfer',
-          p_items: items.map(({ product, quantity }) => ({ id: product.id, type: 'producto', quantity })),
-          p_shipping: addressForm,
-          p_shipping_fee: shippingFee,
-        }),
-        supabase.from('store_settings').select('*').eq('store', 'amazonica').maybeSingle(),
-      ])
-
-      if (error) {
-        console.error('Error creando pedido Tienda Amazónica:', error)
-        setErrorMessage(`❌ No se pudo registrar el pedido: ${error.message}`)
-        setLoadingPayment(false)
-        return
-      }
-
-      const reference = String(order?.order_id ?? '').slice(0, 8).toUpperCase()
-      if (paymentMethod === 'transferencia') {
-        setTransferData({ reference, transferInfo: (settings as StoreSettings | null)?.transfer_info ?? {} })
-        setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nRealiza la transferencia para confirmar tu pedido. El productor lo enviará cuando se confirme el pago.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
-      } else {
-        setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nEl productor se pondrá en contacto contigo para coordinar el pago en efectivo y enviará tu pedido cuando lo reciba.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
-      }
-      onItemsChange([])
+    // Sin backend propio: el pedido lo crea create_store_order en Supabase, que toma precios
+    // y stock de la base (nunca del navegador). Queda 'Pendiente de pago' hasta que el
+    // productor/admin confirme el pago.
+    const storeMethod = PAYMENT_METHODS[paymentMethod]
+    if (!storeMethod || (isAmazon && storeMethod === 'CashOnDelivery') || (!isAmazon && storeMethod === 'Cash')) {
+      setErrorMessage('Este método de pago no está disponible en esta tienda.')
       setLoadingPayment(false)
       return
     }
 
-    // Contraentrega: se registra directamente en Supabase (sin backend).
-    // El pedido queda en estado 'PendingPayment' hasta que el productor/admin confirme el pago.
-    if (paymentMethod === 'contraentrega') {
-      const { error } = await supabase.rpc('create_cash_on_delivery_order', {
+    const [{ data: order, error }, { data: settings }] = await Promise.all([
+      supabase.rpc('create_store_order', {
+        p_store: store,
+        p_payment_method: storeMethod,
         p_items: items.map(({ product, quantity }) => ({
           id: product.id,
-          type: product.type || 'producto',
+          type: isAmazon ? 'producto' : product.type || 'producto',
           quantity,
         })),
         p_shipping: addressForm,
         p_shipping_fee: shippingFee,
-      })
+      }),
+      storeMethod === 'BankTransfer'
+        ? supabase.from('store_settings').select('*').eq('store', store).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ])
 
-      if (error) {
-        console.error('Error creando pedido contraentrega:', error)
-        setErrorMessage(`❌ No se pudo registrar el pedido: ${error.message}`)
-        setLoadingPayment(false)
-        return
-      }
-
-      setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! Quedó pendiente de pago y nuestro productor preparará tu envío. \n\n Podrás seguir el estado de tu pedido en el panel de usuario.')
-      onItemsChange([])
+    if (error) {
+      console.error('Error creando pedido:', error)
+      setErrorMessage(`❌ No se pudo registrar el pedido: ${error.message}`)
       setLoadingPayment(false)
       return
     }
 
-    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
-
-    try {
-      const checkoutRes = await fetch(`${backendUrl}/api/payments/checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          payment_method: paymentMethod,
-          customer_email: userEmail,
-          customer_name: addressForm.fullName,
-          customer_phone: addressForm.phone,
-          shipping_address: addressForm,
-          shipping_fee: shippingFee,
-          items: items.map(({ product, quantity }) => ({
-            id: product.id,
-            type: product.type || 'producto',
-            quantity,
-            price: product.price,
-          })),
-        }),
-      })
-
-      const checkoutData = await checkoutRes.json()
-
-      if (!checkoutRes.ok || !checkoutData.success) {
-        const errorText = checkoutData.errors?.join(' ') || checkoutData.message || 'No se pudo procesar la orden en el servidor'
-        setErrorMessage(`❌ Error en la orden: ${errorText}`)
-        setLoadingPayment(false)
-        return
-      }
-
-      if (paymentMethod === 'transferencia') {
-        setTransferData({
-          reference: checkoutData.reference,
-          transferInfo: checkoutData.transferInfo || {
-            bank: 'Bancolombia',
-            accountType: 'Cuenta de Ahorros',
-            accountNumber: '458-920184-12',
-            accountHolder: 'El Campo Nos Une S.A.S',
-            nit: '901.582.419-3',
-            nequi: '315 482 9102',
-            daviplata: '315 482 9102',
-          },
-        })
-        setMessage(`🎉 ¡Registro exitoso! Referencia: ${checkoutData.reference}. Realiza tu transferencia para confirmar.`)
-        onItemsChange([])
-        setLoadingPayment(false)
-      } else if (paymentMethod === 'wompi') {
-        setPaymentOpen(true)
-        setLoadingPayment(false)
-      }
-    } catch (err: any) {
-      console.error('Error en el flujo de pagos:', err)
-      setErrorMessage(`Error al conectar con el servicio de pagos.`)
-      setLoadingPayment(false)
-    }
-  }
-
-  const confirmWompiPayment = async () => {
-    const confirmed = await onConfirm(items)
-    setPaymentOpen(false)
-    if (confirmed) {
-      setMessage('🎉 ¡Pago por Wompi confirmado exitosamente! Tu compra fue registrada.')
-      onItemsChange([])
+    // create_store_order devuelve jsonb: { order_id, store, status, items, subtotal, shipping_fee, total }
+    const reference = String((order as { order_id?: string } | null)?.order_id ?? '').slice(0, 8).toUpperCase()
+    if (storeMethod === 'BankTransfer') {
+      setTransferData({ reference, transferInfo: (settings as StoreSettings | null)?.transfer_info ?? {} })
+      setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nRealiza la transferencia para confirmar tu pedido. El productor lo enviará cuando se confirme el pago.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
+    } else if (storeMethod === 'Cash') {
+      setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nEl productor se pondrá en contacto contigo para coordinar el pago en efectivo y enviará tu pedido cuando lo reciba.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
     } else {
-      setErrorMessage('No pudimos confirmar la transacción con Wompi.')
+      setMessage('🎉 ¡Pedido contraentrega registrado exitosamente! Quedó pendiente de pago y nuestro productor preparará tu envío. \n\n Podrás seguir el estado de tu pedido en el panel de usuario.')
     }
-    return confirmed
+    onItemsChange([])
+    setLoadingPayment(false)
   }
+
 
   return (
     <>
       <AuthRequiredModal open={authOpen} onClose={() => setAuthOpen(false)} onRequireAuth={(mode) => onRequireAuth?.(mode)} />
 
-      <PaymentModal
-        open={paymentOpen}
-        title="Finalizar pago con Wompi"
-        subtitle="Confirma la transacción segura de Wompi Bancolombia."
-        confirmLabel="Pagar con Wompi"
-        amount={grandTotal}
-        onClose={() => setPaymentOpen(false)}
-        onConfirm={confirmWompiPayment}
-      />
 
       <div className="h-full overflow-y-auto" style={{ background: '#F9F6F0', fontFamily: "'Nunito Sans', sans-serif", minHeight: 'calc(100vh - 77px)' }}>
 
@@ -328,7 +239,8 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
               <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 26, margin: '0 0 12px', fontWeight: 700 }}>¡Gracias por tu compra!</h2>
               <p style={{ color: '#444', fontSize: 16, margin: '0 0 20px', lineHeight: 1.6, whiteSpace: 'pre-line', }}>{message}</p>
 
-              {transferData && isAmazon && (
+              {/* Datos bancarios: se configuran por tienda en store_settings.transfer_info */}
+              {transferData && (
                 <div style={{ background: '#FAF7F0', border: '1.5px solid #6BAA3D', borderRadius: 16, padding: 18, textAlign: 'left', marginBottom: 24 }}>
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#205134', marginBottom: 8 }}>🏦 DATOS PARA LA TRANSFERENCIA</div>
                   {transferData.transferInfo?.accountNumber ? (
@@ -337,6 +249,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                       <div>Cuenta: <strong style={{ color: '#205134' }}>{transferData.transferInfo.accountNumber}</strong></div>
                       {transferData.transferInfo.accountHolder && <div>Titular: <strong>{transferData.transferInfo.accountHolder}</strong></div>}
                       {transferData.transferInfo.nit && <div>NIT: <strong>{transferData.transferInfo.nit}</strong></div>}
+                      {transferData.transferInfo.nequi && <div>Nequi / Daviplata: <strong style={{ color: '#205134' }}>{transferData.transferInfo.nequi}</strong></div>}
                       {transferData.transferInfo.instructions && <div>{transferData.transferInfo.instructions}</div>}
                     </div>
                   ) : (
@@ -355,47 +268,6 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                       💬 Enviar comprobante por WhatsApp
                     </a>
                   )}
-                </div>
-              )}
-
-              {transferData && !isAmazon && (
-                <div style={{ background: '#FAF7F0', border: '1.5px solid #6BAA3D', borderRadius: 16, padding: 18, textAlign: 'left', marginBottom: 24 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#205134', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    🏦 DATOS PARA LA TRANSFERENCIA
-                  </div>
-                  <div style={{ display: 'grid', gap: 5, fontSize: 13, color: '#3D2B1A' }}>
-                    <div>Banco: <strong>{transferData.transferInfo?.bank || 'Bancolombia'}</strong> ({transferData.transferInfo?.accountType || 'Ahorros'})</div>
-                    <div>Cuenta: <strong style={{ color: '#205134' }}>{transferData.transferInfo?.accountNumber || '458-920184-12'}</strong></div>
-                    <div>Titular: <strong>{transferData.transferInfo?.accountHolder || 'El Campo Nos Une S.A.S'}</strong></div>
-                    <div>NIT: <strong>{transferData.transferInfo?.nit || '901.582.419-3'}</strong></div>
-                    <div>Nequi / Daviplata: <strong style={{ color: '#205134' }}>{transferData.transferInfo?.nequi || '315 482 9102'}</strong></div>
-                    <div style={{ marginTop: 6, fontSize: 12, color: '#9B4728', fontWeight: 700 }}>
-                      ⚠️ Incluye la referencia <u>{transferData.reference}</u> en la descripción de la transferencia.
-                    </div>
-                  </div>
-                  <a
-                    href={`https://wa.me/573154829102?text=${encodeURIComponent(
-                      `Hola, acabo de realizar una orden con referencia ${transferData.reference}. Adjunto mi comprobante:`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 8,
-                      background: '#25D366',
-                      color: '#fff',
-                      padding: '11px',
-                      borderRadius: 12,
-                      marginTop: 14,
-                      textDecoration: 'none',
-                      fontWeight: 800,
-                      fontSize: 13,
-                    }}
-                  >
-                    💬 Enviar comprobante por WhatsApp
-                  </a>
                 </div>
               )}
 
@@ -820,7 +692,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onConfirm
                         : isLogged === false
                           ? 'Crear cuenta para comprar'
                           : currentStep === 3
-                            ? paymentMethod === 'contraentrega' || paymentMethod === 'efectivo' || (isAmazon && paymentMethod === 'transferencia')
+                            ? paymentMethod !== 'wompi'
                               ? 'Confirmar el pedido'
                               : wompiUnavailable ? 'Proceder al pago (Próximamente)' : 'Proceder al pago'
                             : 'Continuar →'}

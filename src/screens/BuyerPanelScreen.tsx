@@ -27,14 +27,15 @@ import {
   type TicketType,
 } from '../lib/buyer'
 import { STORE_NAMES, type StoreId } from '../lib/stores'
+import type { Department, Tab, UserRole } from '../lib/types'
 
 type BuyerSection = 'overview' | 'orders' | 'payments' | 'reviews' | 'favorites' | 'tickets' | 'profile'
 
 interface BuyerPanelScreenProps {
-  onNavigate: (tab: any) => void
-  activeNav?: string
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
+  userRole?: UserRole | null
   onViewProduct?: (productId: string, store?: StoreId) => void
   /** Tienda desde la que se abrió el panel: define la marca del header */
   store?: StoreId
@@ -201,7 +202,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
   const [favorites, setFavorites] = useState<FavoriteRow[]>([])
   const [reviews, setReviews] = useState<ReviewRow[]>([])
   const [tickets, setTickets] = useState<SupportTicket[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [profile, setProfile] = useState<ProfileForm>({ first_name: '', last_name: '', phone: '', department: '', municipality: '', address: '' })
   const [toast, setToast] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
 
@@ -241,7 +242,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
     setOrders(ordersData)
     setFavorites(favsData)
     setTickets(ticketsData)
-    setDepartments((deptsData ?? []) as { id: string; name: string }[])
+    setDepartments(deptsData ?? [])
     if (profileData) {
       setProfile({
         first_name: profileData.first_name ?? '',

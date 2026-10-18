@@ -70,7 +70,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
     const lastName = nameParts.slice(1).join(' ') || ''
 
     // 1. Registro en Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const { error: authError } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
@@ -89,22 +89,8 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
       return
     }
 
-    // 2. Inserción en tabla profiles
-    if (authData.user) {
-      const { error: profileError } = await supabase.from('profiles').upsert({
-        id: authData.user.id,
-        first_name: firstName,
-        last_name: lastName,
-        email: email.trim(),
-        user_type: userType,
-        municipality: municipality.trim(),
-        created_at: new Date().toISOString(),
-      })
-
-      if (profileError) {
-        console.warn('Advertencia al guardar perfil:', profileError)
-      }
-    }
+    // El perfil lo crea el trigger handle_new_user con los datos de options.data
+    // (solo acepta roles públicos), así el navegador no escribe el rol directamente.
 
     setLoading(false)
     setSuccess(true)

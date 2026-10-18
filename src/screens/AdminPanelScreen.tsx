@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
-import ExperienceModal from '../components/ExperienceModal'
-import ProductModal from '../components/ProductModal'
+import ExperienceModal, { type ExperienceFormData } from '../components/ExperienceModal'
+import ProductModal, { type ProductFormData } from '../components/ProductModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import NotificationBell from '../components/NotificationBell'
@@ -14,6 +14,8 @@ import { confirmGoToDocuments, fetchDocuments, validationState, VALIDATION_STATE
 import { alertDialog, confirmDialog } from '../components/ConfirmDialog'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 import { STORE_NAMES, type StoreId } from '../lib/stores'
+import type { Department, Tab, UserRole } from '../lib/types'
+import { primaryImageUrl } from '../lib/catalog'
 
 type AdminSection = 'dashboard' | 'products' | 'experiences' | 'orders' | 'inventory' | 'reports' | 'settings'
 
@@ -56,10 +58,10 @@ interface ProfileData {
 }
 
 interface Props {
-  onNavigate: (tab: 'home' | 'market' | 'tourism' | 'profile' | 'admin' | 'amazon') => void
-  activeNav?: 'home' | 'market' | 'tourism' | 'profile' | 'admin'
+  onNavigate: (tab: Tab) => void
+  activeNav?: Tab
   onProfileClick?: () => void
-  userRole?: string
+  userRole?: UserRole | null
   /** Tienda del productor (profiles.store): define la marca del panel y a qué tienda lleva "Ver Tienda" */
   store?: StoreId
 }
@@ -145,7 +147,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       // Para turismo actualizamos capacity como texto en experiences
       ;({ error } = await supabase.from('experiences').update({ capacity: `${newVal} personas` }).eq('id', stockModal.product.id))
     } else {
-      ;({ error } = await supabase.from('products').update({ stock: newVal }).eq('id', stockModal.product.id))
+      ;({ error } = await supabase.from('products').update({ stock: String(newVal) }).eq('id', stockModal.product.id))
     }
     if (!error) {
       setProducts(prev => prev.map(p => p.id === stockModal.product.id ? { ...p, stock: String(newVal) } : p))
@@ -156,7 +158,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
   // Datos dinámicos desde Supabase
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [departments, setDepartments] = useState<{ id: string; name: string }[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [orderItems, setOrderItems] = useState<OrderItemRow[]>([])
   const [orderStatuses, setOrderStatuses] = useState<OrderStatus[]>([])
 
@@ -187,7 +189,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     }
 
     if (catsData && catsData.length > 0) setCategories(catsData as { id: string; name: string; business_type: string }[])
-    if (deptsData && deptsData.length > 0) setDepartments(deptsData as { id: string; name: string }[])
+    if (deptsData && deptsData.length > 0) setDepartments(deptsData)
 
     const currentOrg = profileData?.org_name?.trim()
       || `${profileData?.first_name ?? ''} ${profileData?.last_name ?? ''}`.trim()
@@ -195,39 +197,41 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     if (isTurismo) {
       // Cargar experiencias desde tabla experiences con sus imagenes
       const { data: expData } = await supabase.from('experiences').select('*, images(*)').eq('host_id', user.id).order('created_at', { ascending: false })
-      const exps = (expData ?? []).map((e: any) => {
-        const primaryImg = e.images?.find((i: any) => i.is_primary)?.image_url || e.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'
-        return {
-          id: e.id,
-          title: e.title,
-          producer: currentOrg || e.host || '',
-          price: e.price || 0,
-          stock: String(parseInt(e.capacity) || e.capacity || '0'),
-          unit: 'pers',
-          category: e.tags?.[0] || '',
-          category_id: '',
-          origin: '',
-          description: e.description || '',
-          img: primaryImg,
-          duration: e.duration,
-          capacity: e.capacity,
-          tags: e.tags,
-        }
-      }) as ProductItem[]
+      const exps: ProductItem[] = (expData ?? []).map((e) => ({
+        id: e.id,
+        title: e.title,
+        producer: currentOrg || e.host || '',
+        price: e.price || 0,
+        stock: String(parseInt(e.capacity ?? '') || e.capacity || '0'),
+        unit: 'pers',
+        category: e.tags?.[0] || '',
+        category_id: '',
+        origin: '',
+        description: e.description || '',
+        img: primaryImageUrl(e.images, 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900&h=700&fit=crop&auto=format'),
+        duration: e.duration ?? undefined,
+        capacity: e.capacity ?? undefined,
+        tags: e.tags ?? undefined,
+      }))
       setProducts(exps)
       setStats({ activeItems: exps.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: exps.filter(e => (parseInt(e.stock) || 0) < 5).length })
     } else {
       // Cargar productos desde tabla products con sus imagenes
       const { data: userProducts } = await supabase.from('products').select('*, images(*)').eq('producer_id', user.id).order('created_at', { ascending: false })
-      const prods = (userProducts ?? []).map((p: any) => {
-        const primaryImg = p.images?.find((i: any) => i.is_primary)?.image_url || p.images?.[0]?.image_url || 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'
-        return {
-          ...p,
-          producer: currentOrg || p.producer || 'Productor',
-          img: primaryImg,
-          description: p.description || '',
-        }
-      }) as ProductItem[]
+      const prods: ProductItem[] = (userProducts ?? []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        producer: currentOrg || p.producer || 'Productor',
+        price: p.price,
+        stock: p.stock ?? '0',
+        unit: p.unit ?? 'kg',
+        category: catsData?.find((c) => c.id === p.category_id)?.name ?? '',
+        category_id: p.category_id ?? '',
+        origin: '',
+        description: p.description || '',
+        img: primaryImageUrl(p.images, 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'),
+        certified: p.certified ?? undefined,
+      }))
       setProducts(prods)
       const lowStock = prods.filter((p) => { const n = parseInt(p.stock) || 0; return n < 20 }).length
       setStats({ activeItems: prods.length, salesThisMonth: 0, totalIncome: 0, lowStockCount: lowStock })
@@ -273,7 +277,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     setShowModal(true)
   }
 
-  const handleSaveProduct = async (formData: any) => {
+  const handleSaveProduct = async (formData: ProductFormData) => {
     if (!formData.title.trim() || !formData.price) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -295,7 +299,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     // Si falla, se avisa y el formulario queda abierto para corregir
     const { data, error } = editingId
       ? await supabase.from('products').update(commonPayload).eq('id', editingId).select('id')
-      : await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id, rating: 5, reviews: 0 }]).select('id')
+      : await supabase.from('products').insert([{ ...commonPayload, producer_id: user.id }]).select('id')
     if (error || !data?.length) {
       setSaving(false)
       await alertDialog({ title: editingId ? 'No se pudo guardar el producto' : 'No se pudo crear el producto', message: error?.message ?? 'No tienes permiso para modificar este producto.', tone: 'danger' })
@@ -304,10 +308,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     savedProductId = data[0].id
 
     if (savedProductId && formData.uploadedImages && formData.uploadedImages.length > 0) {
-      if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+      if (formData.uploadedImages.some((i) => i.isPrimary)) {
         await supabase.from('images').update({ is_primary: false }).eq('product_id', savedProductId)
       }
-      const imageRows = formData.uploadedImages.map((img: any) => ({
+      const imageRows = formData.uploadedImages.map((img) => ({
         product_id: savedProductId,
         experience_id: null,
         storage_path: img.storagePath,
@@ -324,7 +328,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     loadData()
   }
 
-  const handleSaveExperience = async (formData: any) => {
+  const handleSaveExperience = async (formData: ExperienceFormData) => {
     if (!formData.title.trim() || !formData.price) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -340,8 +344,6 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       description: formData.description ? formData.description.trim() : null,
       tags: formData.tags ? formData.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : (categories.find(c => c.id === formData.category_id)?.name ? [categories.find(c => c.id === formData.category_id)!.name] : ['Experiencia']),
       featured: formData.featured ?? true,
-      rating: 5,
-      reviews: 0,
     }
 
     let savedExpId = editingId
@@ -357,10 +359,10 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
     savedExpId = data[0].id
 
     if (savedExpId && formData.uploadedImages && formData.uploadedImages.length > 0) {
-      if (formData.uploadedImages.some((i: any) => i.isPrimary)) {
+      if (formData.uploadedImages.some((i) => i.isPrimary)) {
         await supabase.from('images').update({ is_primary: false }).eq('experience_id', savedExpId)
       }
-      const imageRows = formData.uploadedImages.map((img: any) => ({
+      const imageRows = formData.uploadedImages.map((img) => ({
         product_id: null,
         experience_id: savedExpId,
         storage_path: img.storagePath,

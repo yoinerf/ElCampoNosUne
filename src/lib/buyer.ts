@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { PAYMENT_METHOD_LABELS } from './stores'
+import type { ShippingAddress } from './catalog'
 
 export { PAYMENT_METHOD_LABELS }
 
@@ -27,7 +28,7 @@ export interface BuyerOrder {
   store?: string
   customer_name: string | null
   customer_phone: string | null
-  shipping_address: any
+  shipping_address: ShippingAddress | null
   subtotal: number
   shipping_fee: number
   total: number

@@ -128,7 +128,7 @@ const EMPTY_FORM = { first_name: '', last_name: '', org_name: '', email: '', pho
 
 const SECTION_LABEL: Record<Section, string> = { dashboard: 'Panel Principal', producers: 'Productores', review: 'Revisión de perfiles', account: 'Mi cuenta' }
 
-export default function StoreAdminScreen({ store }: Props) {
+export default function StoreAdminScreen({ store, onNavigate }: Props) {
   const [section, setSection] = useState<Section>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [storeName, setStoreName] = useState(store)
@@ -389,6 +389,11 @@ export default function StoreAdminScreen({ store }: Props) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
             <NotificationBell buttonStyle={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff' }} />
+            {/* Vitrina de la tienda que administra (para volver: el logo lleva a su panel) */}
+            <button type="button" onClick={() => onNavigate(isMainStore(store) ? 'market' : 'store')} title="Ver la tienda como la ven los compradores" style={{ ...btnGhost, display: 'flex', alignItems: 'center', gap: 6, height: 38 }}>
+              <span aria-hidden="true">🛍️</span>
+              <span className="hidden sm:inline">Ver tienda</span>
+            </button>
             {section === 'producers' && (
               <button type="button" onClick={openCreate} style={btnPrimary}>
                 <span style={{ fontSize: 18, lineHeight: 1 }}>+</span>

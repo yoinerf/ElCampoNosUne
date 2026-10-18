@@ -1271,6 +1271,18 @@ export type Database = {
     Functions: {
       can_store_admin_manage: { Args: { p_user: string }; Returns: boolean }
       cancel_unpaid_store_orders: { Args: never; Returns: number }
+      complete_my_profile: {
+        Args: {
+          p_department: string
+          p_document_number: string
+          p_document_type: string
+          p_first_name: string
+          p_last_name: string
+          p_municipality: string
+          p_user_type: string
+        }
+        Returns: undefined
+      }
       create_cash_on_delivery_order: {
         Args: { p_items: Json; p_shipping?: Json; p_shipping_fee?: number }
         Returns: Json

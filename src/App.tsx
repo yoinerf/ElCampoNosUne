@@ -25,6 +25,7 @@ const SuperAdminScreen = lazy(() => import('./screens/SuperAdminScreen'))
 const SetNewPasswordScreen = lazy(() => import('./screens/SetNewPasswordScreen'))
 const StoreAdminScreen = lazy(() => import('./screens/StoreAdminScreen'))
 const AboutScreen = lazy(() => import('./screens/AboutScreen'))
+const CompleteProfileScreen = lazy(() => import('./screens/CompleteProfileScreen'))
 
 function ScreenLoader() {
   return (
@@ -47,8 +48,8 @@ const getVisibleTabs = (role: UserRole | undefined, store: StoreId, hasAlliedSto
     case 'turismo':
       return ['admin', 'tourism', 'about']
     case 'admin_tienda':
-      // Solo su panel: productores y revisión de perfiles de su tienda
-      return ['storeadmin']
+      // Su panel (productores y revisión de perfiles) y la vitrina de su tienda
+      return isMainStore(store) ? ['storeadmin', 'market'] : ['storeadmin', 'store']
     case 'comprador':
     default:
       return ['home', 'market', 'tourism', ...allied, 'profile', 'about']
@@ -80,7 +81,7 @@ export default function App() {
 function AppContent() {
   const { allStores, alliedStores, getStore } = useStores()
   // Sesión y perfil (rol y tienda del usuario) los carga AuthProvider
-  const { session, role: userRole, store: userStore, profileLoadId } = useAuth()
+  const { session, role: userRole, store: userStore, profileLoadId, needsProfileCompletion, refreshProfile } = useAuth()
   // Pantalla y tienda de la URL con la que se abrió la app
   const [initialRoute] = useState(() => routeFromPath(window.location.pathname, allStores))
 
@@ -107,7 +108,7 @@ function AppContent() {
 
   // Vitrina por defecto: la tienda del productor aliado, la que se estaba viendo o la primera
   const defaultShopStore = (): StoreId | null => {
-    if (userRole === 'asociacion' && !isMainStore(userStore)) return userStore
+    if ((userRole === 'asociacion' || userRole === 'admin_tienda') && !isMainStore(userStore)) return userStore
     return shopStore ?? alliedStores[0]?.store ?? null
   }
 
@@ -167,7 +168,7 @@ function AppContent() {
       else if (userRole === 'turismo' && prev === 'tourism') next = 'tourism'
       else next = 'admin'
     }
-    if (userRole === 'asociacion' && !isMainStore(userStore)) setShopStore(userStore)
+    if ((userRole === 'asociacion' || userRole === 'admin_tienda') && !isMainStore(userStore)) setShopStore(userStore)
     if (next !== prev) redirectTo(next)
     // Solo cuando termina una carga de perfil, no en cada cambio de rol/tienda intermedio
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -326,6 +327,15 @@ function AppContent() {
     return (
       <Suspense fallback={<ScreenLoader />}>
         <SetNewPasswordScreen mode={passwordMode} onDone={() => setPasswordMode(null)} />
+      </Suspense>
+    )
+  }
+
+  // Cuenta nueva con Google: pedir los datos obligatorios antes de usar la app
+  if (needsProfileCompletion) {
+    return (
+      <Suspense fallback={<ScreenLoader />}>
+        <CompleteProfileScreen onDone={refreshProfile} />
       </Suspense>
     )
   }

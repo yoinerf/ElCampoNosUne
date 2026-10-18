@@ -1,7 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react'
 import FavoriteButton from './FavoriteButton'
 import { supabase } from '../lib/supabase'
-import type { StoreId } from '../lib/stores'
+import { isMainStore, type StoreId } from '../lib/stores'
 import type { Product } from '../lib/catalog'
 import type { Database } from '../lib/database.types'
 
@@ -248,7 +248,7 @@ export default function ProductDetail({
 
               {/* Descripción */}
               <p className="text-sm sm:text-[15px] text-[#4A4036] leading-relaxed mb-3 sm:mb-4 font-['Nunito_Sans']">
-                {product.description || (store === 'amazonica'
+                {product.description || (!isMainStore(store)
                   ? 'Producto seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.'
                   : 'Producto del campo colombiano, seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.')}
               </p>

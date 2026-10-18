@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import type { StoreId } from './stores'
+import { MAIN_STORE, type StoreId } from './stores'
 import type { UserRole } from './types'
 
 // Sesión y perfil del usuario en un solo lugar: antes App y varias pantallas
@@ -10,17 +10,15 @@ import type { UserRole } from './types'
 export interface AuthState {
   session: Session | null
   role?: UserRole
-  /** Tienda de la marca (profiles.store normalizado a las tiendas conocidas) */
+  /** Tienda del usuario (profiles.store): la que gestiona un productor o un admin de tienda */
   store: StoreId
-  /** Valor real de profiles.store (puede ser una tienda nueva): lo usa el panel del admin de tienda */
-  storeId: string
   /** true hasta conocer la sesión inicial y su perfil */
   loading: boolean
   /** Aumenta cada vez que termina de cargarse un perfil (inicio de sesión, cambio de usuario...) */
   profileLoadId: number
 }
 
-const initialState: AuthState = { session: null, store: 'campo', storeId: 'campo', loading: true, profileLoadId: 0 }
+const initialState: AuthState = { session: null, store: MAIN_STORE, loading: true, profileLoadId: 0 }
 
 const AuthContext = createContext<AuthState>(initialState)
 
@@ -35,7 +33,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const load = async (session: Session | null) => {
       const loadId = ++latestLoad
       if (!session) {
-        setState((prev) => ({ session: null, store: 'campo', storeId: 'campo', loading: false, profileLoadId: prev.profileLoadId + 1 }))
+        setState((prev) => ({ session: null, store: MAIN_STORE, loading: false, profileLoadId: prev.profileLoadId + 1 }))
         return
       }
 
@@ -45,8 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({
         session,
         role: (data?.user_type as UserRole | undefined) ?? undefined,
-        store: data?.store === 'amazonica' ? 'amazonica' : 'campo',
-        storeId: data?.store ?? 'campo',
+        store: data?.store ?? MAIN_STORE,
         loading: false,
         profileLoadId: prev.profileLoadId + 1,
       }))

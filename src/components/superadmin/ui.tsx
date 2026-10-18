@@ -1,6 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { supabase } from '../../lib/supabase'
-import { STORE_NAMES } from '../../lib/stores'
+import type { ReactNode } from 'react'
+import { useStores } from '../../lib/storesContext'
 
 // Tokens de marca, helpers y piezas de interfaz del panel de superadmin
 // ─── Brand Tokens — Manual de Identidad "Campo Contemporáneo" ─────────────────
@@ -60,18 +59,10 @@ export const ROLE_STYLES: Record<string, { bg: string; color: string; border: st
 // Roles que pertenecen a una tienda: productores y administradores de tienda
 export const STORE_ROLES = ['asociacion', 'admin_tienda']
 
-// Tienda del productor: los de la Tienda Amazónica solo venden allí y sus productos no salen en El Campo Nos Une
+// Tienda del productor: los de una tienda aliada solo venden allí y sus productos no salen en El Campo Nos Une
 // Las tiendas salen de store_settings: una tienda nueva aparece aquí sin cambiar código
 export function StorePicker({ value, onChange, label = 'Tienda del productor' }: { value: string; onChange: (store: string) => void; label?: string }) {
-  const [stores, setStores] = useState<{ store: string; name: string }[]>([
-    { store: 'campo', name: STORE_NAMES.campo },
-    { store: 'amazonica', name: STORE_NAMES.amazonica },
-  ])
-  useEffect(() => {
-    supabase.from('store_settings').select('store, name').order('store').then(({ data }) => {
-      if (data && data.length > 0) setStores(data as { store: string; name: string }[])
-    })
-  }, [])
+  const { allStores: stores } = useStores()
   return (
     <div style={{ marginTop: 14 }}>
       <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: B.green, marginBottom: 6, letterSpacing: 0.3, fontFamily: B.fontBody }}>{label}</label>

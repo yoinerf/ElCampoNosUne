@@ -1,7 +1,9 @@
 import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
-import { AMAZON_PATH, STORE_NAMES, type StoreId } from '../lib/stores'
+import { MAIN_STORE, isMainStore, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
+import { useAppNavigation } from '../lib/navigation'
 import NotificationBell from './NotificationBell'
 import logoSrc from '../assets/logo-nofond.png'
 import { isTab, type Tab, type UserRole } from '../lib/types'
@@ -12,15 +14,9 @@ type NavTab = Tab
 interface NavItem {
   id: NavTab
   label: string
+  /** Vitrina de una tienda aliada (id 'store') */
+  store?: StoreId
 }
-
-const NAV_ITEMS: NavItem[] = [
-  { id: 'home', label: 'Inicio' },
-  { id: 'market', label: 'Productos' },
-  { id: 'tourism', label: 'Experiencias' },
-  { id: 'amazon', label: 'Tienda Amazónica' },
-  { id: 'about', label: 'Nosotros' },
-]
 
 interface ScreenShellProps {
   activeNav?: NavTab
@@ -32,7 +28,7 @@ interface ScreenShellProps {
   contentClassName?: string
   cartCount?: number
   onCartClick?: () => void
-  /** Tienda que se muestra. En 'amazonica' no aparece nada de la marca El Campo Nos Une. */
+  /** Tienda que se muestra. En una tienda aliada no aparece la marca El Campo Nos Une. */
   store?: StoreId
   /** @deprecated ya no se usa — el header nuevo no incluye búsqueda */
   searchPlaceholder?: string
@@ -62,14 +58,17 @@ export default function ScreenShell({
   contentClassName,
   cartCount,
   onCartClick,
-  store = 'campo',
+  store = MAIN_STORE,
 }: ScreenShellProps) {
-  const isAmazon = store === 'amazonica'
+  const { alliedStores, getStore } = useStores()
+  const { openStore } = useAppNavigation()
+  const isAllied = !isMainStore(store)
+  const storeConfig = getStore(store)
   const isSeller = userRole === 'asociacion' || userRole === 'turismo'
   const isStoreAdmin = userRole === 'admin_tienda'
   // Vendedores y administradores de tienda trabajan desde su panel: sin menú de la tienda
   const isPanelUser = isSeller || isStoreAdmin
-  const homeTab: NavTab = isStoreAdmin ? 'storeadmin' : isSeller ? 'admin' : isAmazon ? 'amazon' : 'home'
+  const homeTab: NavTab = isStoreAdmin ? 'storeadmin' : isSeller ? 'admin' : isAllied ? 'store' : 'home'
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [sessionUser, setSessionUser] = useState<User | null>(null)
@@ -91,7 +90,16 @@ export default function ScreenShell({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  const navItems: NavItem[] = (isPanelUser || isAmazon) ? [] : NAV_ITEMS
+  // Menú de la tienda principal: una entrada por cada tienda aliada activa (store_settings)
+  const navItems: NavItem[] = (isPanelUser || isAllied) ? [] : [
+    { id: 'home', label: 'Inicio' },
+    { id: 'market', label: 'Productos' },
+    { id: 'tourism', label: 'Experiencias' },
+    ...alliedStores.map((s): NavItem => ({ id: 'store', label: s.name, store: s.store })),
+    { id: 'about', label: 'Nosotros' },
+  ]
+  const isActiveItem = (item: NavItem) => activeNav === item.id && (!item.store || item.store === store)
+  const goTo = (item: NavItem) => (item.store ? openStore(item.store) : onNavigate?.(item.id))
   const handleProfileClick = () => {
     if (onProfileClick) {
       onProfileClick()
@@ -116,15 +124,15 @@ export default function ScreenShell({
         <div
           style={{
             width: '100%',
-            padding: isAmazon ? '0 12px' : '0 24px',
+            padding: isAllied ? '0 12px' : '0 24px',
             height: 76,
             display: 'flex',
             alignItems: 'center',
-            gap: isAmazon ? 8 : 16,
+            gap: isAllied ? 8 : 16,
             boxSizing: 'border-box',
           }}
         >
-          {/* Logo (oculto en la página de inicio). La Tienda Amazónica aún no tiene logo: se muestra su nombre */}
+          {/* Logo (oculto en la página de inicio). Las tiendas aliadas muestran su nombre */}
           {activeNav !== 'home' && (
           <div
             style={{
@@ -139,9 +147,9 @@ export default function ScreenShell({
             onKeyDown={(e) => e.key === 'Enter' && onNavigate?.(homeTab)}
             aria-label="Ir al inicio"
           >
-            {isAmazon ? (
+            {isAllied ? (
               <span className="text-base w-[100px] md:w-auto md:text-2xl md:whitespace-nowrap" style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 800, color: '#205134', lineHeight: 1.1, display: 'block' }}>
-                {STORE_NAMES.amazonica}
+                {storeConfig.name}
               </span>
             ) : (
               <img
@@ -167,12 +175,12 @@ export default function ScreenShell({
             }}
           >
             {navItems.map((item) => {
-              const isActive = activeNav === item.id
+              const isActive = isActiveItem(item)
               return (
                 <button
-                  key={item.id}
+                  key={item.store ?? item.id}
                   type="button"
-                  onClick={() => onNavigate?.(item.id)}
+                  onClick={() => goTo(item)}
                   style={{
                     position: 'relative',
                     background: 'none',
@@ -210,9 +218,9 @@ export default function ScreenShell({
           <div className="md:hidden" style={{ flex: 1 }} />
 
           {/* Iconos derecha */}
-          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: isAmazon ? 6 : 10 }}>
-            {/* Volver a El Campo Nos Une (solo en la Tienda Amazónica, no para sus productores) */}
-            {isAmazon && !isPanelUser && (
+          <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: isAllied ? 6 : 10 }}>
+            {/* Volver a El Campo Nos Une (solo en tiendas aliadas, no para sus productores) */}
+            {isAllied && !isPanelUser && (
               <button
                 type="button"
                 onClick={() => onNavigate?.('home')}
@@ -412,7 +420,7 @@ export default function ScreenShell({
                           onClick={async () => {
                             clearPromoSession()
                             await supabase.auth.signOut()
-                            window.location.href = isAmazon ? AMAZON_PATH : '/'
+                            window.location.href = isAllied && storeConfig.slug ? `/${storeConfig.slug}` : '/'
                           }}
                           style={{
                             width: '100%',
@@ -490,7 +498,7 @@ export default function ScreenShell({
             )}
 
             {/* Menu Hamburger (Mobile) */}
-            {(!isAmazon || userRole === 'admin') && (
+            {(!isAllied || userRole === 'admin') && (
             <button
               className="flex md:hidden items-center justify-center"
               type="button"
@@ -547,12 +555,12 @@ export default function ScreenShell({
               </button>
             )}
             {navItems.map((item) => {
-              const isActive = activeNav === item.id
+              const isActive = isActiveItem(item)
               return (
                 <button
-                  key={item.id}
+                  key={item.store ?? item.id}
                   type="button"
-                  onClick={() => { onNavigate?.(item.id); setIsMenuOpen(false); }}
+                  onClick={() => { goTo(item); setIsMenuOpen(false); }}
                   style={{
                     background: isActive ? '#EAF3EC' : 'transparent',
                     border: 'none',

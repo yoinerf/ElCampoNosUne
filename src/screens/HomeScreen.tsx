@@ -172,7 +172,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
       // ══════ PRODUCTOS PATROCINADOS (via advertisements) ══════
       try {
         const [{ data: products }, { data: reviewsData }, { data: adsData }] = await Promise.all([
-          // Solo productos de El Campo Nos Une (los de la Tienda Amazónica no salen aquí)
+          // Solo productos de El Campo Nos Une (los de las tiendas aliadas no salen aquí)
           supabase.from('products').select('id, title, producer, rating, price, outstanding, images(*), profiles:public_profiles(org_name, first_name, last_name)').eq('store', 'campo').order('created_at', { ascending: false }).limit(30),
           supabase.from('product_reviews').select('product_id, rating'),
           supabase.from('advertisements').select('*').order('created_at', { ascending: false }),

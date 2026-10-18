@@ -4,7 +4,8 @@ import ProductModal, { type ProductFormData } from '../components/ProductModal'
 import { supabase } from '../lib/supabase'
 import { hasSeenPromoInSession, markPromoAsSeenInSession } from '../lib/promoSession'
 import { isAdvertisementActive } from '../lib/dateColombia'
-import { cartKey, STORE_NAMES, type StoreId } from '../lib/stores'
+import { MAIN_STORE, cartKey, isMainStore, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
 import { canCurrentUserPublish, confirmGoToDocuments } from '../lib/producerDocuments'
 import { requestPanelSection } from '../lib/notifications'
 import { alertDialog } from '../components/ConfirmDialog'
@@ -34,9 +35,12 @@ export default function MarketplaceScreen({
   initialSelectedProduct,
   onClearInitialProduct,
   userRole,
-  store = 'campo',
+  store = MAIN_STORE,
 }: MarketplaceScreenProps) {
-  const isAmazon = store === 'amazonica'
+  // Tienda aliada: vitrina con su propia marca (store_settings)
+  const isAllied = !isMainStore(store)
+  const storeConfig = useStores().getStore(store)
+  const payFirst = !storeConfig.payment_methods.includes('CashOnDelivery')
   const [activeFilter, setActiveFilter] = useState('Todos')
   const [searchVal, setSearchVal] = useState('')
   const [cart, setCart] = useState<Record<string, number>>(() => {
@@ -1049,8 +1053,8 @@ export default function MarketplaceScreen({
           {/* ══ BANNER TIENDA ══ */}
           <div
             style={{
-              // Tienda Amazónica: verde; El Campo Nos Une: naranja
-              background: isAmazon
+              // Tiendas aliadas: verde; El Campo Nos Une: naranja
+              background: isAllied
                 ? 'linear-gradient(135deg, #173E26 0%, #205134 55%, #3D7A28 100%)'
                 : 'linear-gradient(135deg, #A86B05 0%, #D4870A 60%, #E5AE30 100%)',
               borderRadius: '0 0 28px 28px',
@@ -1062,9 +1066,9 @@ export default function MarketplaceScreen({
           >
             <div style={{ position: 'absolute', top: -30, right: -30, width: 140, height: 140, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: -20, left: 20, width: 80, height: 80, borderRadius: '50%', background: 'rgba(255,255,255,0.10)', pointerEvents: 'none' }} />
-            <p style={{ margin: 0, color: '#FFF8EE', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>{isAmazon ? 'TIENDA AMAZÓNICA' : '🌽 MERCADOS CAMPESINOS'}</p>
-            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#FFFFFF', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>{isAmazon ? 'Productos amazónicos' : 'Productos del campo'}</h1>
-            <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>{isAmazon ? 'Tu pedido se envía cuando se confirma el pago' : 'Frescos y directos de productores colombianos'}</p>
+            <p style={{ margin: 0, color: '#FFF8EE', fontSize: 11, fontFamily: "'Nunito Sans', sans-serif", fontWeight: 800, letterSpacing: 0.5 }}>{isAllied ? storeConfig.name.toUpperCase() : '🌽 MERCADOS CAMPESINOS'}</p>
+            <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#FFFFFF', margin: '4px 0 4px', fontWeight: 700, lineHeight: 1.2 }}>{isAllied ? storeConfig.tagline || `Productos de ${storeConfig.name}` : 'Productos del campo'}</h1>
+            <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: 12, fontFamily: "'Nunito Sans', sans-serif" }}>{isAllied ? storeConfig.description || (payFirst ? 'Tu pedido se envía cuando se confirma el pago' : 'Directo de quienes los producen') : 'Frescos y directos de productores colombianos'}</p>
           </div>
 
           {/* ══ ANUNCIOS DESTACADOS ACTIVOS (Valida fechas de activación y tipo producto) ══ */}
@@ -1124,7 +1128,7 @@ export default function MarketplaceScreen({
                       >
                         📢 Destacado
                       </span>
-                      <span style={{ fontSize: 11, color: '#8C827A', fontWeight: 600 }}>{STORE_NAMES[store]}</span>
+                      <span style={{ fontSize: 11, color: '#8C827A', fontWeight: 600 }}>{storeConfig.name}</span>
                     </div>
                     <h3
                       style={{
@@ -1257,7 +1261,7 @@ export default function MarketplaceScreen({
 
           {canCreateProduct && (
             <div style={{ padding: '24px 20px', background: 'linear-gradient(180deg, #F5EEE6 0%, #E8DED0 100%)', borderTop: '1px solid #E8DED0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-              <p style={{ margin: 0, fontSize: 13, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, textAlign: 'center' }}>{isAmazon ? '¿Tienes un nuevo producto?' : '¿Tienes un nuevo producto del campo?'}</p>
+              <p style={{ margin: 0, fontSize: 13, color: '#205134', fontFamily: "'Nunito Sans', sans-serif", fontWeight: 700, textAlign: 'center' }}>{isAllied ? '¿Tienes un nuevo producto?' : '¿Tienes un nuevo producto del campo?'}</p>
               <button
                 onClick={togglePublishForm}
                 className="hover:scale-105 transition-transform"

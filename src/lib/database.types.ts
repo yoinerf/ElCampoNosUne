@@ -1067,23 +1067,44 @@ export type Database = {
       }
       store_settings: {
         Row: {
+          active: boolean
+          description: string | null
           name: string
+          payment_methods: string[]
           payment_timeout_hours: number | null
+          shipping_fee: number
+          slug: string | null
+          sort_order: number
           store: string
+          tagline: string | null
           transfer_info: Json
           updated_at: string
         }
         Insert: {
+          active?: boolean
+          description?: string | null
           name: string
+          payment_methods?: string[]
           payment_timeout_hours?: number | null
+          shipping_fee?: number
+          slug?: string | null
+          sort_order?: number
           store: string
+          tagline?: string | null
           transfer_info?: Json
           updated_at?: string
         }
         Update: {
+          active?: boolean
+          description?: string | null
           name?: string
+          payment_methods?: string[]
           payment_timeout_hours?: number | null
+          shipping_fee?: number
+          slug?: string | null
+          sort_order?: number
           store?: string
+          tagline?: string | null
           transfer_info?: Json
           updated_at?: string
         }

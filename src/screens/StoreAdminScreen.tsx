@@ -9,7 +9,8 @@ import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
 import { adminCreateUser, adminDeleteUser } from '../lib/adminUsers'
 import { usePanelSectionRequest } from '../lib/notifications'
-import { AMAZON_PATH } from '../lib/stores'
+import { isMainStore } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
 import {
   DOC_LABELS,
   DOC_STATUS,
@@ -26,12 +27,14 @@ import type { Tab, UserRole } from '../lib/types'
 import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
 import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
+import MyAccountCard from '../components/MyAccountCard'
+import ChangePasswordCard from '../components/ChangePasswordCard'
 
 // Panel del administrador de tienda: gestiona SOLO los productores de su tienda.
 // Misma distribución que el panel del productor (menú lateral + barra superior).
 // Los permisos reales los aplica la BD (RLS, funciones) y la edge function admin-users.
 
-type Section = 'dashboard' | 'producers' | 'review'
+type Section = 'dashboard' | 'producers' | 'review' | 'account'
 
 interface Props {
   onNavigate: (tab: Tab) => void
@@ -88,6 +91,7 @@ const td: CSSProperties = { padding: '12px 16px', fontSize: 13, color: C.text, v
 
 const DashIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></svg>
 const UsersIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 00-3-3.87" /><path d="M16 3.13a4 4 0 010 7.75" /></svg>
+const AccountIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
 const DocIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /><path d="M9 15l2 2 4-4" /></svg>
 
 function SidebarItem({ icon, label, active, badge, onClick }: { icon: ReactNode; label: string; active: boolean; badge?: number; onClick: () => void }) {
@@ -122,7 +126,7 @@ const producerName = (p: Producer) => p.org_name?.trim() || `${p.first_name} ${p
 
 const EMPTY_FORM = { first_name: '', last_name: '', org_name: '', email: '', phone: '', department: '', municipality: '', document_type: '', document_number: '', password: '' }
 
-const SECTION_LABEL: Record<Section, string> = { dashboard: 'Panel Principal', producers: 'Productores', review: 'Revisión de perfiles' }
+const SECTION_LABEL: Record<Section, string> = { dashboard: 'Panel Principal', producers: 'Productores', review: 'Revisión de perfiles', account: 'Mi cuenta' }
 
 export default function StoreAdminScreen({ store }: Props) {
   const [section, setSection] = useState<Section>('dashboard')
@@ -145,7 +149,8 @@ export default function StoreAdminScreen({ store }: Props) {
   const [rejecting, setRejecting] = useState<{ docId: string; reason: string } | null>(null)
   const [reviewingId, setReviewingId] = useState<string | null>(null)
 
-  const isAmazon = store === 'amazonica'
+  const { getStore } = useStores()
+  const storeSlug = getStore(store).slug
 
   const showToast = (type: 'ok' | 'error', text: string) => {
     setToast({ type, text })
@@ -310,6 +315,7 @@ export default function StoreAdminScreen({ store }: Props) {
     { id: 'dashboard', label: 'Panel Principal', icon: <DashIcon /> },
     { id: 'producers', label: 'Productores', icon: <UsersIcon /> },
     { id: 'review', label: 'Revisión de perfiles', icon: <DocIcon />, badge: pendingProducers.length },
+    { id: 'account', label: 'Mi cuenta', icon: <AccountIcon /> },
   ]
 
   const searchBox = (
@@ -329,7 +335,7 @@ export default function StoreAdminScreen({ store }: Props) {
         style={{ width: 240, flexShrink: 0, background: SIDEBAR.bg, flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 40, boxShadow: '4px 0 24px rgba(21,56,35,0.18)' }}
       >
         <div style={{ padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
-          {isAmazon || store !== 'campo' ? (
+          {!isMainStore(store) ? (
             <span style={{ fontFamily: C.display, fontSize: 22, fontWeight: 800, color: '#fff', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{storeName}</span>
           ) : (
             // El logo va sobre fondo claro para conservar su contraste (manual de identidad)
@@ -358,7 +364,7 @@ export default function StoreAdminScreen({ store }: Props) {
               </div>
               <div style={{ fontSize: 11, color: SIDEBAR.text }}>Admin de tienda</div>
             </div>
-            <button type="button" onClick={async () => { clearPromoSession(); await supabase.auth.signOut(); window.location.href = isAmazon ? AMAZON_PATH : '/' }} title="Cerrar sesión" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFD3BF', padding: 4 }}>
+            <button type="button" onClick={async () => { clearPromoSession(); await supabase.auth.signOut(); window.location.href = !isMainStore(store) && storeSlug ? `/${storeSlug}` : '/' }} title="Cerrar sesión" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#FFD3BF', padding: 4 }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
               </svg>
@@ -580,6 +586,14 @@ export default function StoreAdminScreen({ store }: Props) {
                     </div>
                   )}
                 </>
+              )}
+
+              {/* Datos personales y contraseña del propio administrador */}
+              {section === 'account' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 760 }}>
+                  <MyAccountCard onSaved={loadAll} />
+                  <ChangePasswordCard />
+                </div>
               )}
             </>
           )}

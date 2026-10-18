@@ -24,7 +24,7 @@ export interface BuyerOrder {
   status_id: number
   payment_method: string
   payment_status: string
-  // Tienda del pedido ('campo' | 'amazonica'). El comprador usa la misma cuenta en ambas.
+  // Tienda del pedido (store_settings.store). El comprador usa la misma cuenta en todas.
   store?: string
   customer_name: string | null
   customer_phone: string | null

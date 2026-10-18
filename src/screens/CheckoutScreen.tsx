@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import type { CartItem } from '../lib/catalog'
 import { supabase } from '../lib/supabase'
 import AuthRequiredModal from '../components/AuthRequiredModal'
-import type { StoreId, StoreSettings } from '../lib/stores'
+import { MAIN_STORE, isMainStore, type StoreId, type StorePaymentMethod, type TransferInfo } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
 
 interface CheckoutScreenProps {
   items: CartItem[]
@@ -10,19 +11,41 @@ interface CheckoutScreenProps {
   onBack: () => void
   onRequireAuth?: (mode: 'login' | 'auth') => void
   onViewProduct?: (productId: string) => void
-  /** Tienda del carrito. En la Tienda Amazónica se paga (efectivo o transferencia) antes del envío. */
+  /** Tienda del carrito: sus métodos de pago y su envío salen de store_settings. */
   store?: StoreId
 }
 
 export type PaymentMethodType = 'contraentrega' | 'wompi' | 'transferencia' | 'efectivo'
 
 // orders.payment_method que acepta create_store_order. Wompi aún no está habilitado.
-const PAYMENT_METHODS: Record<PaymentMethodType, 'CashOnDelivery' | 'Cash' | 'BankTransfer' | null> = {
+const PAYMENT_METHODS: Record<PaymentMethodType, StorePaymentMethod | null> = {
   contraentrega: 'CashOnDelivery',
   efectivo: 'Cash',
   transferencia: 'BankTransfer',
   wompi: null,
 }
+
+// Opciones que se muestran según store_settings.payment_methods de la tienda
+const PAYMENT_OPTIONS: { value: PaymentMethodType; code: StorePaymentMethod; title: string; text: string }[] = [
+  {
+    value: 'contraentrega',
+    code: 'CashOnDelivery',
+    title: '💵 Pago Contraentrega (Efectivo)',
+    text: 'Le pagas en efectivo directamente al transportista o productor al momento de recibir tu pedido en la dirección especificada. Sin recargo por procesamiento.',
+  },
+  {
+    value: 'transferencia',
+    code: 'BankTransfer',
+    title: '🏦 Transferencia bancaria / Nequi',
+    text: 'Transfiere el valor del pedido. Cuando se confirme el pago, el productor prepara y envía tu pedido.',
+  },
+  {
+    value: 'efectivo',
+    code: 'Cash',
+    title: '💵 Efectivo',
+    text: 'Coordina el pago en efectivo con el productor. Tu pedido se envía cuando el productor recibe el pago.',
+  },
+]
 
 // type (no interface) para que sea asignable a Json en p_shipping
 export type ShippingAddressForm = {
@@ -34,8 +57,12 @@ export type ShippingAddressForm = {
   deliveryNotes: string
 }
 
-export default function CheckoutScreen({ items, onItemsChange, onBack, onRequireAuth, onViewProduct, store = 'campo' }: CheckoutScreenProps) {
-  const isAmazon = store === 'amazonica'
+export default function CheckoutScreen({ items, onItemsChange, onBack, onRequireAuth, onViewProduct, store = MAIN_STORE }: CheckoutScreenProps) {
+  // Métodos de pago, envío y datos bancarios de la tienda (store_settings)
+  const storeConfig = useStores().getStore(store)
+  const isAllied = !isMainStore(store)
+  const paymentOptions = PAYMENT_OPTIONS.filter((o) => storeConfig.payment_methods.includes(o.code))
+  const payFirst = !storeConfig.payment_methods.includes('CashOnDelivery')
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1)
   const [authOpen, setAuthOpen] = useState(false)
   const [message, setMessage] = useState('')
@@ -43,7 +70,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
   const [loadingPayment, setLoadingPayment] = useState(false)
   const [isLogged, setIsLogged] = useState<boolean | null>(null)
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>(isAmazon ? 'transferencia' : 'contraentrega')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>(paymentOptions[0]?.value ?? 'wompi')
   const [addressForm, setAddressForm] = useState<ShippingAddressForm>({
     fullName: '',
     phone: '',
@@ -85,13 +112,14 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
 
   const [transferData, setTransferData] = useState<{
     reference: string
-    transferInfo: StoreSettings['transfer_info']
+    transferInfo: TransferInfo
   } | null>(null)
 
   // Cálculos dinámicos
   const isExperienceOnly = items.length > 0 && items.every((item) => item.product.type === 'experiencia')
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
-  const shippingFee = items.length > 0 && !isExperienceOnly ? 9000 : 0
+  // Referencia para el resumen: el valor definitivo lo fija create_store_order con la tienda
+  const shippingFee = items.length > 0 && !isExperienceOnly ? storeConfig.shipping_fee : 0
   const wompiFee = paymentMethod === 'wompi' ? Math.round((subtotal + shippingFee) * 0.029) : 0
   const grandTotal = subtotal + shippingFee + wompiFee
   // Wompi aún no está habilitado: se puede seleccionar pero no pagar
@@ -142,28 +170,23 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     // y stock de la base (nunca del navegador). Queda 'Pendiente de pago' hasta que el
     // productor/admin confirme el pago.
     const storeMethod = PAYMENT_METHODS[paymentMethod]
-    if (!storeMethod || (isAmazon && storeMethod === 'CashOnDelivery') || (!isAmazon && storeMethod === 'Cash')) {
+    if (!storeMethod || !storeConfig.payment_methods.includes(storeMethod)) {
       setErrorMessage('Este método de pago no está disponible en esta tienda.')
       setLoadingPayment(false)
       return
     }
 
-    const [{ data: order, error }, { data: settings }] = await Promise.all([
-      supabase.rpc('create_store_order', {
-        p_store: store,
-        p_payment_method: storeMethod,
-        p_items: items.map(({ product, quantity }) => ({
-          id: product.id,
-          type: isAmazon ? 'producto' : product.type || 'producto',
-          quantity,
-        })),
-        p_shipping: addressForm,
-        p_shipping_fee: shippingFee,
-      }),
-      storeMethod === 'BankTransfer'
-        ? supabase.from('store_settings').select('*').eq('store', store).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ])
+    const { data: order, error } = await supabase.rpc('create_store_order', {
+      p_store: store,
+      p_payment_method: storeMethod,
+      p_items: items.map(({ product, quantity }) => ({
+        id: product.id,
+        type: isAllied ? 'producto' : product.type || 'producto',
+        quantity,
+      })),
+      p_shipping: addressForm,
+      p_shipping_fee: shippingFee,
+    })
 
     if (error) {
       console.error('Error creando pedido:', error)
@@ -175,7 +198,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     // create_store_order devuelve jsonb: { order_id, store, status, items, subtotal, shipping_fee, total }
     const reference = String((order as { order_id?: string } | null)?.order_id ?? '').slice(0, 8).toUpperCase()
     if (storeMethod === 'BankTransfer') {
-      setTransferData({ reference, transferInfo: (settings as StoreSettings | null)?.transfer_info ?? {} })
+      setTransferData({ reference, transferInfo: storeConfig.transfer_info })
       setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nRealiza la transferencia para confirmar tu pedido. El productor lo enviará cuando se confirme el pago.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
     } else if (storeMethod === 'Cash') {
       setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nEl productor se pondrá en contacto contigo para coordinar el pago en efectivo y enviará tu pedido cuando lo reciba.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
@@ -296,7 +319,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                 onClick={onBack}
                 className="mb-6 flex items-center gap-2 text-[#205134] font-bold text-sm bg-transparent border-none cursor-pointer hover:opacity-80 p-0 transition-opacity"
               >
-                {isAmazon ? '← Seguir explorando la tienda' : '← Seguir explorando el campo'}
+                {isAllied ? '← Seguir explorando la tienda' : '← Seguir explorando el campo'}
               </button>
 
               {/* Indicador de Pasos / Stepper */}
@@ -525,15 +548,12 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
 
                         {/* Opciones de Método de Pago */}
                         <div className="flex flex-col gap-4 mb-8">
-                          {isAmazon && (
+                          {payFirst && (
                             <div className="bg-[#FFF7E8] border border-[#F0D099] text-[#9B4728] rounded-xl p-4 text-sm font-semibold">
                               En esta tienda el productor envía tu pedido cuando se confirma el pago.
                             </div>
                           )}
-                          {isAmazon && ([
-                            { value: 'transferencia' as const, title: '🏦 Transferencia bancaria / Nequi', text: 'Transfiere el valor del pedido. Cuando se confirme el pago, el productor prepara y envía tu pedido.' },
-                            { value: 'efectivo' as const, title: '💵 Efectivo', text: 'Coordina el pago en efectivo con el productor. Tu pedido se envía cuando el productor recibe el pago.' },
-                          ]).map((opt) => (
+                          {paymentOptions.map((opt) => (
                             <div
                               key={opt.value}
                               onClick={() => setPaymentMethod(opt.value)}
@@ -552,30 +572,6 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                               <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">{opt.text}</p>
                             </div>
                           ))}
-                          {/* Opción 1: Contraentrega */}
-                          {!isAmazon && (
-                          <div
-                            onClick={() => setPaymentMethod('contraentrega')}
-                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === 'contraentrega'
-                              ? 'border-[#205134] bg-[#F2F7F4]'
-                              : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                              }`}
-                          >
-                            <div className="flex items-center gap-3 mb-2">
-                              <input
-                                type="radio"
-                                name="paymentMethod"
-                                checked={paymentMethod === 'contraentrega'}
-                                onChange={() => setPaymentMethod('contraentrega')}
-                                className="accent-[#205134] w-5 h-5 cursor-pointer"
-                              />
-                              <div className="font-bold text-[#1C3A14] text-lg">💵 Pago Contraentrega (Efectivo)</div>
-                            </div>
-                            <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
-                              Le pagas en efectivo directamente al transportista o campesino al momento de recibir tu producto en la dirección especificada. <strong>Sin recargo por procesamiento.</strong>
-                            </p>
-                          </div>
-                          )}
 
                           {/* Opción 2: Wompi */}
                           <div
@@ -606,32 +602,6 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                             </p>
                           </div>
 
-                          {/* Opción 3: Transferencia Bancaria */}
-                          {/*<div
-                            onClick={() => setPaymentMethod('transferencia')}
-                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                              paymentMethod === 'transferencia'
-                                ? 'border-[#205134] bg-[#F2F7F4]'
-                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-3 mb-2">
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="radio"
-                                  name="paymentMethod"
-                                  checked={paymentMethod === 'transferencia'}
-                                  onChange={() => setPaymentMethod('transferencia')}
-                                  className="accent-[#205134] w-5 h-5 cursor-pointer"
-                                />
-                                <div className="font-bold text-[#1C3A14] text-lg">🏦 Transferencia Bancaria Directa / Nequi</div>
-                              </div>
-                              <span className="bg-[#6BAA3D] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">0% Recargo</span>
-                            </div>
-                            <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
-                              Transfiere directamente por Bancolombia, Nequi o Daviplata a la cuenta comunitaria. Sin costo de procesamiento adicional.
-                            </p>
-                          </div>*/}
                         </div>
 
                         {/* Tarjeta Resumen de Entrega */}
@@ -714,7 +684,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
 
                     <div className="flex gap-3 text-xs text-[#666] leading-relaxed">
                       <span className="text-[#205134] text-lg">🔒</span>
-                      <p className="m-0">{isAmazon ? 'Compra directa con el productor.' : 'Compra respaldada por nuestra política de comercio justo y directo con el agricultor.'}</p>
+                      <p className="m-0">{isAllied ? 'Compra directa con el productor.' : 'Compra respaldada por nuestra política de comercio justo y directo con el agricultor.'}</p>
                     </div>
                   </div>
                 </div>

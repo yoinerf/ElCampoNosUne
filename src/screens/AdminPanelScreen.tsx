@@ -13,7 +13,8 @@ import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { confirmGoToDocuments, fetchDocuments, validationState, VALIDATION_STATE, type ValidationState } from '../lib/producerDocuments'
 import { alertDialog, confirmDialog } from '../components/ConfirmDialog'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
+import { isMainStore, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
 import type { Tab, UserRole } from '../lib/types'
 import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
@@ -111,7 +112,9 @@ function SidebarItem({ icon, label, active, onClick }: SidebarItemProps) {
 }
 
 export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo' }: Props) {
-  const isAmazon = store === 'amazonica'
+  // Productor de una tienda aliada: su panel lleva la marca de su tienda
+  const isAllied = !isMainStore(store)
+  const { storeName } = useStores()
   const [section, setSection] = useState<AdminSection>('dashboard')
   // Una notificación de pedido nuevo abre la sección de pedidos
   // Notificaciones: pedido nuevo abre Pedidos; revisión de documentos abre Configuración
@@ -474,8 +477,8 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
         style={{ width: 240, flexShrink: 0, background: '#FDFAF6', borderRight: '1px solid #EDE4D8', flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 40, boxShadow: '2px 0 16px rgba(32,81,52,0.06)' }}
       >
         <div style={{ padding: '24px 20px 16px', display: 'flex', justifyContent: 'center' }}>
-          {isAmazon ? (
-            <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 800, color: '#205134', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{STORE_NAMES.amazonica}</span>
+          {isAllied ? (
+            <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 800, color: '#205134', textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{storeName(store)}</span>
           ) : (
             <img src={logoSrc} alt="Logo" style={{ height: 90, width: 'auto', display: 'block' }} />
           )}
@@ -530,7 +533,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                 <span className="inline-flex sm:hidden"><CertifiedBadge size={28} /></span>
               </>
             )}
-            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : isAmazon ? 'amazon' : 'market')} style={{ height: 38, minWidth: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
+            <button type="button" onClick={() => onNavigate(isTurismo ? 'tourism' : isAllied ? 'store' : 'market')} style={{ height: 38, minWidth: 38, padding: '0 12px', borderRadius: 10, border: '1px solid #EDE4D8', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: '#1C3A14', fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title={isTurismo ? 'Ir a Experiencias' : 'Ir a la Tienda'}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
               <span className="hidden sm:inline">{isTurismo ? 'Ver Experiencias' : 'Ver Tienda'}</span>
             </button>

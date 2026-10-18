@@ -1,7 +1,8 @@
 // Tipos compartidos por App y las pantallas (antes cada pantalla declaraba su propia versión).
 
 /** Pestañas / pantallas principales de la app */
-export const TABS = ['home', 'market', 'tourism', 'profile', 'admin', 'superadmin', 'about', 'amazon', 'storeadmin'] as const
+// 'store' = vitrina de una tienda aliada (cuál, lo indica la tienda que se está viendo)
+export const TABS = ['home', 'market', 'tourism', 'profile', 'admin', 'superadmin', 'about', 'store', 'storeadmin'] as const
 export type Tab = (typeof TABS)[number]
 
 /** Para valores que llegan como texto (p. ej. user_notifications.link_tab) */

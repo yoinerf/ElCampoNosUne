@@ -3,8 +3,13 @@ import HomeScreen from './screens/HomeScreen'
 import ScreenShell from './components/ScreenShell'
 import type { CartItem } from './lib/catalog'
 import { supabase, authRedirectInfo } from './lib/supabase'
-import { STORE_NAMES, cartKey, isAmazonPath, type StoreId } from './lib/stores'
+import { MAIN_STORE, cartKey, isMainStore, type StoreId } from './lib/stores'
+import { useStores } from './lib/storesContext'
 import { pathForTab, routeFromPath } from './lib/routes'
+import { AppNavigationContext } from './lib/navigation'
+import type { Tab, UserRole } from './lib/types'
+import { useAuth } from './lib/auth'
+import logoImg from './assets/logo-nofond.png'
 
 // Pantallas cargadas bajo demanda: no se descargan hasta que se necesitan
 // (los paneles de admin, por ejemplo, no llegan al navegador de un comprador)
@@ -28,23 +33,17 @@ function ScreenLoader() {
     </div>
   )
 }
-import logoImg from './assets/logo-nofond.png'
-
-import type { Tab, UserRole } from './lib/types'
-import { useAuth } from './lib/auth'
 
 type AppFlow = 'auth' | 'login' | 'app'
 
-// Pantalla y tienda de la URL con la que se abrió la app
-const initialRoute = routeFromPath(window.location.pathname)
-
-const getVisibleTabs = (role?: UserRole, store: StoreId = 'campo'): Tab[] => {
+const getVisibleTabs = (role: UserRole | undefined, store: StoreId, hasAlliedStores: boolean): Tab[] => {
+  const allied: Tab[] = hasAlliedStores ? ['store'] : []
   switch (role) {
     case 'admin':
-      return ['superadmin', 'home', 'market', 'tourism', 'amazon', 'profile', 'about']
+      return ['superadmin', 'home', 'market', 'tourism', ...allied, 'profile', 'about']
     case 'asociacion':
-      // El productor solo ve la tienda a la que pertenece (el amazónico no ve páginas de El Campo Nos Une)
-      return store === 'amazonica' ? ['admin', 'amazon'] : ['admin', 'market', 'about']
+      // El productor solo ve la tienda a la que pertenece (el de una tienda aliada no ve páginas de El Campo Nos Une)
+      return isMainStore(store) ? ['admin', 'market', 'about'] : ['admin', 'store']
     case 'turismo':
       return ['admin', 'tourism', 'about']
     case 'admin_tienda':
@@ -52,13 +51,44 @@ const getVisibleTabs = (role?: UserRole, store: StoreId = 'campo'): Tab[] => {
       return ['storeadmin']
     case 'comprador':
     default:
-      return ['home', 'market', 'tourism', 'amazon', 'profile', 'about']
+      return ['home', 'market', 'tourism', ...allied, 'profile', 'about']
   }
 }
 
+// Espera a conocer la sesión y las tiendas: la ruta inicial depende de ambas
 export default function App() {
-  const [flow, setFlow] = useState<AppFlow>('app')
+  const { loading: checkingSession } = useAuth()
+  const { loading: loadingStores } = useStores()
+
+  if (checkingSession || loadingStores) {
+    return (
+      <div
+        className="flex items-center justify-center min-h-screen"
+        style={{ background: '#F5EEE6', color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <img src={logoImg} alt="El Campo Nos Une" style={{ height: 60, margin: '0 auto 16px', display: 'block' }} />
+          <p style={{ fontSize: 15, fontWeight: 600 }}>Cargando...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return <AppContent />
+}
+
+function AppContent() {
+  const { allStores, alliedStores, getStore } = useStores()
+  // Sesión y perfil (rol y tienda del usuario) los carga AuthProvider
+  const { session, role: userRole, store: userStore, profileLoadId } = useAuth()
+  // Pantalla y tienda de la URL con la que se abrió la app
+  const [initialRoute] = useState(() => routeFromPath(window.location.pathname, allStores))
+
+  // Enlace de recuperación vencido o inválido: mostrar el login con el aviso
+  const [flow, setFlow] = useState<AppFlow>(() => (!session && authRedirectInfo.error ? 'login' : 'app'))
   const [activeTab, setActiveTab] = useState<Tab>(initialRoute.tab)
+  // Tienda aliada cuya vitrina se está viendo (pestaña 'store')
+  const [shopStore, setShopStore] = useState<StoreId | null>(isMainStore(initialRoute.store) ? null : initialRoute.store)
   // Redirecciones automáticas (rol, permisos, URL inicial) reemplazan la entrada del
   // historial en vez de agregar una: así el botón atrás no vuelve a una ruta que redirige.
   // Guarda la pestaña destino de la redirección ('initial' = normalizar la URL de entrada).
@@ -67,8 +97,6 @@ export default function App() {
     redirectTarget.current = tab
     setActiveTab(tab)
   }
-  // Sesión y perfil (rol y tienda del usuario) los carga AuthProvider
-  const { session, role: userRole, store: userStore, storeId: userStoreId, loading: checkingSession, profileLoadId } = useAuth()
   // Tienda desde la que el comprador abrió su panel (para mantener la marca)
   const [panelStore, setPanelStore] = useState<StoreId>(initialRoute.store)
   const [checkoutItems, setCheckoutItems] = useState<CartItem[]>([])
@@ -76,6 +104,29 @@ export default function App() {
   const [initialProduct, setInitialProduct] = useState<string | null>(null)
   // recovery: llegó desde el enlace del correo · forced: entró con contraseña temporal del admin
   const [passwordMode, setPasswordMode] = useState<'recovery' | 'forced' | null>(authRedirectInfo.isRecovery ? 'recovery' : null)
+
+  // Vitrina por defecto: la tienda del productor aliado, la que se estaba viendo o la primera
+  const defaultShopStore = (): StoreId | null => {
+    if (userRole === 'asociacion' && !isMainStore(userStore)) return userStore
+    return shopStore ?? alliedStores[0]?.store ?? null
+  }
+
+  /** Cambia de pestaña; 'store' abre la vitrina de la tienda aliada correspondiente */
+  const navigate = (tab: Tab) => {
+    if (tab === 'store') setShopStore(defaultShopStore())
+    setActiveTab(tab)
+  }
+
+  const openStore = (store: StoreId) => {
+    setFlow('app')
+    setCheckoutOpen(false)
+    if (isMainStore(store)) {
+      setActiveTab('market')
+      return
+    }
+    setShopStore(store)
+    setActiveTab('store')
+  }
 
   // Eventos de autenticación que solo afectan la interfaz (los datos los maneja AuthProvider)
   useEffect(() => {
@@ -88,63 +139,56 @@ export default function App() {
     return () => listener.subscription.unsubscribe()
   }, [])
 
-  // Sesión inicial: enlace de recuperación vencido o inválido → mostrar el login con el aviso
-  useEffect(() => {
-    if (!checkingSession && !session && authRedirectInfo.error) setFlow('login')
-    // Solo al terminar la carga inicial
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkingSession])
-
   // Contraseña temporal asignada por el admin: obligar a cambiarla
   const mustChangePassword = !!session?.user.user_metadata?.must_change_password
   useEffect(() => {
     if (mustChangePassword) setPasswordMode((prev) => prev ?? 'forced')
   }, [mustChangePassword])
 
+  const visibleTabs = useMemo(() => getVisibleTabs(userRole, userStore, alliedStores.length > 0), [userRole, userStore, alliedStores.length])
+
   // Cada vez que se carga un perfil, llevar al usuario a la pestaña de su rol
   useEffect(() => {
     if (profileLoadId === 0) return
     // Primera carga: si la URL apunta a una pantalla permitida para el rol (y no es el
     // inicio genérico), se respeta el enlace directo
-    if (profileLoadId === 1 && initialRoute.tab !== 'home' && getVisibleTabs(userRole, userStore).includes(initialRoute.tab)) {
+    if (profileLoadId === 1 && initialRoute.tab !== 'home' && visibleTabs.includes(initialRoute.tab)) {
       return
     }
     const prev = activeTab
     let next = prev
     if (userRole === 'admin') {
-      next = prev === 'market' || prev === 'tourism' || prev === 'profile' || prev === 'amazon' ? prev : 'superadmin'
+      next = prev === 'market' || prev === 'tourism' || prev === 'profile' || prev === 'store' ? prev : 'superadmin'
     } else if (userRole === 'admin_tienda') {
       next = 'storeadmin'
     } else if (userRole === 'asociacion' || userRole === 'turismo') {
-      if (userRole === 'asociacion' && userStore === 'campo' && prev === 'market') next = 'market'
-      else if (userRole === 'asociacion' && userStore === 'amazonica' && prev === 'amazon') next = 'amazon'
+      if (userRole === 'asociacion' && isMainStore(userStore) && prev === 'market') next = 'market'
+      else if (userRole === 'asociacion' && !isMainStore(userStore) && prev === 'store') next = 'store'
       else if (userRole === 'turismo' && prev === 'tourism') next = 'tourism'
       else next = 'admin'
     }
+    if (userRole === 'asociacion' && !isMainStore(userStore)) setShopStore(userStore)
     if (next !== prev) redirectTo(next)
     // Solo cuando termina una carga de perfil, no en cada cambio de rol/tienda intermedio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileLoadId])
 
-  const visibleTabs = useMemo(() => getVisibleTabs(userRole, userStore), [userRole, userStore])
-
-  // Tienda que se está viendo: define la marca de login, registro, checkout y paneles.
-  // Dentro de la Tienda Amazónica no se muestra nada de El Campo Nos Une.
+  // Tienda que se está viendo: define la marca de los paneles, el checkout y la URL.
+  // Dentro de una tienda aliada no se muestra la marca El Campo Nos Une.
   const viewStore: StoreId =
-    activeTab === 'amazon'
-    || ((activeTab === 'admin' || activeTab === 'storeadmin') && userStore === 'amazonica')
-    || (activeTab === 'profile' && panelStore === 'amazonica')
-      ? 'amazonica'
-      : 'campo'
+    activeTab === 'store' ? shopStore ?? MAIN_STORE
+    : activeTab === 'admin' || activeTab === 'storeadmin' ? userStore
+    : activeTab === 'profile' ? panelStore
+    : MAIN_STORE
 
   useEffect(() => {
-    if (!checkingSession) document.title = STORE_NAMES[viewStore]
-  }, [viewStore, checkingSession])
+    document.title = getStore(viewStore).name
+  }, [viewStore, getStore])
 
   // La pestaña actual queda en la URL (ver lib/routes)
   useEffect(() => {
-    if (checkingSession || flow !== 'app') return
-    const path = pathForTab(activeTab, viewStore)
+    if (flow !== 'app') return
+    const path = pathForTab(activeTab, viewStore, allStores)
     const target = redirectTarget.current
     // Si hay una redirección hacia otra pestaña aún no aplicada, se conserva para cuando llegue
     const replace = target === 'initial' || target === activeTab
@@ -153,13 +197,19 @@ export default function App() {
     const url = path + window.location.search + window.location.hash
     if (replace) window.history.replaceState(window.history.state, '', url)
     else window.history.pushState({ tab: activeTab }, '', url)
-  }, [activeTab, viewStore, checkingSession, flow])
+  }, [activeTab, viewStore, flow, allStores])
 
   useEffect(() => {
-    // Mientras carga la sesión aún no se sabe el rol: no redirigir los enlaces directos
-    if (flow !== 'app' || checkingSession) return
+    if (flow !== 'app') return
     if (!visibleTabs.includes(activeTab)) redirectTo(visibleTabs[0] ?? 'home')
-  }, [flow, visibleTabs, activeTab, checkingSession])
+    else if (activeTab === 'store' && !shopStore) {
+      // Vitrina sin tienda (p. ej. se desactivó): abrir la que corresponda
+      const store = defaultShopStore()
+      if (store) setShopStore(store)
+      else redirectTo('home')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flow, visibleTabs, activeTab, shopStore])
 
   /** Verifica si el usuario está autenticado antes de mostrar el perfil */
   const handleProfileClick = () => {
@@ -177,8 +227,8 @@ export default function App() {
     setFlow('app')
     if (userRole === 'admin_tienda') {
       setActiveTab('storeadmin')
-    } else if (viewStore === 'amazonica' || (userRole === 'asociacion' && userStore === 'amazonica')) {
-      setActiveTab('amazon')
+    } else if (!isMainStore(viewStore) || (userRole === 'asociacion' && !isMainStore(userStore))) {
+      navigate('store')
     } else if (userRole === 'turismo') {
       setActiveTab('tourism')
     } else {
@@ -187,16 +237,17 @@ export default function App() {
   }
 
   const goToProduct = (productId: string) => {
-  setInitialProduct(productId)
-  setActiveTab('market')
-}
+    setInitialProduct(productId)
+    setActiveTab('market')
+  }
 
   const returnToHome = () => {
     setFlow('app')
     if (userRole === 'admin_tienda') {
       setActiveTab('storeadmin')
-    } else if (viewStore === 'amazonica' && userRole !== 'admin' && userRole !== 'turismo') {
-      setActiveTab(userRole === 'asociacion' ? 'admin' : 'amazon')
+    } else if (!isMainStore(viewStore) && userRole !== 'admin' && userRole !== 'turismo') {
+      if (userRole === 'asociacion') setActiveTab('admin')
+      else navigate('store')
     } else if (userRole === 'admin') {
       setActiveTab('superadmin')
     } else if (userRole === 'asociacion' || userRole === 'turismo') {
@@ -226,91 +277,48 @@ export default function App() {
       }
       if (flow !== 'app') setFlow('app')
       // Si no, vuelve a la pestaña de la URL
-      const route = routeFromPath(window.location.pathname)
+      const route = routeFromPath(window.location.pathname, allStores)
       if (route.tab === 'profile') setPanelStore(route.store)
+      if (route.tab === 'store') setShopStore(route.store)
       setActiveTab(route.tab)
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [checkoutOpen, flow])
+  }, [checkoutOpen, flow, allStores])
 
-  const mainScreens: Record<Tab, JSX.Element> = {
+  const mainScreens: Record<Exclude<Tab, 'market' | 'store'>, JSX.Element> = {
     home: (
-      <HomeScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} onSelectProduct={goToProduct} />
+      <HomeScreen onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} onSelectProduct={goToProduct} />
     ),
-
-
     admin: (
-      <AdminPanelScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStore} />
+      <AdminPanelScreen onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStore} />
     ),
     storeadmin: (
-      <StoreAdminScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStoreId} />
+      <StoreAdminScreen onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} store={userStore} />
     ),
     superadmin: (
-      <SuperAdminScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+      <SuperAdminScreen onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
-    market: (
-      <MarketplaceScreen
-        onNavigate={setActiveTab}
-        activeNav={activeTab}
-        onProfileClick={handleProfileClick}
-        userRole={userRole}
-        onOpenCheckout={handleOpenCheckout}
-      />
-    ),
-    amazon: (
-      <MarketplaceScreen
-        key="amazonica"
-        store="amazonica"
-        onNavigate={setActiveTab}
-        activeNav={activeTab}
-        onProfileClick={handleProfileClick}
-        userRole={userRole}
-        onOpenCheckout={handleOpenCheckout}
-      />
-    ),
-    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
+    tourism: <TourismScreen onRequireAuth={(mode) => setFlow(mode)} onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />,
     // El comprador tiene su propio panel (pedidos, pagos, reseñas, favoritos, solicitudes, datos)
     profile: userRole === 'comprador' ? (
       <BuyerPanelScreen
         userRole={userRole}
-        onNavigate={setActiveTab}
+        onNavigate={navigate}
         activeNav={activeTab}
         onProfileClick={handleProfileClick}
         store={panelStore}
         onViewProduct={(productId, store) => {
           setInitialProduct(productId)
-          setActiveTab(store === 'amazonica' ? 'amazon' : 'market')
+          openStore(store ?? MAIN_STORE)
         }}
       />
     ) : (
-      <ProfileScreen userRole={userRole} onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} />
+      <ProfileScreen userRole={userRole} onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} />
     ),
     about: (
-      <AboutScreen onNavigate={setActiveTab} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
+      <AboutScreen onNavigate={navigate} activeNav={activeTab} onProfileClick={handleProfileClick} userRole={userRole} />
     ),
-  }
-
-  if (checkingSession) {
-    return (
-      <div
-        className="flex items-center justify-center min-h-screen"
-        style={{ background: '#F5EEE6', color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}
-      >
-        <div style={{ textAlign: 'center' }}>
-          {isAmazonPath() ? (
-            <p style={{ fontFamily: "'Poppins', sans-serif", fontSize: 26, fontWeight: 800, margin: '0 0 12px' }}>{STORE_NAMES.amazonica}</p>
-          ) : (
-            <img
-              src={logoImg}
-              alt="El Campo Nos Une"
-              style={{ height: 60, margin: '0 auto 16px', display: 'block' }}
-            />
-          )}
-          <p style={{ fontSize: 15, fontWeight: 600 }}>Cargando...</p>
-        </div>
-      </div>
-    )
   }
 
   // Crear nueva contraseña (enlace de recuperación o contraseña temporal) antes de usar la app
@@ -323,6 +331,7 @@ export default function App() {
   }
 
   return (
+    <AppNavigationContext.Provider value={{ openStore }}>
     <Suspense fallback={<ScreenLoader />}>
     <div className="min-h-screen w-full" style={{ background: '#F5EEE6' }}>
       <div className="min-h-screen w-full flex flex-col">
@@ -355,7 +364,7 @@ export default function App() {
               userRole={userRole}
               onNavigate={(t) => {
                 setCheckoutOpen(false)
-                setActiveTab(t as Tab)
+                navigate(t)
               }}
               onProfileClick={() => {
                 setCheckoutOpen(false)
@@ -383,12 +392,12 @@ export default function App() {
               }}
             />
             </ScreenShell>
-          ) : activeTab === 'market' || activeTab === 'amazon' ? (
+          ) : activeTab === 'market' || activeTab === 'store' ? (
             <MarketplaceScreen
               key={viewStore}
               store={viewStore}
               onOpenCheckout={handleOpenCheckout}
-              onNavigate={setActiveTab}
+              onNavigate={navigate}
               activeNav={activeTab}
               onProfileClick={handleProfileClick}
               initialSelectedProduct={initialProduct}
@@ -400,5 +409,6 @@ export default function App() {
       </div>
     </div>
     </Suspense>
+    </AppNavigationContext.Provider>
   )
 }

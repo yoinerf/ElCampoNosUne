@@ -108,18 +108,34 @@ describe('imageUpload', () => {
 })
 
 describe('routes', () => {
-  it('ida y vuelta entre pestaña y ruta', () => {
-    for (const tab of TABS) {
-      expect(routeFromPath(pathForTab(tab)).tab).toBe(tab)
+  // Tiendas como vienen de store_settings (una aliada nueva no necesita código)
+  const stores = [
+    { store: 'campo', slug: null },
+    { store: 'amazonica', slug: 'tienda-amazonica' },
+    { store: 'licores', slug: 'tienda-licores' },
+  ]
+
+  it('ida y vuelta entre pestaña y ruta en la tienda principal', () => {
+    for (const tab of TABS.filter((t) => t !== 'store')) {
+      expect(routeFromPath(pathForTab(tab, 'campo', stores), stores)).toEqual({ tab, store: 'campo' })
     }
-    expect(routeFromPath(pathForTab('profile', 'amazonica'))).toEqual({ tab: 'profile', store: 'amazonica' })
-    expect(pathForTab('home', 'amazonica')).toBe('/tienda-amazonica')
+  })
+
+  it('cada tienda aliada tiene su vitrina y sus páginas bajo /<slug>', () => {
+    expect(pathForTab('store', 'licores', stores)).toBe('/tienda-licores')
+    expect(pathForTab('home', 'amazonica', stores)).toBe('/tienda-amazonica')
+    expect(pathForTab('profile', 'licores', stores)).toBe('/tienda-licores/mi-cuenta')
+    expect(routeFromPath('/tienda-licores', stores)).toEqual({ tab: 'store', store: 'licores' })
+    expect(routeFromPath('/tienda-licores/mi-cuenta', stores)).toEqual({ tab: 'profile', store: 'licores' })
+    expect(routeFromPath('/tienda-amazonica/panel', stores)).toEqual({ tab: 'admin', store: 'amazonica' })
   })
 
   it('rutas desconocidas o con barra final', () => {
-    expect(routeFromPath('/no-existe')).toEqual({ tab: 'home', store: 'campo' })
-    expect(routeFromPath('/productos/')).toEqual({ tab: 'market', store: 'campo' })
-    expect(routeFromPath('/tienda-amazonica/no-existe')).toEqual({ tab: 'amazon', store: 'amazonica' })
+    expect(routeFromPath('/no-existe', stores)).toEqual({ tab: 'home', store: 'campo' })
+    expect(routeFromPath('/productos/', stores)).toEqual({ tab: 'market', store: 'campo' })
+    expect(routeFromPath('/tienda-amazonica/no-existe', stores)).toEqual({ tab: 'store', store: 'amazonica' })
+    // Tienda que no existe (o se desactivó): inicio de la principal
+    expect(routeFromPath('/tienda-cerrada', stores)).toEqual({ tab: 'home', store: 'campo' })
   })
 })
 

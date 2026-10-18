@@ -24,7 +24,7 @@ import CertifiedBadge from '../components/CertifiedBadge'
 import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { generateTempPassword } from '../components/TempPasswordModal'
 import { fetchDocuments, validationState } from '../lib/producerDocuments'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
 import { uploadPublicImage } from '../lib/imageUpload'
 import { primaryImageUrl } from '../lib/catalog'
 import type { TablesInsert as TableInsert } from '../lib/database.types'
@@ -33,10 +33,12 @@ import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
 import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from '../lib/identity'
 import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, SItem, StatCard, I } from '../components/superadmin/ui'
+import MyAccountCard from '../components/MyAccountCard'
+import StoresManager from '../components/superadmin/StoresManager'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'settings'
+type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'stores' | 'settings'
 
 interface UserRow {
   id: string
@@ -106,6 +108,7 @@ interface Props {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SuperAdminScreen({ onNavigate }: Props) {
+  const { storeName, allStores } = useStores()
   const [section, setSection] = useState<SuperSection>('dashboard')
   // Una notificación de solicitud nueva abre Solicitudes con la lista actualizada
   usePanelSectionRequest<SuperSection>((s) => { setSection(s); fetchAllTickets().then(setTickets) }, ['tickets'])
@@ -659,6 +662,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     { id: 'orders' as SuperSection, label: 'Pedidos', icon: I.store, count: orderItems.length },
     { id: 'tickets' as SuperSection, label: 'Solicitudes', icon: I.users, count: tickets.filter(t => t.status === 'abierto' || t.status === 'en_revision').length },
     { id: 'ads' as SuperSection, label: 'Anuncios', icon: I.ads, count: ads.length },
+    { id: 'stores' as SuperSection, label: 'Tiendas', icon: I.store, count: allStores.length },
     { id: 'settings' as SuperSection, label: 'Configuración', icon: I.cog },
   ]
 
@@ -672,6 +676,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     orders: 'Gestión de Pedidos',
     tickets: 'Solicitudes y Reportes',
     ads: 'Gestión de Anuncios',
+    stores: 'Tiendas de la plataforma',
     settings: 'Configuración del Sistema',
   }
 
@@ -1107,7 +1112,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                       {ROLE_LABELS[u.user_type] || u.user_type}
                                     </span>
                                     {u.store && (u.store !== 'campo' || u.user_type === 'admin_tienda') && (
-                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{STORE_NAMES[u.store as StoreId] ?? u.store}</span>
+                                      <span style={{ marginLeft: 6, background: '#E3F2FD', color: '#1B4D82', fontSize: 11, fontWeight: 800, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap' }}>{storeName(u.store)}</span>
                                     )}
                                   </TD>
                                   <TD style={{ color: B.textMuted, fontSize: 13 }}>{[u.municipality, u.department].filter(Boolean).join(', ') || '—'}</TD>
@@ -1453,7 +1458,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
                     {[
                       { emoji: '🏷️', label: 'Gestión de Categorías', desc: 'Activar, pausar o crear categorías de mercado y turismo', coming: false, count: `${categories.length} activas` },
-                      { emoji: '💳', label: 'Pasarela Wompi / Pagos', desc: 'Validación de webhook e integración segura en backend', coming: false, count: 'Conectado' },
+                      { emoji: '💳', label: 'Pasarela Wompi / Pagos en línea', desc: 'Pago con tarjeta y PSE mediante una Edge Function de Supabase', coming: true },
                       { emoji: '📊', label: 'Reportes y Auditoría', desc: 'Exportación de reservas e historial financiero consolidado', coming: true },
                       { emoji: '🔔', label: 'Notificaciones y Alertas', desc: 'Alertas automáticas de stock agotado para asociaciones', coming: true },
                     ].map(item => (
@@ -1477,7 +1482,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     ))}
                   </div>
                 </div>
+                <MyAccountCard style={{ marginTop: 18 }} />
                 <ChangePasswordCard style={{ marginTop: 18 }} />
+              </div>
+            )}
+
+            {section === 'stores' && (
+              <div style={{ maxWidth: 900, margin: '0 auto' }}>
+                <StoresManager />
               </div>
             )}
           </>}

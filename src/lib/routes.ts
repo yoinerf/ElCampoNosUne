@@ -1,15 +1,15 @@
-import { AMAZON_PATH, type StoreId } from './stores'
+import { MAIN_STORE, type StoreId } from './stores'
 import type { Tab } from './types'
 
 // Rutas de cada pestaña: la pantalla actual queda en la URL (se puede recargar,
-// compartir y usar el botón atrás). Las páginas vistas desde la Tienda Amazónica
-// cuelgan de /tienda-amazonica para conservar la marca al recargar.
+// compartir y usar el botón atrás). Cada tienda aliada tiene su vitrina en /<slug>
+// (store_settings.slug) y las páginas vistas desde ella cuelgan de esa ruta para
+// conservar la marca al recargar.
 
-const TAB_PATHS: Record<Tab, string> = {
+const TAB_PATHS: Record<Exclude<Tab, 'store'>, string> = {
   home: '/',
   market: '/productos',
   tourism: '/experiencias',
-  amazon: AMAZON_PATH,
   about: '/nosotros',
   profile: '/mi-cuenta',
   admin: '/panel',
@@ -19,20 +19,28 @@ const TAB_PATHS: Record<Tab, string> = {
 
 const PATH_TABS = new Map(Object.entries(TAB_PATHS).map(([tab, path]) => [path, tab as Tab]))
 
-export function pathForTab(tab: Tab, store: StoreId = 'campo'): string {
-  if (tab === 'amazon') return AMAZON_PATH
-  // home no existe dentro de la Tienda Amazónica: su inicio es la propia tienda
-  if (store === 'amazonica') return tab === 'home' ? AMAZON_PATH : `${AMAZON_PATH}${TAB_PATHS[tab]}`
-  return TAB_PATHS[tab]
+/** Tienda con su ruta (lo mínimo que necesitan las rutas de store_settings) */
+export interface StoreRoute {
+  store: StoreId
+  slug: string | null
 }
 
-/** Pestaña y tienda a partir de la ruta. Rutas desconocidas → inicio. */
-export function routeFromPath(pathname: string): { tab: Tab; store: StoreId } {
+export function pathForTab(tab: Tab, store: StoreId, stores: StoreRoute[]): string {
+  const slug = store === MAIN_STORE ? null : stores.find((s) => s.store === store)?.slug
+  if (!slug) return tab === 'store' ? '/' : TAB_PATHS[tab]
+  // Dentro de una tienda aliada su inicio es la propia vitrina
+  if (tab === 'store' || tab === 'home' || tab === 'market') return `/${slug}`
+  return `/${slug}${TAB_PATHS[tab]}`
+}
+
+/** Pestaña y tienda a partir de la ruta. Rutas desconocidas → inicio de la tienda principal. */
+export function routeFromPath(pathname: string, stores: StoreRoute[]): { tab: Tab; store: StoreId } {
   const clean = pathname.replace(/\/+$/, '') || '/'
-  if (clean === AMAZON_PATH) return { tab: 'amazon', store: 'amazonica' }
-  if (clean.startsWith(`${AMAZON_PATH}/`)) {
-    const tab = PATH_TABS.get(clean.slice(AMAZON_PATH.length))
-    return { tab: tab && tab !== 'home' ? tab : 'amazon', store: 'amazonica' }
+  const [, first = '', ...rest] = clean.split('/')
+  const allied = stores.find((s) => s.store !== MAIN_STORE && s.slug === first)
+  if (allied) {
+    const tab = rest.length ? PATH_TABS.get(`/${rest.join('/')}`) : undefined
+    return { tab: tab && tab !== 'home' && tab !== 'market' ? tab : 'store', store: allied.store }
   }
-  return { tab: PATH_TABS.get(clean) ?? 'home', store: 'campo' }
+  return { tab: PATH_TABS.get(clean) ?? 'home', store: MAIN_STORE }
 }

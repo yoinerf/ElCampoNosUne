@@ -26,7 +26,9 @@ import {
   type SupportTicket,
   type TicketType,
 } from '../lib/buyer'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
+import { MAIN_STORE, isMainStore, type StoreId } from '../lib/stores'
+import { useStores } from '../lib/storesContext'
+import { useAppNavigation } from '../lib/navigation'
 import type { Tab, UserRole } from '../lib/types'
 import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
@@ -194,8 +196,11 @@ function OrderTracker({ status }: { status?: OrderStatus }) {
 }
 
 export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick, userRole, onViewProduct, store = 'campo' }: BuyerPanelScreenProps) {
-  const isAmazon = store === 'amazonica'
-  const storeTab = isAmazon ? 'amazon' : 'market'
+  const isAllied = !isMainStore(store)
+  const { storeName } = useStores()
+  const { openStore } = useAppNavigation()
+  // Volver a comprar en la tienda desde la que se abrió el panel
+  const goShopping = () => openStore(store)
   const [section, setSection] = useState<BuyerSection>('overview')
   // Las notificaciones abren la sección de pedidos o de solicitudes (con datos frescos)
   usePanelSectionRequest<BuyerSection>((s) => { setSection(s); loadAll(true) }, ['orders', 'tickets'])
@@ -339,7 +344,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
     }
     setTicketForm((f) => ({ ...f, open: false, editingId: null }))
     setTickets(await fetchMyTickets(userId))
-    showToast('ok', editing ? 'Solicitud actualizada.' : `Recibimos tu solicitud. El equipo de ${STORE_NAMES[store]} la revisará pronto.`)
+    showToast('ok', editing ? 'Solicitud actualizada.' : `Recibimos tu solicitud. El equipo de ${storeName(store)} la revisará pronto.`)
   }
 
   // ─── Historial por ítem ───────────────────────────────────────────────────
@@ -439,7 +444,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
             <div style={{ fontSize: 12, color: C.muted }}>{formatDate(o.created_at, true)}</div>
           </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {o.store === 'amazonica' && <Pill label={STORE_NAMES.amazonica} bg="#E3F2FD" color="#1B4D82" />}
+            {!isMainStore(o.store) && <Pill label={storeName(o.store)} bg="#E3F2FD" color="#1B4D82" />}
             <StatusBadge status={status} />
             <Pill label={`Pago: ${pay.label}`} bg={pay.bg} color={pay.color} />
           </div>
@@ -447,7 +452,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
 
         <OrderTracker status={status} />
 
-        {o.store === 'amazonica' && o.payment_status !== 'Paid' && status?.code === 'PendingPayment' && (
+        {o.payment_method !== 'CashOnDelivery' && o.payment_status !== 'Paid' && status?.code === 'PendingPayment' && (
           <div style={{ background: '#FFF7E8', border: '1px solid #F0D099', color: '#9B4728', borderRadius: 12, padding: '10px 14px', fontSize: 13, fontWeight: 700 }}>
             {o.payment_method === 'BankTransfer'
               ? `Realiza la transferencia con la referencia ${shortId(o.id)}. El productor enviará tu pedido cuando se confirme el pago.`
@@ -596,7 +601,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                 <div>
                   <SectionTitle title="Tu pedido más reciente" action={orders.length > 1 ? <button type="button" style={btnGhost} onClick={() => setSection('orders')}>Ver todos</button> : undefined} />
                   {orders.length === 0
-                    ? <EmptyState emoji="🧺" text={isAmazon ? 'Aún no has hecho pedidos. ¡Descubre los productos de la tienda!' : 'Aún no has hecho pedidos. ¡Descubre los productos del campo!'} action={<button type="button" style={btnPrimary} onClick={() => onNavigate(storeTab)}>Explorar productos</button>} />
+                    ? <EmptyState emoji="🧺" text={isAllied ? 'Aún no has hecho pedidos. ¡Descubre los productos de la tienda!' : 'Aún no has hecho pedidos. ¡Descubre los productos del campo!'} action={<button type="button" style={btnPrimary} onClick={goShopping}>Explorar productos</button>} />
                     : renderOrderCard(orders[0])}
                 </div>
               </div>
@@ -607,7 +612,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <div>
                 <SectionTitle title="Mis pedidos" subtitle="Sigue el estado de cada pedido y de cada producto." />
                 {orders.length === 0
-                  ? <EmptyState emoji="📦" text="Todavía no tienes pedidos." action={<button type="button" style={btnPrimary} onClick={() => onNavigate(storeTab)}>Ir a la tienda</button>} />
+                  ? <EmptyState emoji="📦" text="Todavía no tienes pedidos." action={<button type="button" style={btnPrimary} onClick={goShopping}>Ir a la tienda</button>} />
                   : <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>{orders.map(renderOrderCard)}</div>}
               </div>
             )}
@@ -622,7 +627,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                 </div>
                 {orders.some((o) => (o.payment_method === 'Cash' || o.payment_method === 'BankTransfer') && o.payment_status === 'Pending') && (
                   <div style={{ ...card, background: '#FFF7E8', borderColor: '#F0D099', fontSize: 13, color: '#9B4728', fontWeight: 600, marginBottom: 16 }}>
-                    🏦 En los pedidos de la {STORE_NAMES.amazonica} el productor envía tu pedido cuando se confirma el pago (efectivo o transferencia).
+                    🏦 En los pedidos pagados por transferencia o en efectivo, el productor envía tu pedido cuando se confirma el pago.
                   </div>
                 )}
                 {orders.some((o) => o.payment_method === 'CashOnDelivery' && o.payment_status === 'Pending') && (
@@ -738,7 +743,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <div>
                 <SectionTitle title="Mis favoritos" subtitle="Guarda productos con el ❤️ en la tienda." />
                 {favorites.length === 0 ? (
-                  <EmptyState emoji="❤️" text="Aún no tienes favoritos." action={<button type="button" style={btnPrimary} onClick={() => onNavigate(storeTab)}>Explorar productos</button>} />
+                  <EmptyState emoji="❤️" text="Aún no tienes favoritos." action={<button type="button" style={btnPrimary} onClick={goShopping}>Explorar productos</button>} />
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
                     {favorites.map((f) => {
@@ -754,7 +759,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                             <div style={{ fontWeight: 800, color: C.terra, fontFamily: C.display }}>{formatPrice(item.price)}</div>
                             <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 8 }}>
                               {f.product_id ? (
-                                <button type="button" style={{ ...btnPrimary, flex: 1, padding: '8px 10px', fontSize: 13 }} onClick={() => onViewProduct?.(f.product_id!, f.product?.store === 'amazonica' ? 'amazonica' : 'campo')}>Ver producto</button>
+                                <button type="button" style={{ ...btnPrimary, flex: 1, padding: '8px 10px', fontSize: 13 }} onClick={() => onViewProduct?.(f.product_id!, f.product?.store ?? MAIN_STORE)}>Ver producto</button>
                               ) : (
                                 <button type="button" style={{ ...btnPrimary, flex: 1, padding: '8px 10px', fontSize: 13 }} onClick={() => onNavigate('tourism')}>Ver experiencias</button>
                               )}
@@ -774,7 +779,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                 <SectionTitle
                   title="Solicitudes y reportes"
-                  subtitle={`Solo el equipo de administración de ${STORE_NAMES[store]} puede ver tus solicitudes.`}
+                  subtitle={`Solo el equipo de administración de ${storeName(store)} puede ver tus solicitudes.`}
                   action={!ticketForm.open ? (
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" style={btnGhost} onClick={() => openTicketForm('solicitud')}>📝 Nueva solicitud</button>

@@ -32,7 +32,7 @@ export interface OrderItemRow {
     shipping_address: ShippingAddress | null
     payment_method: string
     payment_status: string
-    // Tienda del pedido ('campo' | 'amazonica'). Puede faltar si no se ha migrado.
+    // Tienda del pedido (store_settings.store). Puede faltar si no se ha migrado.
     store?: string
     created_at: string
   } | null

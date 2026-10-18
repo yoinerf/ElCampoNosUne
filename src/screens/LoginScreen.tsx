@@ -1,19 +1,17 @@
 import { useState } from 'react'
 import { supabase, authRedirectInfo, authRedirectUrl } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
-import { STORE_NAMES, type StoreId } from '../lib/stores'
 
 interface Props {
   onLogin: () => void
   onRegister: () => void
   onBackToStore?: () => void
   onBackToHome?: () => void
-  /** En 'amazonica' no se muestra la marca El Campo Nos Une */
-  store?: StoreId
 }
 
-export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBackToHome, store = 'campo' }: Props) {
-  const isAmazon = store === 'amazonica'
+// Un solo inicio de sesión (El Campo Nos Une) para todas las tiendas: al entrar,
+// cada usuario ve la tienda de su perfil (profiles.store).
+export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBackToHome }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -202,7 +200,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               marginBottom: 20,
             }}
           >
-            {isAmazon ? '"Productos de la Amazonía, directo de quienes los cultivan."' : '"La tierra que nos alimenta es el lazo que nos une de raíz."'}
+            "La tierra que nos alimenta es el lazo que nos une de raíz."
           </blockquote>
 
           {/* Subtítulo institucional según manual */}
@@ -217,7 +215,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               color: 'rgba(255, 255, 255, 0.88)',
             }}
           >
-            {isAmazon ? STORE_NAMES.amazonica : 'EL CAMPO NOS UNE'}
+            EL CAMPO NOS UNE
           </p>
         </div>
       </div>
@@ -275,21 +273,17 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
         >
           {/* Logo Central de El Campo Nos Une */}
           <div style={{ marginBottom: 18, textAlign: 'center' }}>
-            {isAmazon ? (
-              <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: 28, fontWeight: 800, color: '#205134' }}>{STORE_NAMES.amazonica}</div>
-            ) : (
-              <img
-                src={logoSrc}
-                alt="El Campo Nos Une"
-                style={{
-                  height: 120,
-                  width: 'auto',
-                  display: 'block',
-                  margin: '0 auto',
-                  filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
-                }}
-              />
-            )}
+            <img
+              src={logoSrc}
+              alt="El Campo Nos Une"
+              style={{
+                height: 120,
+                width: 'auto',
+                display: 'block',
+                margin: '0 auto',
+                filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.06))',
+              }}
+            />
           </div>
 
           {/* Título (Poppins Bold según manual de identidad) */}
@@ -368,7 +362,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder={isAmazon ? 'ejemplo@correo.com' : 'ejemplo@elcamponosune.mx'}
+                placeholder="ejemplo@correo.com"
                 autoComplete="email"
                 style={{
                   width: '100%',

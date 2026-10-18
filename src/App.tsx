@@ -330,7 +330,6 @@ export default function App() {
           {flow === 'auth' && (
             <div key="register-flow" className="auth-screen-enter w-full min-h-screen">
               <RegisterScreen
-                store={viewStore}
                 onComplete={() => setFlow('app')}
                 onLogin={() => setFlow('login')}
                 onBackToStore={returnToStore}
@@ -341,7 +340,6 @@ export default function App() {
           {flow === 'login' && (
             <div key="login-flow" className="auth-screen-enter w-full min-h-screen">
               <LoginScreen
-                store={viewStore}
                 onLogin={() => setFlow('app')}
                 onRegister={() => setFlow('auth')}
                 onBackToStore={returnToStore}

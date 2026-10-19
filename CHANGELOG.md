@@ -9,9 +9,21 @@ Cambios importantes de El Campo Nos Une, de la versión más reciente a la más 
 
 ## [Sin publicar]
 
+**New Features**
+- Pagos en línea con Mercado Pago (preparado, apagado hasta activarlo desde el superadmin)
+  - Wompi se reemplaza por Mercado Pago en el checkout, las reservas de experiencias y la configuración.
+  - Cada productor conecta su cuenta de Mercado Pago desde su panel (Configuración) y recibe sus pagos directamente.
+  - Un pedido con varios productores genera un pago por productor; la plataforma no cobra comisión.
+  - La tarifa de la pasarela (porcentaje, valor fijo, IVA, retenciones y otros cargos) se configura en
+    Superadmin → Configuración y se calcula en la base de datos; se suma al pago del comprador.
+  - Las tiendas pueden ofrecer "Mercado Pago" como método de pago (requiere envío en 0).
+  - Nuevas Edge Functions `mp-oauth`, `mp-create-payment` y `mp-webhook` (guía en `docs/MERCADOPAGO.md`).
+
 ### Pendiente
 - Notificaciones de pedidos por correo con Resend desde la Edge Function `notify-order`
   (en espera del dominio propio).
+- Activar Mercado Pago: aplicar la migración `20261019120000_mercadopago_split_prep.sql`, desplegar las
+  Edge Functions y configurar los secrets (ver `docs/MERCADOPAGO.md`).
 
 ## [2.0.0] - 2026-10-18
 Primera versión gestionada. Elimina el backend propio: toda la lógica de servidor vive en

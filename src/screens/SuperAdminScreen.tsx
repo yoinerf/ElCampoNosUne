@@ -35,6 +35,7 @@ import { documentColumns, normalizeDocumentNumber, validateDocument, validateOpt
 import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, SItem, StatCard, I } from '../components/superadmin/ui'
 import MyAccountCard from '../components/MyAccountCard'
 import StoresManager from '../components/superadmin/StoresManager'
+import PaymentGatewayManager from '../components/superadmin/PaymentGatewayManager'
 import { APP_VERSION } from '../lib/version'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1462,7 +1463,6 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
                     {[
                       { emoji: '🏷️', label: 'Gestión de Categorías', desc: 'Activar, pausar o crear categorías de mercado y turismo', coming: false, count: `${categories.length} activas` },
-                      { emoji: '💳', label: 'Pasarela Wompi / Pagos en línea', desc: 'Pago con tarjeta y PSE mediante una Edge Function de Supabase', coming: true },
                       { emoji: '📊', label: 'Reportes y Auditoría', desc: 'Exportación de reservas e historial financiero consolidado', coming: true },
                       { emoji: '🔔', label: 'Notificaciones y Alertas', desc: 'Alertas automáticas de stock agotado para asociaciones', coming: true },
                     ].map(item => (
@@ -1485,6 +1485,9 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                       </div>
                     ))}
                   </div>
+                </div>
+                <div style={{ marginTop: 18 }}>
+                  <PaymentGatewayManager />
                 </div>
                 <MyAccountCard style={{ marginTop: 18 }} />
                 <ChangePasswordCard style={{ marginTop: 18 }} />

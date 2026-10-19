@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { fetchGatewaySettings, gatewayFee, type GatewaySettings } from '../lib/payments'
 
 export interface ExperienceReservationModalProps {
   open: boolean
@@ -44,15 +45,22 @@ export default function ExperienceReservationModal({
   const [notes, setNotes] = useState('')
 
   // Métodos de pago
-  const [paymentMethod, setPaymentMethod] = useState<'wompi' | 'transferencia'>('transferencia')
+  const [paymentMethod, setPaymentMethod] = useState<'mercadopago' | 'transferencia'>('transferencia')
   const [loadingPayment, setLoadingPayment] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+
+  // Tarifa de Mercado Pago (payment_gateway_settings) para la vista previa del total
+  const [gateway, setGateway] = useState<GatewaySettings | null>(null)
+
+  useEffect(() => {
+    if (open) fetchGatewaySettings().then(setGateway)
+  }, [open])
 
   // Datos de respuesta de confirmación
   const [confirmationData, setConfirmationData] = useState<{
     reference: string
     grandTotal: number
-    paymentMethod: 'wompi' | 'transferencia'
+    paymentMethod: 'mercadopago' | 'transferencia'
   } | null>(null)
 
   // Parsear capacidad máxima
@@ -105,8 +113,9 @@ export default function ExperienceReservationModal({
   // Cálculos de costos
   const unitPrice = Number(experience.price) || 0
   const subtotal = unitPrice * guests
-  const wompiFee = paymentMethod === 'wompi' ? Math.round(subtotal * 0.029) : 0
-  const grandTotal = subtotal + wompiFee
+  // Vista previa: el cobro real lo calcula la base (gateway_fee)
+  const mpFee = paymentMethod === 'mercadopago' && gateway ? gatewayFee(subtotal, gateway) : 0
+  const grandTotal = subtotal + mpFee
 
   const formatPrice = (val: number) => `$${val.toLocaleString('es-CO')} COP`
 
@@ -135,8 +144,8 @@ export default function ExperienceReservationModal({
       setErrorMessage('Debes iniciar sesión para finalizar la reserva.')
       return
     }
-    if (paymentMethod === 'wompi') {
-      setErrorMessage('El pago con Wompi estará disponible próximamente. Elige transferencia.')
+    if (paymentMethod === 'mercadopago') {
+      setErrorMessage('El pago con Mercado Pago estará disponible próximamente. Elige transferencia.')
       return
     }
 
@@ -760,7 +769,7 @@ export default function ExperienceReservationModal({
                 </label>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {/* Wompi */}
+                  {/* Mercado Pago */}
                   <div
                     aria-disabled="true"
                     style={{
@@ -782,7 +791,7 @@ export default function ExperienceReservationModal({
                           style={{ accentColor: '#205134', width: 16, height: 16, cursor: 'not-allowed' }}
                         />
                         <span style={{ fontWeight: 700, fontSize: 14, color: '#1C3A14' }}>
-                          💳 Wompi (Bancolombia, PSE, Tarjeta, Nequi)
+                          💳 Mercado Pago (Tarjeta, PSE)
                         </span>
                       </div>
                       <span
@@ -799,7 +808,7 @@ export default function ExperienceReservationModal({
                       </span>
                     </div>
                     <p style={{ margin: '4px 0 0 24px', fontSize: 12, color: '#666', lineHeight: 1.4 }}>
-                      Pago en línea seguro. Confirmación inmediata y protección al viajero. Tarifa pasarela (+2.9%).
+                      Pago en línea seguro. Confirmación inmediata y protección al viajero. Incluye la tarifa de la pasarela.
                     </p>
                   </div>
 
@@ -868,10 +877,10 @@ export default function ExperienceReservationModal({
                   <span>Transporte / Envío</span>
                   <span style={{ color: '#205134', fontWeight: 700 }}>$0 COP (Presencial)</span>
                 </div>
-                {paymentMethod === 'wompi' && (
+                {paymentMethod === 'mercadopago' && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', color: '#666' }}>
-                    <span>Tarifa procesamiento Wompi (2.9%)</span>
-                    <span style={{ color: '#9B4728', fontWeight: 700 }}>+{formatPrice(wompiFee)}</span>
+                    <span>Tarifa de procesamiento (Mercado Pago)</span>
+                    <span style={{ color: '#9B4728', fontWeight: 700 }}>+{formatPrice(mpFee)}</span>
                   </div>
                 )}
                 <div
@@ -949,8 +958,8 @@ export default function ExperienceReservationModal({
                 >
                   {loadingPayment
                     ? 'Procesando reserva...'
-                    : paymentMethod === 'wompi'
-                      ? `Pagar con Wompi (${formatPrice(grandTotal)})`
+                    : paymentMethod === 'mercadopago'
+                      ? `Pagar con Mercado Pago (${formatPrice(grandTotal)})`
                       : `Confirmar Reserva (${formatPrice(grandTotal)})`}
                 </button>
               </div>
@@ -985,7 +994,7 @@ export default function ExperienceReservationModal({
                     fontWeight: 700,
                   }}
                 >
-                  {confirmationData?.paymentMethod === 'wompi'
+                  {confirmationData?.paymentMethod === 'mercadopago'
                     ? '¡Reserva confirmada con éxito!'
                     : '¡Reserva registrada!'}
                 </h4>

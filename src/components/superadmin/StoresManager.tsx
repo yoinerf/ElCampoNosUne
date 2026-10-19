@@ -8,7 +8,7 @@ import { B } from './ui'
 // /<ruta>, su propia marca, carrito, métodos de pago y envío, sin tocar código. Para que
 // alguien la administre, crea un usuario "Admin de tienda" asignado a ella.
 
-const METHODS: StorePaymentMethod[] = ['CashOnDelivery', 'BankTransfer', 'Cash']
+const METHODS: StorePaymentMethod[] = ['CashOnDelivery', 'BankTransfer', 'Cash', 'Online']
 const RESERVED_SLUGS = ['productos', 'experiencias', 'nosotros', 'mi-cuenta', 'panel', 'superadmin', 'admin-tienda', 'assets']
 const TRANSFER_FIELDS: { key: keyof TransferInfo; label: string; placeholder?: string }[] = [
   { key: 'bank', label: 'Banco', placeholder: 'Bancolombia' },
@@ -260,7 +260,7 @@ function StoreFormFields({ editing, set }: { editing: { form: StoreForm; isNew: 
             )
           })}
         </div>
-        <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>Con transferencia o efectivo, el productor solo prepara y envía después de confirmar el pago.</div>
+        <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>Con transferencia, efectivo o Mercado Pago, el productor solo prepara y envía después de confirmar el pago. Mercado Pago se activa en Configuración y requiere envío en 0.</div>
       </div>
 
       <div style={grid}>

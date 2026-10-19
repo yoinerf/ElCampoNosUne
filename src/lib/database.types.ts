@@ -643,6 +643,60 @@ export type Database = {
         }
         Relationships: []
       }
+      order_payments: {
+        Row: {
+          base_amount: number
+          checkout_url: string | null
+          created_at: string
+          fee_amount: number
+          gateway: string
+          id: string
+          order_id: string
+          paid_at: string | null
+          preference_id: string | null
+          provider_payment_id: string | null
+          provider_status: string | null
+          seller_id: string
+          status: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          base_amount: number
+          checkout_url?: string | null
+          created_at?: string
+          fee_amount?: number
+          gateway?: string
+          id?: string
+          order_id: string
+          paid_at?: string | null
+          preference_id?: string | null
+          provider_payment_id?: string | null
+          provider_status?: string | null
+          seller_id: string
+          status?: string
+          total_amount: number
+          updated_at?: string
+        }
+        Update: {
+          base_amount?: number
+          checkout_url?: string | null
+          created_at?: string
+          fee_amount?: number
+          gateway?: string
+          id?: string
+          order_id?: string
+          paid_at?: string | null
+          preference_id?: string | null
+          provider_payment_id?: string | null
+          provider_status?: string | null
+          seller_id?: string
+          status?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           created_at: string
@@ -650,6 +704,7 @@ export type Database = {
           customer_name: string | null
           customer_phone: string | null
           id: string
+          payment_fee: number
           payment_method: string
           payment_status: string
           shipping_address: Json | null
@@ -666,6 +721,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           id?: string
+          payment_fee?: number
           payment_method: string
           payment_status?: string
           shipping_address?: Json | null
@@ -682,6 +738,7 @@ export type Database = {
           customer_name?: string | null
           customer_phone?: string | null
           id?: string
+          payment_fee?: number
           payment_method?: string
           payment_status?: string
           shipping_address?: Json | null
@@ -722,6 +779,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      payment_gateway_settings: {
+        Row: {
+          enabled: boolean
+          extra_fixed: number
+          extra_percent: number
+          fixed_fee: number
+          gateway: string
+          pass_fees_to_buyer: boolean
+          percent_fee: number
+          sandbox: boolean
+          updated_at: string
+          updated_by: string | null
+          vat_rate: number
+        }
+        Insert: {
+          enabled?: boolean
+          extra_fixed?: number
+          extra_percent?: number
+          fixed_fee?: number
+          gateway: string
+          pass_fees_to_buyer?: boolean
+          percent_fee?: number
+          sandbox?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          vat_rate?: number
+        }
+        Update: {
+          enabled?: boolean
+          extra_fixed?: number
+          extra_percent?: number
+          fixed_fee?: number
+          gateway?: string
+          pass_fees_to_buyer?: boolean
+          percent_fee?: number
+          sandbox?: boolean
+          updated_at?: string
+          updated_by?: string | null
+          vat_rate?: number
+        }
+        Relationships: []
       }
       producer_documents: {
         Row: {
@@ -1065,6 +1164,36 @@ export type Database = {
           },
         ]
       }
+      seller_payment_accounts: {
+        Row: {
+          connected_at: string
+          gateway: string
+          live_mode: boolean
+          provider_user_id: string
+          seller_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          connected_at?: string
+          gateway?: string
+          live_mode?: boolean
+          provider_user_id: string
+          seller_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          connected_at?: string
+          gateway?: string
+          live_mode?: boolean
+          provider_user_id?: string
+          seller_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       store_settings: {
         Row: {
           active: boolean
@@ -1298,11 +1427,27 @@ export type Database = {
         Returns: Json
       }
       current_store_admin_store: { Args: never; Returns: string }
+      disconnect_my_payment_account: {
+        Args: { p_gateway?: string }
+        Returns: undefined
+      }
+      gateway_fee: {
+        Args: { p_base: number; p_gateway?: string }
+        Returns: number
+      }
       get_user_role: { Args: { p_user_id: string }; Returns: string }
       is_admin: { Args: never; Returns: boolean }
       is_order_customer: { Args: { p_order_id: string }; Returns: boolean }
       is_order_seller: { Args: { p_order_id: string }; Returns: boolean }
       is_producer_validated: { Args: { p_user: string }; Returns: boolean }
+      prepare_order_payments: {
+        Args: { p_order_id: string }
+        Returns: Database["public"]["Tables"]["order_payments"]["Row"][]
+      }
+      quote_online_payment: {
+        Args: { p_items: Json; p_store: string }
+        Returns: Json
+      }
       recalc_order_from_items: {
         Args: { p_order_id: string }
         Returns: undefined

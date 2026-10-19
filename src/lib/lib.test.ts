@@ -12,6 +12,7 @@ import { TABS, isTab } from './types'
 import { pathForTab, routeFromPath } from './routes'
 import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from './identity'
 import { DEPARTMENTS, findDepartment, findMunicipality, municipalitiesOf } from './geo'
+import { gatewayFee } from './payments'
 
 const fakeFile = (type: string, size: number, name = 'archivo') => ({ type, size, name }) as File
 
@@ -181,5 +182,26 @@ describe('types', () => {
     expect(isTab('market')).toBe(true)
     expect(isTab('javascript:alert(1)')).toBe(false)
     expect(isTab(null)).toBe(false)
+  })
+})
+
+describe('payments', () => {
+  const mp = { percent_fee: 3.29, fixed_fee: 800, vat_rate: 19, extra_percent: 0, extra_fixed: 0, pass_fees_to_buyer: true }
+
+  it('suma la tarifa para que el productor reciba el valor completo (igual que gateway_fee)', () => {
+    expect(gatewayFee(50000, mp)).toBe(3029)
+    expect(gatewayFee(10000, mp)).toBe(1399)
+    // Lo que descuenta Mercado Pago del total nunca deja al productor por debajo de su precio
+    const total = 50000 + gatewayFee(50000, mp)
+    expect(total - (total * 0.0329 + 800) * 1.19).toBeGreaterThanOrEqual(50000)
+  })
+
+  it('incluye retenciones y cargos extra configurables', () => {
+    expect(gatewayFee(50000, { ...mp, extra_percent: 1, extra_fixed: 100 })).toBeGreaterThan(gatewayFee(50000, mp))
+  })
+
+  it('no suma nada si el productor asume la tarifa o el monto es 0', () => {
+    expect(gatewayFee(50000, { ...mp, pass_fees_to_buyer: false })).toBe(0)
+    expect(gatewayFee(0, mp)).toBe(0)
   })
 })

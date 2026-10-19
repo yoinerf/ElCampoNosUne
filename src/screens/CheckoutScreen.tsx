@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import AuthRequiredModal from '../components/AuthRequiredModal'
 import { MAIN_STORE, isMainStore, type StoreId, type StorePaymentMethod } from '../lib/stores'
 import { useStores } from '../lib/storesContext'
+import { createOrderPayments, fetchGatewaySettings, quoteOnlinePayment, type OrderPaymentLink, type PaymentQuote } from '../lib/payments'
 
 interface CheckoutScreenProps {
   items: CartItem[]
@@ -15,14 +16,16 @@ interface CheckoutScreenProps {
   store?: StoreId
 }
 
-export type PaymentMethodType = 'contraentrega' | 'wompi' | 'transferencia' | 'efectivo'
+export type PaymentMethodType = 'contraentrega' | 'mercadopago' | 'transferencia' | 'efectivo'
 
-// orders.payment_method que acepta create_store_order. Wompi aún no está habilitado.
-const PAYMENT_METHODS: Record<PaymentMethodType, StorePaymentMethod | null> = {
+// orders.payment_method que acepta create_store_order. Mercado Pago ('Online') solo se puede
+// pagar cuando la pasarela está activa, la tienda lo ofrece y todos los productores del
+// carrito conectaron su cuenta.
+const PAYMENT_METHODS: Record<PaymentMethodType, StorePaymentMethod> = {
   contraentrega: 'CashOnDelivery',
   efectivo: 'Cash',
   transferencia: 'BankTransfer',
-  wompi: null,
+  mercadopago: 'Online',
 }
 
 // Opciones que se muestran según store_settings.payment_methods de la tienda
@@ -70,7 +73,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
   const [loadingPayment, setLoadingPayment] = useState(false)
   const [isLogged, setIsLogged] = useState<boolean | null>(null)
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>(paymentOptions[0]?.value ?? 'wompi')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodType>(paymentOptions[0]?.value ?? 'mercadopago')
   const [addressForm, setAddressForm] = useState<ShippingAddressForm>({
     fullName: '',
     phone: '',
@@ -79,6 +82,27 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     address: '',
     deliveryNotes: '',
   })
+
+  // Mercado Pago: pasarela activa, cobros por productor del carrito y enlaces de pago
+  const [gatewayEnabled, setGatewayEnabled] = useState(false)
+  const [quote, setQuote] = useState<PaymentQuote | null>(null)
+  const [paymentLinks, setPaymentLinks] = useState<OrderPaymentLink[]>([])
+
+  useEffect(() => {
+    fetchGatewaySettings().then((s) => setGatewayEnabled(!!s?.enabled))
+  }, [])
+
+  // La tarifa la calcula la base con los precios reales (quote_online_payment)
+  useEffect(() => {
+    if (currentStep !== 3 || paymentMethod !== 'mercadopago' || !isLogged || items.length === 0) return
+    let cancelled = false
+    quoteOnlinePayment(store, items.map(({ product, quantity }) => ({
+      id: product.id,
+      type: isAllied ? 'producto' : product.type || 'producto',
+      quantity,
+    }))).then((q) => { if (!cancelled) setQuote(q) })
+    return () => { cancelled = true }
+  }, [currentStep, paymentMethod, isLogged, items, store, isAllied])
 
   // Cargar usuario y perfil de Supabase si existe
   useEffect(() => {
@@ -116,10 +140,13 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
   // Envío fijo de la tienda (store_settings.shipping_fee, lo cobra create_store_order).
   // En 0 el envío lo acuerda cada vendedor con el comprador y no se suma al total.
   const shippingFee = items.length > 0 && !isExperienceOnly ? storeConfig.shipping_fee : 0
-  const wompiFee = paymentMethod === 'wompi' ? Math.round((subtotal + shippingFee) * 0.029) : 0
-  const grandTotal = subtotal + shippingFee + wompiFee
-  // Wompi aún no está habilitado: se puede seleccionar pero no pagar
-  const wompiUnavailable = currentStep === 3 && paymentMethod === 'wompi' && isLogged !== false
+  const onlineOffered = gatewayEnabled && storeConfig.payment_methods.includes('Online') && shippingFee === 0
+  const unconnectedSellers = quote?.groups.filter((g) => !g.connected) ?? []
+  const onlineAvailable = onlineOffered && !!quote && quote.groups.length > 0 && unconnectedSellers.length === 0
+  const gatewayFeeAmount = paymentMethod === 'mercadopago' ? quote?.fee ?? 0 : 0
+  const grandTotal = subtotal + shippingFee + gatewayFeeAmount
+  // Mercado Pago se puede seleccionar, pero solo se paga cuando está disponible
+  const mpUnavailable = currentStep === 3 && paymentMethod === 'mercadopago' && isLogged !== false && !onlineAvailable
 
   const formatPrice = (value: number) => `$${value.toLocaleString('es-CO')} COP`
 
@@ -152,7 +179,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
       setCurrentStep(3)
     } else if (currentStep === 3) {
       // Paso 3 -> Finalizar pedido / Proceder al pago
-      if (paymentMethod === 'wompi') return // Próximamente
+      if (paymentMethod === 'mercadopago' && !onlineAvailable) return // Próximamente
       await executePaymentFlow()
     }
   }
@@ -166,7 +193,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     // y stock de la base (nunca del navegador). Queda 'Pendiente de pago' hasta que el
     // productor/admin confirme el pago.
     const storeMethod = PAYMENT_METHODS[paymentMethod]
-    if (!storeMethod || !storeConfig.payment_methods.includes(storeMethod)) {
+    if (!storeConfig.payment_methods.includes(storeMethod)) {
       setErrorMessage('Este método de pago no está disponible en esta tienda.')
       setLoadingPayment(false)
       return
@@ -192,7 +219,27 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     }
 
     // create_store_order devuelve jsonb: { order_id, store, status, items, subtotal, shipping_fee, total }
-    const reference = String((order as { order_id?: string } | null)?.order_id ?? '').slice(0, 8).toUpperCase()
+    const orderId = String((order as { order_id?: string } | null)?.order_id ?? '')
+    const reference = orderId.slice(0, 8).toUpperCase()
+
+    // Pago en línea: un cobro de Mercado Pago por productor, directo a su cuenta
+    if (storeMethod === 'Online') {
+      const result = await createOrderPayments(orderId)
+      onItemsChange([])
+      setLoadingPayment(false)
+      if ('error' in result) {
+        setMessage(`Tu pedido ${reference} quedó registrado, pero no se pudo abrir el pago: ${result.error}\n\nPuedes intentarlo de nuevo desde tu panel de usuario.`)
+        return
+      }
+      const pending = result.payments.filter((p) => p.checkout_url)
+      if (pending.length === 1) {
+        window.location.href = pending[0].checkout_url!
+        return
+      }
+      setPaymentLinks(pending)
+      setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nTu compra incluye productos de ${pending.length} productores. Cada uno recibe su pago directamente, así que harás un pago por productor.`)
+      return
+    }
     // Por ahora no se muestran datos bancarios: el productor contacta al comprador para el pago
     setMessage(`🎉 ¡Pedido registrado! Referencia: ${reference}.\n\nEl productor se pondrá en contacto contigo para continuar con el pago y coordinar la entrega.\n\nPodrás seguir el estado de tu pedido en tu panel de usuario.`)
     onItemsChange([])
@@ -251,6 +298,25 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
               <div style={{ fontSize: 60, marginBottom: 16 }}>✅</div>
               <h2 style={{ color: '#205134', fontFamily: "'Poppins', sans-serif", fontSize: 26, margin: '0 0 12px', fontWeight: 700 }}>¡Gracias por tu compra!</h2>
               <p style={{ color: '#444', fontSize: 16, margin: '0 0 20px', lineHeight: 1.6, whiteSpace: 'pre-line', }}>{message}</p>
+
+              {/* Un pago por productor (Mercado Pago split 1:1) */}
+              {paymentLinks.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '0 0 20px', textAlign: 'left' }}>
+                  {paymentLinks.map((p) => (
+                    <a
+                      key={p.id}
+                      href={p.checkout_url ?? undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '14px 16px', borderRadius: 12, border: '1.5px solid #205134', background: '#F2F7F4', color: '#205134', fontWeight: 700, textDecoration: 'none', fontSize: 14 }}
+                    >
+                      <span>💳 Pagar a {p.seller_name}</span>
+                      <span>{formatPrice(p.total_amount)}</span>
+                    </a>
+                  ))}
+                  <p style={{ margin: 0, fontSize: 12, color: '#777' }}>Cada pago se abre en Mercado Pago. Cada productor prepara su parte cuando recibe su pago.</p>
+                </div>
+              )}
 
               {/* Los costos de envío los fija cada vendedor */}
               <div style={{ background: '#FFF7E8', border: '1px solid #F0D099', borderRadius: 14, padding: '12px 16px', margin: '0 0 24px', fontSize: 13, color: '#9B4728', fontWeight: 600, lineHeight: 1.5 }}>
@@ -536,10 +602,10 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                             </div>
                           ))}
 
-                          {/* Opción 2: Wompi */}
+                          {/* Mercado Pago: cada productor recibe su pago directamente */}
                           <div
-                            onClick={() => setPaymentMethod('wompi')}
-                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === 'wompi'
+                            onClick={() => setPaymentMethod('mercadopago')}
+                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === 'mercadopago'
                               ? 'border-[#205134] bg-[#F2F7F4]'
                               : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
                               }`}
@@ -549,20 +615,27 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                                 <input
                                   type="radio"
                                   name="paymentMethod"
-                                  checked={paymentMethod === 'wompi'}
-                                  onChange={() => setPaymentMethod('wompi')}
+                                  checked={paymentMethod === 'mercadopago'}
+                                  onChange={() => setPaymentMethod('mercadopago')}
                                   className="accent-[#205134] w-5 h-5 cursor-pointer"
                                 />
-                                <div className="font-bold text-[#1C3A14] text-lg">💳 Tarjeta de Crédito / Débito / PSE / Nequi (Wompi)</div>
+                                <div className="font-bold text-[#1C3A14] text-lg">💳 Tarjeta de Crédito / Débito / PSE (Mercado Pago)</div>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
-                                <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Wompi</span>
-                                <span className="bg-[#FFF1E0] text-[#C4622D] border border-[#F3C38B] text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Próximamente</span>
+                                <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Mercado Pago</span>
+                                {!onlineOffered && (
+                                  <span className="bg-[#FFF1E0] text-[#C4622D] border border-[#F3C38B] text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Próximamente</span>
+                                )}
                               </div>
                             </div>
                             <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
-                              Pago en línea 100% seguro procesado por la pasarela oficial Wompi (Bancolombia). Incluye tarifa de procesamiento digital (+2.9%).
+                              Pago en línea seguro con Mercado Pago. Cada productor recibe su pago directamente: si compras a varios productores, harás un pago por cada uno. Incluye la tarifa de procesamiento de la pasarela.
                             </p>
+                            {onlineOffered && paymentMethod === 'mercadopago' && unconnectedSellers.length > 0 && (
+                              <p className="text-sm text-[#C4622D] font-semibold ml-8 mt-2 mb-0 leading-relaxed">
+                                {unconnectedSellers.map((g) => g.seller_name).join(', ')} aún no recibe pagos en línea. Elige otro método de pago para este pedido.
+                              </p>
+                            )}
                           </div>
 
                         </div>
@@ -603,11 +676,24 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                       </div>
                     )}
 
-                    {paymentMethod === 'wompi' && currentStep === 3 && (
-                      <div className="flex justify-between text-sm text-[#555] mb-4">
-                        <span>Comisión procesamiento (Wompi)</span>
-                        <span className="font-bold text-[#D06050]">{formatPrice(wompiFee)}</span>
-                      </div>
+                    {paymentMethod === 'mercadopago' && currentStep === 3 && quote && (
+                      <>
+                        <div className="flex justify-between text-sm text-[#555] mb-4">
+                          <span>Tarifa de procesamiento (Mercado Pago)</span>
+                          <span className="font-bold text-[#D06050]">{formatPrice(gatewayFeeAmount)}</span>
+                        </div>
+                        {quote.groups.length > 1 && (
+                          <div className="bg-[#F9F6F0] border border-[#E8DED0] rounded-xl p-3 mb-4 text-xs text-[#555] flex flex-col gap-1">
+                            <span className="font-bold text-[#205134]">Un pago por productor</span>
+                            {quote.groups.map((g) => (
+                              <div key={g.seller_id} className="flex justify-between gap-3">
+                                <span>{g.seller_name}</span>
+                                <span className="font-bold">{formatPrice(g.total)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
 
                     <div className="h-px bg-[#E8DED0] w-full mb-6"></div>
@@ -620,7 +706,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                     {/* BOTÓN PRINCIPAL: "Continuar" vs "Confirmar el pedido" (contraentrega) vs "Proceder al pago" */}
                     <button
                       type="button"
-                      disabled={loadingPayment || wompiUnavailable}
+                      disabled={loadingPayment || mpUnavailable}
                       onClick={handleMainAction}
                       className="w-full bg-[#205134] hover:bg-[#1a422a] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#205134] text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
                     >
@@ -629,13 +715,13 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                         : isLogged === false
                           ? 'Crear cuenta para comprar'
                           : currentStep === 3
-                            ? paymentMethod !== 'wompi'
+                            ? paymentMethod !== 'mercadopago'
                               ? 'Confirmar el pedido'
-                              : wompiUnavailable ? 'Proceder al pago (Próximamente)' : 'Proceder al pago'
+                              : !onlineOffered ? 'Proceder al pago (Próximamente)' : 'Pagar con Mercado Pago'
                             : 'Continuar →'}
                     </button>
 
-                    {wompiUnavailable && (
+                    {mpUnavailable && !onlineOffered && (
                       <p className="text-center text-xs text-[#C4622D] font-bold -mt-2 mb-4">
                         ¡Pronto estará disponible! Estamos trabajando para ti.
                       </p>

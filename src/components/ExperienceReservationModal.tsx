@@ -53,7 +53,7 @@ export default function ExperienceReservationModal({
   const [gateway, setGateway] = useState<GatewaySettings | null>(null)
 
   useEffect(() => {
-    if (open) fetchGatewaySettings().then(setGateway)
+    if (open) fetchGatewaySettings().then((all) => setGateway(all.find((g) => g.gateway === 'mercadopago') ?? null))
   }, [open])
 
   // Datos de respuesta de confirmación

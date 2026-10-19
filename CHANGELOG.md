@@ -10,20 +10,25 @@ Cambios importantes de El Campo Nos Une, de la versión más reciente a la más 
 ## [Sin publicar]
 
 **New Features**
-- Pagos en línea con Mercado Pago (preparado, apagado hasta activarlo desde el superadmin)
-  - Wompi se reemplaza por Mercado Pago en el checkout, las reservas de experiencias y la configuración.
-  - Cada productor conecta su cuenta de Mercado Pago desde su panel (Configuración) y recibe sus pagos directamente.
-  - Un pedido con varios productores genera un pago por productor; la plataforma no cobra comisión.
-  - La tarifa de la pasarela (porcentaje, valor fijo, IVA, retenciones y otros cargos) se configura en
-    Superadmin → Configuración y se calcula en la base de datos; se suma al pago del comprador.
-  - Las tiendas pueden ofrecer "Mercado Pago" como método de pago (requiere envío en 0).
-  - Nuevas Edge Functions `mp-oauth`, `mp-create-payment` y `mp-webhook` (guía en `docs/MERCADOPAGO.md`).
+- Pagos en línea con Mercado Pago y ePayco (preparado, apagado hasta activarlo desde el superadmin)
+  - Wompi se reemplaza por Mercado Pago y ePayco en el checkout, las reservas de experiencias y la configuración.
+  - El dinero va directo a cada productor; la plataforma no cobra comisión.
+    - Mercado Pago: el productor conecta su cuenta (OAuth); un pedido con varios productores genera un pago por productor.
+    - ePayco (Pagos Divididos): el productor registra su ID de cliente y la plataforma lo activa como receptor;
+      un pedido es un solo pago que ePayco reparte entre los productores.
+  - Nuevo menú Superadmin → Pagos: activar cada pasarela, modo de pruebas, tarifas (porcentaje, valor fijo,
+    IVA, retenciones y otros cargos) y activación de receptores de ePayco.
+  - La tarifa se calcula en la base de datos y se suma al pago del comprador.
+  - Los productores administran sus cuentas en Panel → Configuración → Cobros en línea.
+  - Las tiendas pueden ofrecer "Mercado Pago" y "ePayco" como métodos de pago (requieren envío en 0).
+  - Nuevas Edge Functions `mp-oauth`, `mp-create-payment`, `mp-webhook`, `epayco-create-session` y
+    `epayco-confirmation` (guías paso a paso en `docs/pagos/`).
 
 ### Pendiente
 - Notificaciones de pedidos por correo con Resend desde la Edge Function `notify-order`
   (en espera del dominio propio).
-- Activar Mercado Pago: aplicar la migración `20261019120000_mercadopago_split_prep.sql`, desplegar las
-  Edge Functions y configurar los secrets (ver `docs/MERCADOPAGO.md`).
+- Activar pagos en línea: crear las cuentas, aplicar la migración `20261019120000_online_payments_split.sql`,
+  configurar los secrets y desplegar las Edge Functions (ver `docs/pagos/README.md`).
 
 ## [2.0.0] - 2026-10-18
 Primera versión gestionada. Elimina el backend propio: toda la lógica de servidor vive en

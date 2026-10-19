@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import AuthRequiredModal from '../components/AuthRequiredModal'
 import { MAIN_STORE, isMainStore, type StoreId, type StorePaymentMethod } from '../lib/stores'
 import { useStores } from '../lib/storesContext'
-import { createOrderPayments, fetchGatewaySettings, quoteOnlinePayment, type OrderPaymentLink, type PaymentQuote } from '../lib/payments'
+import { GATEWAY_LABELS, GATEWAY_METHODS, GATEWAYS, createOrderPayments, fetchGatewaySettings, payWithEpayco, quoteOnlinePayment, type Gateway, type GatewaySettings, type OrderPaymentLink, type PaymentQuote } from '../lib/payments'
 
 interface CheckoutScreenProps {
   items: CartItem[]
@@ -16,16 +16,30 @@ interface CheckoutScreenProps {
   store?: StoreId
 }
 
-export type PaymentMethodType = 'contraentrega' | 'mercadopago' | 'transferencia' | 'efectivo'
+export type PaymentMethodType = 'contraentrega' | 'transferencia' | 'efectivo' | Gateway
 
-// orders.payment_method que acepta create_store_order. Mercado Pago ('Online') solo se puede
-// pagar cuando la pasarela está activa, la tienda lo ofrece y todos los productores del
-// carrito conectaron su cuenta.
+// orders.payment_method que acepta create_store_order. Las pasarelas en línea solo se pueden
+// pagar cuando están activas (Superadmin → Pagos), la tienda las ofrece y todos los
+// productores del carrito tienen su cuenta de cobro activa.
 const PAYMENT_METHODS: Record<PaymentMethodType, StorePaymentMethod> = {
   contraentrega: 'CashOnDelivery',
   efectivo: 'Cash',
   transferencia: 'BankTransfer',
-  mercadopago: 'Online',
+  ...GATEWAY_METHODS,
+}
+
+const isGateway = (method: PaymentMethodType): method is Gateway => (GATEWAYS as string[]).includes(method)
+
+// Texto de cada pasarela en el checkout
+const GATEWAY_TEXT: Record<Gateway, { title: string; text: string }> = {
+  mercadopago: {
+    title: '💳 Tarjeta de Crédito / Débito / PSE (Mercado Pago)',
+    text: 'Pago en línea seguro con Mercado Pago. Cada productor recibe su pago directamente: si compras a varios productores, harás un pago por cada uno. Incluye la tarifa de procesamiento de la pasarela.',
+  },
+  epayco: {
+    title: '💳 Tarjeta / PSE / Nequi / Daviplata (ePayco)',
+    text: 'Pago en línea seguro con ePayco en un solo pago: ePayco reparte el dinero directamente a cada productor. Incluye la tarifa de procesamiento de la pasarela.',
+  },
 }
 
 // Opciones que se muestran según store_settings.payment_methods de la tienda
@@ -83,26 +97,28 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     deliveryNotes: '',
   })
 
-  // Mercado Pago: pasarela activa, cobros por productor del carrito y enlaces de pago
-  const [gatewayEnabled, setGatewayEnabled] = useState(false)
+  // Pagos en línea: pasarelas activas, cobro cotizado del carrito y enlaces de pago
+  const [gateways, setGateways] = useState<GatewaySettings[]>([])
   const [quote, setQuote] = useState<PaymentQuote | null>(null)
   const [paymentLinks, setPaymentLinks] = useState<OrderPaymentLink[]>([])
+  const onlineGateway = isGateway(paymentMethod) ? paymentMethod : null
 
   useEffect(() => {
-    fetchGatewaySettings().then((s) => setGatewayEnabled(!!s?.enabled))
+    fetchGatewaySettings().then(setGateways)
   }, [])
 
   // La tarifa la calcula la base con los precios reales (quote_online_payment)
   useEffect(() => {
-    if (currentStep !== 3 || paymentMethod !== 'mercadopago' || !isLogged || items.length === 0) return
+    setQuote(null)
+    if (currentStep !== 3 || !onlineGateway || !isLogged || items.length === 0) return
     let cancelled = false
     quoteOnlinePayment(store, items.map(({ product, quantity }) => ({
       id: product.id,
       type: isAllied ? 'producto' : product.type || 'producto',
       quantity,
-    }))).then((q) => { if (!cancelled) setQuote(q) })
+    })), onlineGateway).then((q) => { if (!cancelled) setQuote(q) })
     return () => { cancelled = true }
-  }, [currentStep, paymentMethod, isLogged, items, store, isAllied])
+  }, [currentStep, onlineGateway, isLogged, items, store, isAllied])
 
   // Cargar usuario y perfil de Supabase si existe
   useEffect(() => {
@@ -140,13 +156,18 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
   // Envío fijo de la tienda (store_settings.shipping_fee, lo cobra create_store_order).
   // En 0 el envío lo acuerda cada vendedor con el comprador y no se suma al total.
   const shippingFee = items.length > 0 && !isExperienceOnly ? storeConfig.shipping_fee : 0
-  const onlineOffered = gatewayEnabled && storeConfig.payment_methods.includes('Online') && shippingFee === 0
+  // Pasarelas que esta tienda ofrece y están activas (sin envío fijo: no tendría a quién pagarse)
+  const offeredGateways = GATEWAYS.filter((g) =>
+    gateways.some((s) => s.gateway === g && s.enabled) && storeConfig.payment_methods.includes(GATEWAY_METHODS[g]) && shippingFee === 0)
+  // Sin pasarelas activas se muestra Mercado Pago como "Próximamente"
+  const gatewayCards: Gateway[] = offeredGateways.length > 0 ? offeredGateways : ['mercadopago']
+  const onlineOffered = !!onlineGateway && offeredGateways.includes(onlineGateway)
   const unconnectedSellers = quote?.groups.filter((g) => !g.connected) ?? []
   const onlineAvailable = onlineOffered && !!quote && quote.groups.length > 0 && unconnectedSellers.length === 0
-  const gatewayFeeAmount = paymentMethod === 'mercadopago' ? quote?.fee ?? 0 : 0
+  const gatewayFeeAmount = onlineGateway ? quote?.fee ?? 0 : 0
   const grandTotal = subtotal + shippingFee + gatewayFeeAmount
-  // Mercado Pago se puede seleccionar, pero solo se paga cuando está disponible
-  const mpUnavailable = currentStep === 3 && paymentMethod === 'mercadopago' && isLogged !== false && !onlineAvailable
+  // La pasarela se puede seleccionar, pero solo se paga cuando está disponible
+  const onlineUnavailable = currentStep === 3 && !!onlineGateway && isLogged !== false && !onlineAvailable
 
   const formatPrice = (value: number) => `$${value.toLocaleString('es-CO')} COP`
 
@@ -179,7 +200,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
       setCurrentStep(3)
     } else if (currentStep === 3) {
       // Paso 3 -> Finalizar pedido / Proceder al pago
-      if (paymentMethod === 'mercadopago' && !onlineAvailable) return // Próximamente
+      if (onlineGateway && !onlineAvailable) return // Próximamente
       await executePaymentFlow()
     }
   }
@@ -222,8 +243,19 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     const orderId = String((order as { order_id?: string } | null)?.order_id ?? '')
     const reference = orderId.slice(0, 8).toUpperCase()
 
-    // Pago en línea: un cobro de Mercado Pago por productor, directo a su cuenta
-    if (storeMethod === 'Online') {
+    // ePayco: un solo cobro que ePayco reparte entre los productores
+    if (onlineGateway === 'epayco') {
+      onItemsChange([])
+      const result = await payWithEpayco(orderId)
+      setLoadingPayment(false)
+      if (result) {
+        setMessage(`Tu pedido ${reference} quedó registrado, pero no se pudo abrir el pago: ${result.error}\n\nPuedes intentarlo de nuevo desde tu panel de usuario.`)
+      }
+      return
+    }
+
+    // Mercado Pago: un cobro por productor, directo a su cuenta
+    if (onlineGateway === 'mercadopago') {
       const result = await createOrderPayments(orderId)
       onItemsChange([])
       setLoadingPayment(false)
@@ -602,41 +634,42 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                             </div>
                           ))}
 
-                          {/* Mercado Pago: cada productor recibe su pago directamente */}
-                          <div
-                            onClick={() => setPaymentMethod('mercadopago')}
-                            className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === 'mercadopago'
-                              ? 'border-[#205134] bg-[#F2F7F4]'
-                              : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
-                              }`}
-                          >
-                            <div className="flex items-center justify-between gap-3 mb-2">
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="radio"
-                                  name="paymentMethod"
-                                  checked={paymentMethod === 'mercadopago'}
-                                  onChange={() => setPaymentMethod('mercadopago')}
-                                  className="accent-[#205134] w-5 h-5 cursor-pointer"
-                                />
-                                <div className="font-bold text-[#1C3A14] text-lg">💳 Tarjeta de Crédito / Débito / PSE (Mercado Pago)</div>
+                          {/* Pasarelas en línea: cada productor recibe su pago directamente */}
+                          {gatewayCards.map((g) => (
+                            <div
+                              key={g}
+                              onClick={() => setPaymentMethod(g)}
+                              className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === g
+                                ? 'border-[#205134] bg-[#F2F7F4]'
+                                : 'border-[#E8DED0] hover:border-[#CCC] bg-white'
+                                }`}
+                            >
+                              <div className="flex items-center justify-between gap-3 mb-2">
+                                <div className="flex items-center gap-3">
+                                  <input
+                                    type="radio"
+                                    name="paymentMethod"
+                                    checked={paymentMethod === g}
+                                    onChange={() => setPaymentMethod(g)}
+                                    className="accent-[#205134] w-5 h-5 cursor-pointer"
+                                  />
+                                  <div className="font-bold text-[#1C3A14] text-lg">{GATEWAY_TEXT[g].title}</div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">{GATEWAY_LABELS[g]}</span>
+                                  {!offeredGateways.includes(g) && (
+                                    <span className="bg-[#FFF1E0] text-[#C4622D] border border-[#F3C38B] text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Próximamente</span>
+                                  )}
+                                </div>
                               </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="bg-[#205134] text-white text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Mercado Pago</span>
-                                {!onlineOffered && (
-                                  <span className="bg-[#FFF1E0] text-[#C4622D] border border-[#F3C38B] text-[10px] uppercase tracking-wider px-2 py-1 rounded font-bold">Próximamente</span>
-                                )}
-                              </div>
+                              <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">{GATEWAY_TEXT[g].text}</p>
+                              {onlineOffered && paymentMethod === g && unconnectedSellers.length > 0 && (
+                                <p className="text-sm text-[#C4622D] font-semibold ml-8 mt-2 mb-0 leading-relaxed">
+                                  {unconnectedSellers.map((u) => u.seller_name).join(', ')} aún no recibe pagos con {GATEWAY_LABELS[g]}. Elige otro método de pago para este pedido.
+                                </p>
+                              )}
                             </div>
-                            <p className="text-sm text-[#555] ml-8 m-0 leading-relaxed">
-                              Pago en línea seguro con Mercado Pago. Cada productor recibe su pago directamente: si compras a varios productores, harás un pago por cada uno. Incluye la tarifa de procesamiento de la pasarela.
-                            </p>
-                            {onlineOffered && paymentMethod === 'mercadopago' && unconnectedSellers.length > 0 && (
-                              <p className="text-sm text-[#C4622D] font-semibold ml-8 mt-2 mb-0 leading-relaxed">
-                                {unconnectedSellers.map((g) => g.seller_name).join(', ')} aún no recibe pagos en línea. Elige otro método de pago para este pedido.
-                              </p>
-                            )}
-                          </div>
+                          ))}
 
                         </div>
 
@@ -676,15 +709,17 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                       </div>
                     )}
 
-                    {paymentMethod === 'mercadopago' && currentStep === 3 && quote && (
+                    {onlineGateway && currentStep === 3 && quote && (
                       <>
                         <div className="flex justify-between text-sm text-[#555] mb-4">
-                          <span>Tarifa de procesamiento (Mercado Pago)</span>
+                          <span>Tarifa de procesamiento ({GATEWAY_LABELS[onlineGateway]})</span>
                           <span className="font-bold text-[#D06050]">{formatPrice(gatewayFeeAmount)}</span>
                         </div>
                         {quote.groups.length > 1 && (
                           <div className="bg-[#F9F6F0] border border-[#E8DED0] rounded-xl p-3 mb-4 text-xs text-[#555] flex flex-col gap-1">
-                            <span className="font-bold text-[#205134]">Un pago por productor</span>
+                            <span className="font-bold text-[#205134]">
+                              {quote.payments > 1 ? 'Un pago por productor' : 'Un solo pago, repartido así'}
+                            </span>
                             {quote.groups.map((g) => (
                               <div key={g.seller_id} className="flex justify-between gap-3">
                                 <span>{g.seller_name}</span>
@@ -706,7 +741,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                     {/* BOTÓN PRINCIPAL: "Continuar" vs "Confirmar el pedido" (contraentrega) vs "Proceder al pago" */}
                     <button
                       type="button"
-                      disabled={loadingPayment || mpUnavailable}
+                      disabled={loadingPayment || onlineUnavailable}
                       onClick={handleMainAction}
                       className="w-full bg-[#205134] hover:bg-[#1a422a] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#205134] text-white font-bold py-3.5 rounded-xl border-none cursor-pointer transition-colors text-sm mb-4"
                     >
@@ -715,13 +750,13 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                         : isLogged === false
                           ? 'Crear cuenta para comprar'
                           : currentStep === 3
-                            ? paymentMethod !== 'mercadopago'
+                            ? !onlineGateway
                               ? 'Confirmar el pedido'
-                              : !onlineOffered ? 'Proceder al pago (Próximamente)' : 'Pagar con Mercado Pago'
+                              : !onlineOffered ? 'Proceder al pago (Próximamente)' : `Pagar con ${GATEWAY_LABELS[onlineGateway]}`
                             : 'Continuar →'}
                     </button>
 
-                    {mpUnavailable && !onlineOffered && (
+                    {onlineUnavailable && !onlineOffered && (
                       <p className="text-center text-xs text-[#C4622D] font-bold -mt-2 mb-4">
                         ¡Pronto estará disponible! Estamos trabajando para ti.
                       </p>

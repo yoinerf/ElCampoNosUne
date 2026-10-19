@@ -7,7 +7,8 @@
 // Mercado Pago usando el token del productor que lo recibió, y solo entonces
 // apply_order_payment_result actualiza order_payments y los ítems del pedido.
 
-import { corsHeaders, mpFetch, sellerAccessToken, serviceClient, validWebhookSignature } from '../_shared/mercadopago.ts'
+import { corsHeaders, serviceClient } from '../_shared/common.ts'
+import { mpFetch, sellerAccessToken, validWebhookSignature } from '../_shared/mercadopago.ts'
 
 Deno.serve(async (req) => {
   const cors = corsHeaders(req)

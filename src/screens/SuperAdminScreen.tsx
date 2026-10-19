@@ -36,11 +36,12 @@ import { B, fmt, ago, ROLE_LABELS, ROLE_STYLES, STORE_ROLES, StorePicker, PAGE, 
 import MyAccountCard from '../components/MyAccountCard'
 import StoresManager from '../components/superadmin/StoresManager'
 import PaymentGatewayManager from '../components/superadmin/PaymentGatewayManager'
+import SellerPaymentAccounts from '../components/superadmin/SellerPaymentAccounts'
 import { APP_VERSION } from '../lib/version'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'stores' | 'settings'
+type SuperSection = 'dashboard' | 'users' | 'products' | 'experiences' | 'orders' | 'tickets' | 'ads' | 'stores' | 'payments' | 'settings'
 
 interface UserRow {
   id: string
@@ -665,6 +666,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     { id: 'tickets' as SuperSection, label: 'Solicitudes', icon: I.users, count: tickets.filter(t => t.status === 'abierto' || t.status === 'en_revision').length },
     { id: 'ads' as SuperSection, label: 'Anuncios', icon: I.ads, count: ads.length },
     { id: 'stores' as SuperSection, label: 'Tiendas', icon: I.store, count: allStores.length },
+    { id: 'payments' as SuperSection, label: 'Pagos', icon: I.card },
     { id: 'settings' as SuperSection, label: 'Configuración', icon: I.cog },
   ]
 
@@ -679,6 +681,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     tickets: 'Solicitudes y Reportes',
     ads: 'Gestión de Anuncios',
     stores: 'Tiendas de la plataforma',
+    payments: 'Pagos en línea',
     settings: 'Configuración del Sistema',
   }
 
@@ -1486,11 +1489,15 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                     ))}
                   </div>
                 </div>
-                <div style={{ marginTop: 18 }}>
-                  <PaymentGatewayManager />
-                </div>
                 <MyAccountCard style={{ marginTop: 18 }} />
                 <ChangePasswordCard style={{ marginTop: 18 }} />
+              </div>
+            )}
+
+            {section === 'payments' && (
+              <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
+                <PaymentGatewayManager />
+                <SellerPaymentAccounts />
               </div>
             )}
 

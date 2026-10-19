@@ -9,13 +9,13 @@
 // Los montos NO vienen del navegador: prepare_order_payments los calcula en la base con los
 // precios del pedido y la tarifa de payment_gateway_settings (gateway_fee).
 
-import { appUrl, corsHeaders, functionUrl, mpFetch, sellerAccessToken, serviceClient, userClient } from '../_shared/mercadopago.ts'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { UUID_RE, appUrl, corsHeaders, functionUrl, sellerDisplayName, serviceClient, userClient } from '../_shared/common.ts'
+import { mpFetch, sellerAccessToken } from '../_shared/mercadopago.ts'
 
 interface OrderPayment {
   id: string
   order_id: string
+  gateway: string
   seller_id: string
   base_amount: number
   fee_amount: number
@@ -46,26 +46,25 @@ Deno.serve(async (req) => {
   if (!UUID_RE.test(orderId)) return json({ error: 'Pedido inválido.' }, 400)
 
   // 1. Pagos por productor (valida dueño del pedido, método y pasarela activa)
-  const { data: payments, error: prepError } = await buyer.rpc('prepare_order_payments', { p_order_id: orderId })
+  const { data: prepared, error: prepError } = await buyer.rpc('prepare_order_payments', { p_order_id: orderId })
   if (prepError) return json({ error: prepError.message }, 400)
+  const payments = (prepared as OrderPayment[]).filter((p) => p.gateway === 'mercadopago')
+  if (payments.length === 0) return json({ error: 'Este pedido no se paga con Mercado Pago.' }, 400)
 
   const admin = serviceClient()
   const [{ data: settings }, { data: items }, { data: sellers }] = await Promise.all([
     admin.from('payment_gateway_settings').select('sandbox').eq('gateway', 'mercadopago').single(),
     admin.from('order_items').select('seller_id, title, quantity, unit_price').eq('order_id', orderId),
     admin.from('profiles').select('id, org_name, first_name, last_name')
-      .in('id', (payments as OrderPayment[]).map((p) => p.seller_id)),
+      .in('id', payments.map((p) => p.seller_id)),
   ])
-  const sellerName = (id: string) => {
-    const s = sellers?.find((x) => x.id === id)
-    return s?.org_name || `${s?.first_name ?? ''} ${s?.last_name ?? ''}`.trim() || 'Productor'
-  }
+  const sellerName = (id: string) => sellerDisplayName(sellers?.find((x) => x.id === id))
   const reference = orderId.slice(0, 8).toUpperCase()
   const back = (result: string) => `${appUrl()}/mi-cuenta?pago=${result}&pedido=${orderId}`
 
   // 2. Una preferencia de Checkout Pro por productor (se reutiliza si ya existe)
   const result = []
-  for (const pay of payments as OrderPayment[]) {
+  for (const pay of payments) {
     let checkoutUrl = pay.checkout_url
     if (pay.status === 'Pending' && !checkoutUrl) {
       try {

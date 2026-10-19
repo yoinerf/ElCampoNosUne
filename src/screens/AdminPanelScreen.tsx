@@ -8,7 +8,7 @@ import ChangePasswordCard from '../components/ChangePasswordCard'
 import NotificationBell from '../components/NotificationBell'
 import { usePanelSectionRequest } from '../lib/notifications'
 import ProducerDocumentsCard from '../components/ProducerDocumentsCard'
-import MercadoPagoConnectCard from '../components/MercadoPagoConnectCard'
+import PaymentAccountsCard from '../components/PaymentAccountsCard'
 import CertifiedBadge from '../components/CertifiedBadge'
 import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { confirmGoToDocuments, fetchDocuments, validationState, VALIDATION_STATE, type ValidationState } from '../lib/producerDocuments'
@@ -116,7 +116,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   // Productor de una tienda aliada: su panel lleva la marca de su tienda
   const isAllied = !isMainStore(store)
   const { storeName } = useStores()
-  // Al volver de conectar Mercado Pago (/panel?mp=...) se abre Configuración, donde está la tarjeta
+  // Al volver de conectar Mercado Pago (/panel?mp=...) se abre Configuración, donde están las cuentas de cobro
   const [section, setSection] = useState<AdminSection>(() =>
     new URLSearchParams(window.location.search).has('mp') ? 'settings' : 'dashboard')
   // Una notificación de pedido nuevo abre la sección de pedidos
@@ -866,7 +866,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                     </button>
                   </div>
                   {profile.id && <ProducerDocumentsCard userId={profile.id} style={{ marginTop: 20 }} onValidationChange={setValidation} />}
-                  {profile.id && <MercadoPagoConnectCard userId={profile.id} style={{ marginTop: 20 }} />}
+                  {profile.id && <PaymentAccountsCard userId={profile.id} style={{ marginTop: 20 }} />}
                   <ChangePasswordCard style={{ marginTop: 20, borderRadius: 24, padding: 36 }} />
                 </div>
               )}

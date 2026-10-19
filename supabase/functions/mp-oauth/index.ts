@@ -9,7 +9,8 @@
 // Seguridad: el state es aleatorio, de un solo uso, vence en 15 minutos y amarra el
 // callback al productor que inició la conexión.
 
-import { MP_AUTH_URL, appUrl, corsHeaders, env, oauthRedirectUri, requestToken, saveSellerTokens, serviceClient, userClient } from '../_shared/mercadopago.ts'
+import { appUrl, corsHeaders, env, serviceClient, userClient } from '../_shared/common.ts'
+import { MP_AUTH_URL, oauthRedirectUri, requestToken, saveSellerTokens } from '../_shared/mercadopago.ts'
 
 const SELLER_ROLES = ['asociacion', 'turismo']
 const STATE_TTL_MS = 15 * 60 * 1000

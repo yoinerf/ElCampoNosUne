@@ -656,7 +656,8 @@ export type Database = {
           preference_id: string | null
           provider_payment_id: string | null
           provider_status: string | null
-          seller_id: string
+          seller_id: string | null
+          split: Json | null
           status: string
           total_amount: number
           updated_at: string
@@ -666,14 +667,15 @@ export type Database = {
           checkout_url?: string | null
           created_at?: string
           fee_amount?: number
-          gateway?: string
+          gateway: string
           id?: string
           order_id: string
           paid_at?: string | null
           preference_id?: string | null
           provider_payment_id?: string | null
           provider_status?: string | null
-          seller_id: string
+          seller_id?: string | null
+          split?: Json | null
           status?: string
           total_amount: number
           updated_at?: string
@@ -690,7 +692,8 @@ export type Database = {
           preference_id?: string | null
           provider_payment_id?: string | null
           provider_status?: string | null
-          seller_id?: string
+          seller_id?: string | null
+          split?: Json | null
           status?: string
           total_amount?: number
           updated_at?: string
@@ -1444,16 +1447,25 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: Database["public"]["Tables"]["order_payments"]["Row"][]
       }
+      payment_method_gateway: { Args: { p_method: string }; Returns: string }
       quote_online_payment: {
-        Args: { p_items: Json; p_store: string }
+        Args: { p_gateway?: string; p_items: Json; p_store: string }
         Returns: Json
       }
       recalc_order_from_items: {
         Args: { p_order_id: string }
         Returns: undefined
       }
+      request_epayco_receiver: {
+        Args: { p_customer_id: string }
+        Returns: undefined
+      }
       review_producer_document: {
         Args: { p_approve: boolean; p_document_id: string; p_reason?: string }
+        Returns: undefined
+      }
+      set_seller_payment_status: {
+        Args: { p_gateway: string; p_seller: string; p_status: string }
         Returns: undefined
       }
       submit_producer_document: {

@@ -14,12 +14,14 @@ export const cartKey = (store: StoreId) =>
   isMainStore(store) ? 'campoconecta_cart' : `campoconecta_cart_${store}`
 
 /** orders.payment_method que puede aceptar una tienda */
-export type StorePaymentMethod = 'CashOnDelivery' | 'Cash' | 'BankTransfer' | 'Online'
+export type StorePaymentMethod = 'CashOnDelivery' | 'Cash' | 'BankTransfer' | 'MercadoPago' | 'Epayco'
 
 // Métodos de pago (orders.payment_method)
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CashOnDelivery: 'Contraentrega',
-  Online: 'Mercado Pago',
+  Online: 'En línea',
+  MercadoPago: 'Mercado Pago',
+  Epayco: 'ePayco',
   Cash: 'Efectivo',
   BankTransfer: 'Transferencia',
 }

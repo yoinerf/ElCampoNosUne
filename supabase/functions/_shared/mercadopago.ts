@@ -1,50 +1,15 @@
-// Utilidades compartidas de Mercado Pago para las Edge Functions mp-oauth,
-// mp-create-payment y mp-webhook. Las credenciales viven en secrets de Supabase:
+// Utilidades de Mercado Pago para las Edge Functions mp-oauth, mp-create-payment y
+// mp-webhook. Secrets:
 //   MP_CLIENT_ID, MP_CLIENT_SECRET  → app de Mercado Pago de la plataforma (Tus integraciones)
 //   MP_WEBHOOK_SECRET               → clave secreta de Webhooks de esa app
-//   APP_URL                         → URL pública de la web (back_urls y regreso del OAuth)
-// La URL de las funciones sale de SUPABASE_URL (/functions/v1/<función>).
 
-import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import type { SupabaseClient } from 'npm:@supabase/supabase-js@2'
+import { env, functionUrl, safeEqual } from './common.ts'
 
 export const MP_API = 'https://api.mercadopago.com'
 export const MP_AUTH_URL = 'https://auth.mercadopago.com.co/authorization'
 
-export const env = (name: string) => Deno.env.get(name) ?? ''
-
-export const functionUrl = (name: string) => `${env('SUPABASE_URL')}/functions/v1/${name}`
 export const oauthRedirectUri = () => functionUrl('mp-oauth')
-export const appUrl = () => env('APP_URL').replace(/\/+$/, '')
-
-// Orígenes permitidos (secret ALLOWED_ORIGINS, separados por coma). Sin configurar: cualquiera.
-const ALLOWED_ORIGINS = env('ALLOWED_ORIGINS')
-  .split(',')
-  .map((o) => o.trim())
-  .filter(Boolean)
-
-export function corsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get('Origin') ?? ''
-  const allowOrigin = ALLOWED_ORIGINS.length === 0 ? '*' : ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0]
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    Vary: 'Origin',
-  }
-}
-
-export function serviceClient(): SupabaseClient {
-  return createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'), {
-    auth: { autoRefreshToken: false, persistSession: false },
-  })
-}
-
-/** Cliente con la sesión de quien llama (respeta RLS y auth.uid()) */
-export function userClient(req: Request): SupabaseClient {
-  return createClient(env('SUPABASE_URL'), env('SUPABASE_ANON_KEY'), {
-    global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
-  })
-}
 
 export interface MpTokenResponse {
   access_token: string
@@ -145,10 +110,5 @@ export async function validWebhookSignature(req: Request, dataId: string): Promi
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
   const mac = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(manifest))
   const hex = Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, '0')).join('')
-
-  // Comparación en tiempo constante
-  if (hex.length !== parts.v1.length) return false
-  let diff = 0
-  for (let i = 0; i < hex.length; i++) diff |= hex.charCodeAt(i) ^ parts.v1.charCodeAt(i)
-  return diff === 0
+  return safeEqual(hex, parts.v1)
 }

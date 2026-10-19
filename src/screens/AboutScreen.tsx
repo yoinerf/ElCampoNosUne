@@ -1,7 +1,7 @@
 
 import ScreenShell from '../components/ScreenShell'
 import { useState } from 'react'
-import bannerImg from '../assets/banner-campo.webp'
+import bannerImg from '../assets/banner-principal.webp'
 import type { Tab, UserRole } from '../lib/types'
 
 
@@ -131,13 +131,13 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
         {/* Contenido — necesita position relative para quedar por encima de las capas de fondo */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ margin: '0 0 8px', color: '#A8D48A', fontSize: 12, fontWeight: 800, letterSpacing: 1.5, fontFamily: "'Nunito Sans', sans-serif" }}>
-            EL CAMPO NOS UNE
+            SAKI AMAZÓNICO
           </p>
           <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 30, color: '#F5EEE6', margin: '0 0 14px', fontWeight: 800, lineHeight: 1.25 }}>
-            Conectamos el campo con<br />nuevas oportunidades
+            Lo mejor del campo<br />está mas cerca de ti
           </h1>
           <p style={{ margin: '0 auto 28px', maxWidth: 420, color: 'rgba(245,238,230,0.85)', fontSize: 14, lineHeight: 1.6, fontFamily: "'Nunito Sans', sans-serif" }}>
-            Una plataforma territorial que visibiliza productos, emprendimientos y experiencias turísticas de nuestra región.
+            Una plataforma territorial de la amazonía que visibiliza productos, emprendimientos y experiencias turísticas de nuestra región.
           </p>
 
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -316,7 +316,13 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
           ))}
         </div>
       </div>
-      {/* ══════ 6. DESCUBRE NUESTRO TERRITORIO (mosaico) ══════ */}
+            {/* ══════ 6. DESCUBRE NUESTRO TERRITORIO (mosaico) ══════ */}
+      <style>{`
+        .territory-tile { transition: transform .25s ease, box-shadow .25s ease; }
+        .territory-tile:hover { transform: translateY(-5px); box-shadow: 0 14px 28px rgba(32,81,52,.28); }
+        .territory-tile:hover .territory-mark { transform: rotate(-6deg) scale(1.12); }
+        .territory-mark { transition: transform .35s ease; }
+      `}</style>
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ textAlign: 'center', fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#205134', margin: '0 0 24px', fontWeight: 800 }}>
           Descubre nuestro territorio
@@ -324,71 +330,60 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
           {[
-            {
-              img: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=500&h=500&fit=crop&auto=format',
-              icon: '🌿',
-              title: 'Naturaleza',
-              desc: 'Descubre lugares y personas que hacen único nuestro territorio.',
-            },
-            {
-              img: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?w=500&h=500&fit=crop&auto=format',
-              icon: '🍽️',
-              title: 'Gastronomía',
-              desc: 'Sabores auténticos que cuentan la historia de nuestra tierra.',
-            },
-            {
-              img: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=500&h=500&fit=crop&auto=format',
-              icon: '🏞️',
-              title: 'Turismo',
-              desc: 'Experiencias que conectan visitantes con comunidades rurales.',
-            },
-            {
-              img: 'https://images.unsplash.com/photo-1533669955142-6a73332af4db?w=500&h=500&fit=crop&auto=format',
-              icon: '🎭',
-              title: 'Cultura',
-              desc: 'Tradiciones y saberes que se transmiten de generación en generación.',
-            },
-            {
-              img: 'https://images.unsplash.com/photo-1523805009345-7448845a9e53?w=500&h=500&fit=crop&auto=format',
-              icon: '🧳',
-              title: 'Experiencias',
-              desc: 'Vive el territorio de primera mano, junto a quienes lo habitan.',
-            },
-            {
-              img: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=500&h=500&fit=crop&auto=format',
-              icon: '🌽',
-              title: 'Productos',
-              desc: 'Lo mejor del campo, directo de las manos que lo cultivan.',
-            },
+            { icon: '🌿', title: 'Naturaleza',   desc: 'Descubre lugares y personas que hacen único nuestro territorio.',            grad: 'linear-gradient(135deg, #205134 0%, #6BAA3D 100%)' },
+            { icon: '🍽️', title: 'Gastronomía',  desc: 'Sabores auténticos que cuentan la historia de nuestra tierra.',               grad: 'linear-gradient(135deg, #8E3F1D 0%, #D9803F 100%)' },
+            { icon: '🏞️', title: 'Turismo',      desc: 'Experiencias que conectan visitantes con comunidades rurales.',               grad: 'linear-gradient(135deg, #2E6B42 0%, #E5AE30 100%)' },
+            { icon: '🎭', title: 'Cultura',      desc: 'Tradiciones y saberes que se transmiten de generación en generación.',        grad: 'linear-gradient(135deg, #5A3E22 0%, #C8860A 100%)' },
+            { icon: '🧳', title: 'Experiencias', desc: 'Vive el territorio de primera mano, junto a quienes lo habitan.',             grad: 'linear-gradient(135deg, #B4532A 0%, #E5AE30 100%)' },
+            { icon: '🌽', title: 'Productos',    desc: 'Lo mejor del campo, directo de las manos que lo cultivan.',                   grad: 'linear-gradient(135deg, #8C5A0A 0%, #D99A1E 100%)' },
           ].map((tile) => (
             <div
               key={tile.title}
+              className="territory-tile"
               style={{
                 position: 'relative',
                 borderRadius: 18,
                 overflow: 'hidden',
-                height: 160,
+                height: 170,
                 cursor: 'pointer',
+                background: tile.grad,
+                boxShadow: '0 4px 14px rgba(32,81,52,0.14)',
               }}
             >
-              <img
-                src={tile.img}
-                alt={tile.title}
-                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-              />
+              {/* Círculos decorativos */}
+              <div style={{ position: 'absolute', top: -34, right: -34, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.12)' }} />
+              <div style={{ position: 'absolute', bottom: 38, right: -26, width: 76, height: 76, borderRadius: '50%', background: 'rgba(255,255,255,0.08)' }} />
+
+              {/* Emoji grande de marca de agua */}
               <div
+                className="territory-mark"
+                aria-hidden="true"
+                style={{ position: 'absolute', top: 6, right: 10, fontSize: 76, lineHeight: 1, opacity: 0.22, transform: 'rotate(-10deg)', pointerEvents: 'none' }}
+              >
+                {tile.icon}
+              </div>
+
+              {/* Oscurecido suave abajo para que se lea el texto */}
+              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(20,40,25,0.55) 100%)' }} />
+
+              {/* Insignia con el emoji */}
+              <div
+                aria-hidden="true"
                 style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.15) 40%, rgba(20,45,25,0.85) 100%)',
+                  position: 'absolute', top: 12, left: 12, width: 38, height: 38, borderRadius: 12,
+                  background: 'rgba(255,255,255,0.22)', border: '1px solid rgba(255,255,255,0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                  backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)',
                 }}
-              />
+              >
+                {tile.icon}
+              </div>
+
               <div style={{ position: 'absolute', bottom: 12, left: 12, right: 12 }}>
-                <div style={{ fontSize: 20, marginBottom: 2 }}>{tile.icon}</div>
-                <div style={{ fontWeight: 800, fontSize: 13, color: '#F5EEE6', fontFamily: "'Poppins', sans-serif", marginBottom: 2 }}>
+                <div style={{ fontWeight: 800, fontSize: 14, color: '#F5EEE6', fontFamily: "'Poppins', sans-serif", marginBottom: 3 }}>
                   {tile.title}
                 </div>
-                <div style={{ fontSize: 10.5, color: 'rgba(245,238,230,0.8)', fontFamily: "'Nunito Sans', sans-serif", lineHeight: 1.35 }}>
+                <div style={{ fontSize: 10.5, color: 'rgba(245,238,230,0.88)', fontFamily: "'Nunito Sans', sans-serif", lineHeight: 1.35 }}>
                   {tile.desc}
                 </div>
               </div>

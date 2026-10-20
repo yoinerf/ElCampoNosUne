@@ -132,7 +132,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, reservations: 0, income: 0 })
+  const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, orders: 0, income: 0 })
 
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -169,6 +169,29 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [toast, setToast] = useState('')
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
+
+  // Borra un pedido completo: ítems, historial, tickets y notificaciones (admin_delete_order).
+  // Lo que seguía reservado vuelve al inventario.
+  const handleDeleteOrder = async (orderId: string) => {
+    const lines = orderItems.filter((i) => i.order_id === orderId)
+    const confirmed = await confirmDialog({
+      title: `¿Borrar el pedido #${orderId.slice(0, 8).toUpperCase()}?`,
+      message:
+        `Se borran sus ${lines.length} producto(s), su historial de estados, sus tickets de soporte y sus notificaciones. ` +
+        'Las unidades que no se habían entregado ni cancelado vuelven al inventario. No se puede deshacer.',
+      confirmText: 'Borrar pedido',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+    const { error } = await supabase.rpc('admin_delete_order', { p_order_id: orderId })
+    if (error) {
+      showToast('❌ No se pudo borrar el pedido: ' + error.message)
+      return
+    }
+    setOrderItems((prev) => prev.filter((i) => i.order_id !== orderId))
+    showToast('🗑 Pedido borrado')
+    loadAll(true)
+  }
 
   // Archivos del Storage que ya no usa ningún producto, variante ni experiencia
   const [cleaningStorage, setCleaningStorage] = useState(false)
@@ -220,7 +243,6 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: adsData },
         { data: catsData },
         { data: ordersData },
-        { count: reservationsCount },
         statusesData,
         itemsData,
         ticketsData,
@@ -230,9 +252,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name, business_type').eq('active', true),
-        // reservations no tiene columna total: los ingresos salen de orders
+        // Pedidos de productos y reservas de experiencias (las dos van en orders)
         supabase.from('orders').select('total, payment_status'),
-        supabase.from('reservations').select('id', { count: 'exact', head: true }),
         fetchOrderStatuses(),
         fetchOrderItems(),
         fetchAllTickets(),
@@ -295,7 +316,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         users: (usersData || []).length,
         products: mappedProds.length,
         experiences: mappedExps.length,
-        reservations: (ordersData?.length || 0) + (reservationsCount || 0),
+        orders: ordersData?.length || 0,
         income: totalIncome,
       })
     } catch (e) {
@@ -1058,7 +1079,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <StatCard emoji="👥" value={stats.users} label="Usuarios registrados" accent={B.green} />
                   <StatCard emoji="📦" value={stats.products} label="Productos en catálogo" accent={B.gold} />
                   <StatCard emoji="🌄" value={stats.experiences} label="Experiencias vivas" accent={B.terra} />
-                  <StatCard emoji="🛒" value={stats.reservations} label="Pedidos y reservas" accent={B.greenLight} />
+                  <StatCard emoji="🛒" value={stats.orders} label="Pedidos y reservas" accent={B.greenLight} />
                   <StatCard emoji="💰" value={fmt(stats.income)} label="Ingresos transaccionados" accent="#B8860B" />
                   <StatCard emoji="📢" value={`${ads.filter(a => a.active).length} / ${ads.length}`} label="Anuncios en rotación" accent={B.terraDark} />
                 </div>
@@ -1320,7 +1341,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
             {/* ═══ PEDIDOS: estados de todos los pedidos ═══ */}
             {section === 'orders' && (
-              <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadAll(true)} showSeller allowOverride />
+              <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadAll(true)} onDeleteOrder={handleDeleteOrder} showSeller allowOverride />
             )}
 
             {/* ═══ SOLICITUDES Y REPORTES DE COMPRADORES (solo admin) ═══ */}

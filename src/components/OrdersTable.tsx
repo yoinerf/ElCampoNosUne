@@ -24,6 +24,8 @@ interface OrdersTableProps {
   onItemsChange: (items: OrderItemRow[]) => void
   // Se llama tras guardar un estado para recargar pedidos y stock (triggers en BD)
   onStatusChanged?: () => void | Promise<void>
+  // Superadmin: borrar el pedido completo (todos sus ítems, historial y tickets)
+  onDeleteOrder?: (orderId: string) => void
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -61,7 +63,7 @@ export function OrderStatusSummary({ entries }: { entries?: { status: OrderStatu
   )
 }
 
-export default function OrdersTable({ items, statuses, showSeller = false, allowOverride = false, onItemsChange, onStatusChanged }: OrdersTableProps) {
+export default function OrdersTable({ items, statuses, showSeller = false, allowOverride = false, onItemsChange, onStatusChanged, onDeleteOrder }: OrdersTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -208,6 +210,16 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                         <div style={{ fontSize: 12, color: '#8A8070', whiteSpace: 'nowrap' }}>{formatDate(it.order?.created_at || it.created_at)}</div>
                         {showSeller && !isMainStore(orderStore) && (
                           <div style={{ marginTop: 4, display: 'inline-block', background: '#E3F2FD', color: '#1B4D82', fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap' }}>{storeName(orderStore)}</div>
+                        )}
+                        {onDeleteOrder && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteOrder(it.order_id)}
+                            title="Borra el pedido completo con todos sus productos, historial y tickets"
+                            style={{ display: 'block', marginTop: 6, background: 'none', border: 'none', padding: 0, color: '#C53030', fontSize: 11, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', whiteSpace: 'nowrap' }}
+                          >
+                            🗑 Borrar pedido
+                          </button>
                         )}
                       </td>
                       <td style={td}>

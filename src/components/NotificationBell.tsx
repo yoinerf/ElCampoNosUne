@@ -2,9 +2,8 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import {
   NOTIFICATION_ICONS,
+  deleteNotifications,
   fetchNotifications,
-  markAllNotificationsRead,
-  markNotificationRead,
   requestPanelSection,
   subscribeToNotifications,
   type NotificationRow,
@@ -53,21 +52,22 @@ export default function NotificationBell({ onOpen, buttonStyle }: NotificationBe
 
   if (!userId) return null
 
-  const unread = items.filter((n) => !n.read_at).length
+  // Las notificaciones vistas se borran de la base: las que quedan son las pendientes
+  const unread = items.length
 
-  const handleClick = async (n: NotificationRow) => {
-    setOpen(false)
-    if (!n.read_at) {
-      setItems((prev) => prev.map((it) => (it.id === n.id ? { ...it, read_at: new Date().toISOString() } : it)))
-      markNotificationRead(n.id)
-    }
-    if (n.link_section) requestPanelSection(n.link_section)
-    if (n.link_tab) onOpen?.(n.link_tab)
+  // Marcar como vista = borrarla
+  const dismiss = (ids: string[]) => {
+    if (ids.length === 0) return
+    setItems((prev) => prev.filter((n) => !ids.includes(n.id)))
+    deleteNotifications(ids)
   }
 
-  const handleMarkAll = async () => {
-    setItems((prev) => prev.map((it) => (it.read_at ? it : { ...it, read_at: new Date().toISOString() })))
-    await markAllNotificationsRead(userId)
+  // Abrir una notificación: se marca como vista y lleva a su sección
+  const handleClick = (n: NotificationRow) => {
+    setOpen(false)
+    dismiss([n.id])
+    if (n.link_section) requestPanelSection(n.link_section)
+    if (n.link_tab) onOpen?.(n.link_tab)
   }
 
   return (
@@ -145,9 +145,13 @@ export default function NotificationBell({ onOpen, buttonStyle }: NotificationBe
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderBottom: '1px solid #EDE4D8', position: 'sticky', top: 0, background: '#fff' }}>
               <span style={{ fontFamily: "'Poppins', sans-serif", fontWeight: 700, fontSize: 15, color: '#1C3A14' }}>Notificaciones</span>
-              {unread > 0 && (
-                <button type="button" onClick={handleMarkAll} style={{ background: 'none', border: 'none', color: '#205134', fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>
-                  Marcar todas como leídas
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => dismiss(items.map((n) => n.id))}
+                  style={{ background: 'none', border: 'none', color: '#205134', fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                >
+                  Marcar todas como vistas
                 </button>
               )}
             </div>
@@ -156,33 +160,57 @@ export default function NotificationBell({ onOpen, buttonStyle }: NotificationBe
               <div style={{ padding: '28px 16px', textAlign: 'center', color: '#8A8070', fontSize: 13 }}>No tienes notificaciones.</div>
             ) : (
               items.map((n) => (
-                <button
+                <div
                   key={n.id}
-                  type="button"
-                  onClick={() => handleClick(n)}
-                  style={{
-                    width: '100%',
-                    display: 'flex',
-                    gap: 10,
-                    alignItems: 'flex-start',
-                    textAlign: 'left',
-                    padding: '11px 14px',
-                    border: 'none',
-                    borderBottom: '1px solid #F3ECE2',
-                    background: n.read_at ? '#fff' : '#F2F7F4',
-                    cursor: 'pointer',
-                    fontFamily: 'inherit',
-                  }}
+                  style={{ display: 'flex', alignItems: 'flex-start', borderBottom: '1px solid #F3ECE2', background: '#F2F7F4' }}
                   className="hover:bg-[#F5EEE6]"
                 >
-                  <span style={{ fontSize: 18, lineHeight: '22px', flexShrink: 0 }}>{NOTIFICATION_ICONS[n.type] ?? '🔔'}</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontSize: 13, fontWeight: n.read_at ? 600 : 800, color: '#1C3A14' }}>{n.title}</span>
-                    {n.body && <span style={{ display: 'block', fontSize: 12, color: '#5A5248', marginTop: 2 }}>{n.body}</span>}
-                    <span style={{ display: 'block', fontSize: 11, color: '#8A8070', marginTop: 4 }}>{timeAgo(n.created_at)}</span>
-                  </span>
-                  {!n.read_at && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#205134', marginTop: 7, flexShrink: 0 }} />}
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => handleClick(n)}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      display: 'flex',
+                      gap: 10,
+                      alignItems: 'flex-start',
+                      textAlign: 'left',
+                      padding: '11px 4px 11px 14px',
+                      border: 'none',
+                      background: 'transparent',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{ fontSize: 18, lineHeight: '22px', flexShrink: 0 }}>{NOTIFICATION_ICONS[n.type] ?? '🔔'}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: 'block', fontSize: 13, fontWeight: 800, color: '#1C3A14' }}>{n.title}</span>
+                      {n.body && <span style={{ display: 'block', fontSize: 12, color: '#5A5248', marginTop: 2 }}>{n.body}</span>}
+                      <span style={{ display: 'block', fontSize: 11, color: '#8A8070', marginTop: 4 }}>{timeAgo(n.created_at)}</span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => dismiss([n.id])}
+                    title="Marcar como vista"
+                    aria-label="Marcar como vista"
+                    style={{
+                      flexShrink: 0,
+                      margin: '10px 10px 0 0',
+                      width: 28,
+                      height: 28,
+                      borderRadius: 8,
+                      border: '1px solid #C8E0BC',
+                      background: '#fff',
+                      color: '#205134',
+                      fontSize: 14,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ✓
+                  </button>
+                </div>
               ))
             )}
           </div>

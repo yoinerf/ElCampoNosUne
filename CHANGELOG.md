@@ -9,6 +9,16 @@ Cambios importantes de El Campo Nos Une, de la versión más reciente a la más 
 
 ## [Sin publicar]
 
+**New Features**
+- Páginas públicas de Política de privacidad (`/privacidad`) y Condiciones del servicio (`/terminos`),
+  enlazadas desde el inicio de sesión, el registro y el formulario para completar el perfil. Necesarias
+  para la verificación de la app en la pantalla de consentimiento de Google.
+- Inicio con Google mediante el botón oficial de Google (Google Identity Services + `signInWithIdToken`):
+  la ventana de Google muestra el dominio propio en lugar del de Supabase. Requiere la variable
+  `VITE_GOOGLE_CLIENT_ID` (también como secret de GitHub) y agregar ese ID en Supabase → Google →
+  Client IDs. Sin la variable, o si la librería de Google no carga, se usa el redirect de Supabase.
+  La CSP permite `accounts.google.com/gsi/`.
+
 **Security**
 - Auditoría de seguridad (informe en `docs/seguridad/auditoria-2026-10-19.md`). Requiere aplicar la
   migración `20261019130000_security_audit_fixes.sql`.

@@ -4,6 +4,7 @@ import logoSrc from '../assets/logo-nofond.png'
 import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
 import GoogleSignInButton, { AuthDivider } from '../components/GoogleSignInButton'
+import LegalNotice from '../components/LegalNotice'
 import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
 
 // Estilos de los campos del formulario (los selects de ubicación y documento usan los mismos)
@@ -724,7 +725,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                 {/* Con Google los datos obligatorios se piden al volver (CompleteProfileScreen) */}
                 <div style={{ height: 16 }} />
                 <AuthDivider />
-                <GoogleSignInButton label="Registrarse con Google" onError={setError} />
+                <GoogleSignInButton mode="signup" onError={setError} />
 
                 <div style={{ height: 20 }} />
 
@@ -758,6 +759,7 @@ export default function RegisterScreen({ onComplete, onLogin, onBackToStore, onB
                     Inicia sesión
                   </button>
                 </p>
+                <LegalNotice action="registrarte" />
               </form>
             </>
           )}

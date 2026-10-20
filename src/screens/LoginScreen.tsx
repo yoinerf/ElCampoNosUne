@@ -257,7 +257,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
           <div style={{ marginBottom: 18, textAlign: 'center' }}>
             <img
               src={logoSrc}
-              alt="El Campo Nos Une"
+              alt="SAKI5"
               style={{
                 height: 120,
                 width: 'auto',

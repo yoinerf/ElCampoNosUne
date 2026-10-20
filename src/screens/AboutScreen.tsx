@@ -226,7 +226,7 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
             <p style={{ fontSize: 11, fontWeight: 800, color: '#C8860A', letterSpacing: 0.5, margin: '0 0 16px' }}>PRODUCTOS</p>
             {[
               { icon: '👨‍🌾', text: 'Yo produzco' },
-              { icon: '📱', text: 'El Campo Nos Une' },
+              { icon: '📱', text: 'SAKI5' },
               { icon: '🛒', text: 'Yo encuentro y compro' },
             ].map((step, i, arr) => (
               <div key={step.text}>
@@ -244,7 +244,7 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
             <p style={{ fontSize: 11, fontWeight: 800, color: '#205134', letterSpacing: 0.5, margin: '0 0 16px' }}>TURISMO</p>
             {[
               { icon: '🏞️', text: 'Yo ofrezco una experiencia' },
-              { icon: '📱', text: 'El Campo Nos Une' },
+              { icon: '📱', text: 'SAKI5' },
               { icon: '🧳', text: 'Yo descubro y visito' },
             ].map((step, i, arr) => (
               <div key={step.text}>

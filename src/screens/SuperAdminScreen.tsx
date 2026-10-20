@@ -11,6 +11,8 @@ import {
 } from '../lib/dateColombia'
 import logoSrc from '../assets/logo-nofond.png'
 import ProductModal, { type ProductFormData, type ProductInitialData } from '../components/ProductModal'
+import { persistProductVariants } from '../lib/variants'
+import { deleteExperienceWithFiles, deleteProductWithFiles, listOrphanImages, removeOrphanImages } from '../lib/storageCleanup'
 import ExperienceModal, { type ExperienceFormData, type ExperienceInitialData } from '../components/ExperienceModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
@@ -23,7 +25,8 @@ import { usePanelSectionRequest } from '../lib/notifications'
 import CertifiedBadge from '../components/CertifiedBadge'
 import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { generateTempPassword } from '../components/TempPasswordModal'
-import { fetchDocuments, validationState } from '../lib/producerDocuments'
+import { fetchDocuments, setManualVerification, validationState } from '../lib/producerDocuments'
+import { confirmDialog } from '../components/ConfirmDialog'
 import { useStores } from '../lib/storesContext'
 import { uploadPublicImage } from '../lib/imageUpload'
 import { primaryImageUrl } from '../lib/catalog'
@@ -54,6 +57,8 @@ interface UserRow {
   document_type?: string | null
   document_number?: string | null
   email?: string
+  // Verificado manualmente por el superadmin (sin RUT ni Cámara de Comercio)
+  manually_verified_at?: string | null
   phone?: string | null
   created_at: string
 }
@@ -127,7 +132,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
   const [tempPasswordUser, setTempPasswordUser] = useState<{ id: string; name: string; email?: string } | null>(null)
   const [ads, setAds] = useState<AdRow[]>([])
   const [categories, setCategories] = useState<{ id: string; name: string; business_type: string }[]>([])
-  const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, reservations: 0, income: 0 })
+  const [stats, setStats] = useState({ users: 0, products: 0, experiences: 0, orders: 0, income: 0 })
 
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
@@ -165,6 +170,68 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
+  // Borra un pedido completo: ítems, historial, tickets y notificaciones (admin_delete_order).
+  // Lo que seguía reservado vuelve al inventario.
+  const handleDeleteOrder = async (orderId: string) => {
+    const lines = orderItems.filter((i) => i.order_id === orderId)
+    const confirmed = await confirmDialog({
+      title: `¿Borrar el pedido #${orderId.slice(0, 8).toUpperCase()}?`,
+      message:
+        `Se borran sus ${lines.length} producto(s), su historial de estados, sus tickets de soporte y sus notificaciones. ` +
+        'Las unidades que no se habían entregado ni cancelado vuelven al inventario. No se puede deshacer.',
+      confirmText: 'Borrar pedido',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+    const { error } = await supabase.rpc('admin_delete_order', { p_order_id: orderId })
+    if (error) {
+      showToast('❌ No se pudo borrar el pedido: ' + error.message)
+      return
+    }
+    setOrderItems((prev) => prev.filter((i) => i.order_id !== orderId))
+    showToast('🗑 Pedido borrado')
+    loadAll(true)
+  }
+
+  // Archivos del Storage que ya no usa ningún producto, variante ni experiencia
+  const [cleaningStorage, setCleaningStorage] = useState(false)
+  const handleCleanOrphanImages = async () => {
+    setCleaningStorage(true)
+    try {
+      const orphans = await listOrphanImages()
+      if (orphans.length === 0) {
+        showToast('✅ No hay imágenes sin uso en el Storage')
+        return
+      }
+      const confirmed = await confirmDialog({
+        title: 'Limpiar imágenes sin uso',
+        message: `Hay ${orphans.length} archivo(s) que no usa ningún producto, variante ni experiencia (subidos hace más de 24 horas). ¿Borrarlos del Storage? No se puede deshacer.`,
+        confirmText: 'Borrar archivos',
+        tone: 'danger',
+      })
+      if (!confirmed) return
+      const removed = await removeOrphanImages(orphans)
+      showToast(`🧹 Se borraron ${removed} archivo(s) sin uso`)
+    } catch (e) {
+      showToast('❌ No se pudo limpiar el Storage: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setCleaningStorage(false)
+    }
+  }
+
+  // Verificación manual del productor: puede publicar sin cargar RUT ni Cámara de Comercio
+  const toggleManualVerification = async (u: UserRow, verified: boolean) => {
+    const name = u.org_name?.trim() || `${u.first_name} ${u.last_name}`.trim()
+    const confirmed = await confirmDialog(verified
+      ? { title: `¿Verificar a ${name}?`, message: 'Quedará verificado y podrá publicar sin cargar el RUT ni la Cámara de Comercio.', confirmText: 'Verificar' }
+      : { title: `¿Quitar la verificación de ${name}?`, message: 'Para volver a publicar necesitará el RUT y la Cámara de Comercio aprobados.', confirmText: 'Quitar verificación', tone: 'danger' })
+    if (!confirmed) return
+    const { error } = await setManualVerification(u.id, verified)
+    if (error) return showToast('❌ ' + error.message)
+    showToast(verified ? '✅ Productor verificado' : '✅ Verificación retirada')
+    loadAll(true)
+  }
+
   // silent: recarga sin mostrar el esqueleto de carga (ej. tras cambiar el estado de un pedido)
   const loadAll = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -176,19 +243,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         { data: adsData },
         { data: catsData },
         { data: ordersData },
-        { count: reservationsCount },
         statusesData,
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at, manually_verified_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
         supabase.from('categories').select('id, name, business_type').eq('active', true),
-        // reservations no tiene columna total: los ingresos salen de orders
+        // Pedidos de productos y reservas de experiencias (las dos van en orders)
         supabase.from('orders').select('total, payment_status'),
-        supabase.from('reservations').select('id', { count: 'exact', head: true }),
         fetchOrderStatuses(),
         fetchOrderItems(),
         fetchAllTickets(),
@@ -200,7 +265,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       setUsers((usersData || []) as UserRow[])
       const sellerIds = ((usersData || []) as UserRow[]).filter(u => u.user_type === 'asociacion' || u.user_type === 'turismo').map(u => u.id)
       fetchDocuments(sellerIds).then((docs) => {
-        setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id)) === 'validado')))
+        const manualIds = new Set(((usersData || []) as UserRow[]).filter(u => u.manually_verified_at).map(u => u.id))
+        setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id), manualIds.has(id)) === 'validado')))
       })
 
       const userMap = new Map((usersData || []).map((u) => [u.id, u]))
@@ -250,7 +316,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         users: (usersData || []).length,
         products: mappedProds.length,
         experiences: mappedExps.length,
-        reservations: (ordersData?.length || 0) + (reservationsCount || 0),
+        orders: ordersData?.length || 0,
         income: totalIncome,
       })
     } catch (e) {
@@ -268,8 +334,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (!confirmDelete) return
     const { type, id } = confirmDelete
     let error: { message: string } | null = null
-    if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
-    else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
+    // Productos y experiencias: se borra el registro y luego sus fotos del Storage
+    if (type === 'product') {
+      const result = await deleteProductWithFiles(id)
+      if (result.error) error = { message: result.error }
+    } else if (type === 'experience') {
+      const result = await deleteExperienceWithFiles(id)
+      if (result.error) error = { message: result.error }
+    }
     else if (type === 'user') {
       // Edge Function: borra el usuario de Auth y su perfil (cascade)
       const result = await adminDeleteUser(id)
@@ -365,7 +437,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     const payload: TableInsert<'products'> = {
       title: formData.title.trim(),
       price: Number(formData.price),
-      unit: formData.unit || 'uds',
+      unit: formData.unit || 'und',
       category_id: formData.category_id || null,
       certified: formData.certified ?? true,
       stock: `${formData.stockNum || '0'}`,
@@ -374,6 +446,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       producer_id: targetProducerId,
     }
 
+    let savedId = productModal.editId
     if (productModal.editId) {
       await supabase.from('products').update(payload).eq('id', productModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
@@ -397,13 +470,15 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         showToast('❌ Error creando producto: ' + prodErr.message)
         return
       }
+      savedId = newProd?.id ?? null
       if (newProd && formData.uploadedImages?.length > 0) {
         const rows = formData.uploadedImages.map((img) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
       }
     }
+    const variantsError = savedId ? await persistProductVariants(savedId, formData.variants, formData.hadVariants, formData.stockNum, formData.variantImagesToDelete) : null
     setProductModal({ open: false, editId: null })
-    showToast('✅ Producto guardado correctamente')
+    showToast(variantsError ? '⚠️ Producto guardado, pero sus variantes no: ' + variantsError : '✅ Producto guardado correctamente')
     loadAll()
   }
 
@@ -948,6 +1023,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 {I.plus} <span className="hidden sm:inline">Nuevo Usuario</span>
               </button>
             )}
+            {(section === 'products' || section === 'experiences') && (
+              <button
+                type="button"
+                onClick={handleCleanOrphanImages}
+                disabled={cleaningStorage}
+                style={{ ...btnPrimary, background: '#FAF8F5', color: B.text, border: `1px solid ${B.borderStrong}`, opacity: cleaningStorage ? 0.6 : 1 }}
+                title="Borra del Storage las fotos que ya no usa ningún producto ni experiencia"
+              >
+                🧹 <span className="hidden sm:inline">{cleaningStorage ? 'Revisando…' : 'Limpiar imágenes sin uso'}</span>
+              </button>
+            )}
             {section === 'products' && (
               <button type="button" onClick={() => setProductModal({ open: true, editId: null })} style={btnPrimary}>
                 {I.plus} <span className="hidden sm:inline">Nuevo Producto</span>
@@ -993,7 +1079,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                   <StatCard emoji="👥" value={stats.users} label="Usuarios registrados" accent={B.green} />
                   <StatCard emoji="📦" value={stats.products} label="Productos en catálogo" accent={B.gold} />
                   <StatCard emoji="🌄" value={stats.experiences} label="Experiencias vivas" accent={B.terra} />
-                  <StatCard emoji="🛒" value={stats.reservations} label="Pedidos y reservas" accent={B.greenLight} />
+                  <StatCard emoji="🛒" value={stats.orders} label="Pedidos y reservas" accent={B.greenLight} />
                   <StatCard emoji="💰" value={fmt(stats.income)} label="Ingresos transaccionados" accent="#B8860B" />
                   <StatCard emoji="📢" value={`${ads.filter(a => a.active).length} / ${ads.length}`} label="Anuncios en rotación" accent={B.terraDark} />
                 </div>
@@ -1121,6 +1207,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                   <TD>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                       <button type="button" style={btnEdit} onClick={() => setUserEditModal({ ...u })}>✏️ Editar</button>
+                                      {(u.user_type === 'asociacion' || u.user_type === 'turismo') && (
+                                        u.manually_verified_at ? (
+                                          <button type="button" style={btnEdit} title="Verificado manualmente: quitar la verificación" onClick={() => toggleManualVerification(u, false)}>✖ Quitar verificación</button>
+                                        ) : !certifiedIds.has(u.id) && (
+                                          <button type="button" style={btnEdit} title="Verificar al productor sin exigir RUT ni Cámara de Comercio" onClick={() => toggleManualVerification(u, true)}>✓ Verificar</button>
+                                        )
+                                      )}
                                       <button type="button" style={btnEdit} title="Asignar contraseña temporal" onClick={() => setTempPasswordUser({ id: u.id, name: `${u.first_name} ${u.last_name}`.trim(), email: u.email })}>🔑</button>
                                       <button type="button" style={btnDanger} onClick={() => setConfirmDelete({ type: 'user', id: u.id, name: `${u.first_name} ${u.last_name}` })}>{I.trash}</button>
                                     </div>
@@ -1248,7 +1341,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
             {/* ═══ PEDIDOS: estados de todos los pedidos ═══ */}
             {section === 'orders' && (
-              <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadAll(true)} showSeller allowOverride />
+              <OrdersTable items={orderItems} statuses={orderStatuses} onItemsChange={setOrderItems} onStatusChanged={() => loadAll(true)} onDeleteOrder={handleDeleteOrder} showSeller allowOverride />
             )}
 
             {/* ═══ SOLICITUDES Y REPORTES DE COMPRADORES (solo admin) ═══ */}

@@ -48,7 +48,12 @@ export const VALIDATION_STATE: Record<ValidationState, { label: string; bg: stri
   incompleto: { label: 'Documentos incompletos', bg: '#F3ECE2', color: '#7A5C3A' },
 }
 
-export function validationState(docs: ProducerDocument[]): ValidationState {
+/**
+ * manuallyVerified: el superadmin verificó al productor sin exigir documentos
+ * (profiles.manually_verified_at). La BD aplica la misma regla en is_producer_validated.
+ */
+export function validationState(docs: ProducerDocument[], manuallyVerified = false): ValidationState {
+  if (manuallyVerified) return 'validado'
   const byType = REQUIRED_DOCS.map((d) => docs.find((doc) => doc.doc_type === d.type))
   if (byType.every((d) => d?.status === 'aprobado')) return 'validado'
   if (byType.some((d) => d?.status === 'rechazado')) return 'rechazado'
@@ -75,7 +80,25 @@ export function confirmGoToDocuments() {
 export async function canCurrentUserPublish(): Promise<boolean> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return false
-  return validationState(await fetchDocuments([user.id])) === 'validado'
+  const [docs, manual] = await Promise.all([fetchDocuments([user.id]), fetchManualVerifications([user.id])])
+  return validationState(docs, manual.has(user.id)) === 'validado'
+}
+
+/** Productores (de la lista) verificados manualmente por un superadmin */
+export async function fetchManualVerifications(producerIds: string[]): Promise<Set<string>> {
+  if (producerIds.length === 0) return new Set()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id')
+    .in('id', producerIds)
+    .not('manually_verified_at', 'is', null)
+  if (error) console.error('Error cargando verificaciones manuales:', error.message)
+  return new Set((data ?? []).map((p) => p.id))
+}
+
+/** Solo superadmin (lo valida la BD): verifica o quita la verificación manual de un productor */
+export async function setManualVerification(producerId: string, verified: boolean) {
+  return supabase.rpc('set_producer_manual_verification', { p_producer: producerId, p_verified: verified })
 }
 
 export async function fetchDocuments(producerIds: string[]): Promise<ProducerDocument[]> {

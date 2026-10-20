@@ -3,6 +3,8 @@ import { supabase } from '../../lib/supabase'
 import { useStores } from '../../lib/storesContext'
 import { MAIN_STORE, PAYMENT_METHOD_LABELS, type StorePaymentMethod, type StoreSettings, type TransferInfo } from '../../lib/stores'
 import { B } from './ui'
+import { confirmDialog } from '../ConfirmDialog'
+import { removeStoredFiles } from '../../lib/storageCleanup'
 
 // Tiendas de la plataforma (public.store_settings). Crear una tienda aquí le da vitrina en
 // /<ruta>, su propia marca, carrito, métodos de pago y envío, sin tocar código. Para que
@@ -25,6 +27,7 @@ type StoreForm = {
   store: string
   name: string
   slug: string
+  ally_name: string
   tagline: string
   description: string
   payment_methods: StorePaymentMethod[]
@@ -39,6 +42,7 @@ const toForm = (s: StoreSettings): StoreForm => ({
   store: s.store,
   name: s.name,
   slug: s.slug ?? '',
+  ally_name: s.ally_name ?? '',
   tagline: s.tagline ?? '',
   description: s.description ?? '',
   payment_methods: s.payment_methods,
@@ -53,6 +57,7 @@ const NEW_STORE: StoreForm = {
   store: '',
   name: '',
   slug: '',
+  ally_name: '',
   tagline: '',
   description: '',
   payment_methods: ['BankTransfer', 'Cash'],
@@ -103,6 +108,38 @@ export default function StoresManager() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
+  const [deleting, setDeleting] = useState<string | null>(null)
+
+  // Borra la tienda aliada con todo lo suyo (admin_delete_store) y luego las fotos de sus productos
+  const deleteStore = async (s: StoreSettings) => {
+    if (s.store === MAIN_STORE) return
+    const confirmed = await confirmDialog({
+      title: `¿Borrar la tienda «${s.name}»?`,
+      message:
+        'Se borran sus pedidos (con historial, tickets y notificaciones), sus productos (con imágenes, variantes, reseñas, favoritos y anuncios) y su configuración. ' +
+        'Sus usuarios pasan a la tienda principal y sus administradores de tienda quedan como compradores. No se puede deshacer.',
+      confirmText: 'Borrar tienda',
+      tone: 'danger',
+    })
+    if (!confirmed) return
+    setDeleting(s.store)
+    setMsg(null)
+    const { data, error } = await supabase.rpc('admin_delete_store', { p_store: s.store })
+    if (error) {
+      setDeleting(null)
+      setMsg({ ok: false, text: `No se pudo borrar la tienda: ${error.message}` })
+      return
+    }
+    const result = (data ?? {}) as { orders?: number; products?: number; users_moved?: number; storage_paths?: string[] }
+    await removeStoredFiles('product-images', result.storage_paths ?? [])
+    await reload()
+    setDeleting(null)
+    setMsg({
+      ok: true,
+      text: `Tienda «${s.name}» borrada: ${result.orders ?? 0} pedido(s), ${result.products ?? 0} producto(s); ${result.users_moved ?? 0} usuario(s) pasaron a la tienda principal.`,
+    })
+  }
+
   const set = (patch: Partial<StoreForm>) => setEditing((e) => (e ? { ...e, form: { ...e.form, ...patch } } : e))
 
   const save = async () => {
@@ -119,6 +156,7 @@ export default function StoresManager() {
     const row = {
       name: form.name.trim(),
       slug: form.store === MAIN_STORE ? null : form.slug,
+      ally_name: form.store === MAIN_STORE ? null : form.ally_name.trim().slice(0, 120) || null,
       tagline: form.tagline.trim() || null,
       description: form.description.trim() || null,
       payment_methods: form.payment_methods,
@@ -176,6 +214,16 @@ export default function StoresManager() {
               <button type="button" onClick={() => { setMsg(null); setEditing({ form: toForm(s), isNew: false }) }} style={{ ...btn, background: '#FFFFFF', color: B.green, border: `1.5px solid ${B.border}` }}>
                 ✏️ Editar
               </button>
+              {s.store !== MAIN_STORE && (
+                <button
+                  type="button"
+                  onClick={() => deleteStore(s)}
+                  disabled={deleting !== null}
+                  style={{ ...btn, background: '#FFFFFF', color: '#C53030', border: '1.5px solid #F5C2C2', opacity: deleting === s.store ? 0.6 : 1 }}
+                >
+                  {deleting === s.store ? 'Borrando…' : '🗑 Borrar'}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -227,6 +275,13 @@ function StoreFormFields({ editing, set }: { editing: { form: StoreForm; isNew: 
             <label style={lbl}>Ruta de la vitrina *</label>
             <input style={inp} value={form.slug} placeholder="tienda-licores" onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
             <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>Se verá en {window.location.origin}/{form.slug || 'ruta'}</div>
+          </div>
+        )}
+        {!isMain && (
+          <div>
+            <label style={lbl}>Entidad aliada</label>
+            <input style={inp} value={form.ally_name} maxLength={120} placeholder="Universidad de la Amazonia" onChange={(e) => set({ ally_name: e.target.value })} />
+            <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>Se muestra en el menú «Aliados» junto al nombre de la tienda.</div>
           </div>
         )}
       </div>

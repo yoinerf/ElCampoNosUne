@@ -12,7 +12,8 @@ import { alertDialog } from '../components/ConfirmDialog'
 import type { Tab, UserRole } from '../lib/types'
 import type { Json } from '../lib/database.types'
 import ProductDetail from '../components/ProductDetail'
-import { primaryImageUrl, type AdvertisementRow, type CartItem, type Product } from '../lib/catalog'
+import { hasVariants, primaryImageUrl, type AdvertisementRow, type CartItem, type Product } from '../lib/catalog'
+import { availableStock, normalizeVariants, parseCartLineKey, persistProductVariants, priceRange } from '../lib/variants'
 
 interface MarketplaceScreenProps {
   onOpenCheckout?: (items: CartItem[]) => void
@@ -113,7 +114,7 @@ export default function MarketplaceScreen({
   const loadProducts = async () => {
     try {
       const [{ data: productsData, error: prodErr }, { data: reviewsData }, { data: categoriesData }] = await Promise.all([
-        supabase.from('products').select('*, images(*), profiles:public_profiles(org_name, first_name, last_name)').eq('store', store).order('created_at', { ascending: false }),
+        supabase.from('products').select('*, images(*), profiles:public_profiles(org_name, first_name, last_name), product_variant_attributes(name, options, position), product_variants(id, options, stock, price, image_url, active, position)').eq('store', store).order('created_at', { ascending: false }),
         supabase.from('product_reviews').select('product_id, rating'),
         supabase.from('categories').select('id, name')
       ])
@@ -142,6 +143,7 @@ export default function MarketplaceScreen({
           : (p.rating ?? 5)
 
         const catName = categoriesData?.find((c) => c.id === p.category_id)?.name || 'Sin categoría'
+        const { attributes: variantAttributes, variants } = normalizeVariants(p.product_variant_attributes, p.product_variants)
         const primaryImg = primaryImageUrl(p.images, 'https://images.unsplash.com/photo-1501004318641-b39e6451bec6?w=900&h=700&fit=crop&auto=format')
 
         // Usar el nombre actual del perfil si está disponible (para reflejar cambios de organización)
@@ -164,6 +166,8 @@ export default function MarketplaceScreen({
           stock: p.stock ?? '',
           certified: p.certified ?? false,
           outstanding: p.outstanding ?? false,
+          variantAttributes,
+          variants,
         }
       })
 
@@ -278,8 +282,30 @@ export default function MarketplaceScreen({
   const isProducer = userRole === 'asociacion'
   const canCreateProduct = isProducer
   const filters = ['Todos', ...Array.from(new Set(products.map((product) => product.category?.trim()).filter(Boolean)))]
-  const cartItems: CartItem[] = products.filter((product) => cart[product.id] > 0).map((product) => ({ product, quantity: cart[product.id] }))
-  const cartCount = isProducer ? 0 : Object.values(cart).reduce((sum, quantity) => sum + quantity, 0)
+  // Líneas del carrito: "<productId>" o "<productId>::<variantId>" (productos con variantes)
+  const cartItems: CartItem[] = Object.entries(cart).flatMap(([key, quantity]) => {
+    const { productId, variantId } = parseCartLineKey(key)
+    const product = products.find((p) => p.id === productId)
+    if (!product || quantity <= 0) return []
+    // Línea guardada antes de que el producto tuviera (o dejara de tener) variantes
+    if (hasVariants(product) !== !!variantId) return []
+    const variant = variantId ? product.variants?.find((v) => v.id === variantId && v.active) : null
+    if (variantId && !variant) return []
+    return [{ product, quantity, variant }]
+  })
+  const cartCount = isProducer
+    ? 0
+    : (loading ? Object.values(cart) : cartItems.map((item) => item.quantity)).reduce((sum, quantity) => sum + quantity, 0)
+
+  // Unidades que se pueden agregar de una línea (null = sin límite)
+  const lineLimit = (key: string) => {
+    const { productId, variantId } = parseCartLineKey(key)
+    const product = products.find((p) => p.id === productId)
+    if (!product) return null
+    const variant = variantId ? product.variants?.find((v) => v.id === variantId) ?? null : null
+    if (variantId && !variant) return 0
+    return availableStock(product.stock, variant)
+  }
 
   const recordActivity = async ({
     userId,
@@ -338,8 +364,14 @@ export default function MarketplaceScreen({
     return matchesFilter && matchesSearch
   })
 
-  const addToCart = (id: string) => {
-    setCart((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }))
+  // key: id del producto o línea de una combinación (cartLineKey). No pasa del stock disponible.
+  const addToCart = (key: string) => {
+    const limit = lineLimit(key)
+    setCart((current) => {
+      const next = (current[key] ?? 0) + 1
+      if (limit !== null && next > limit) return current
+      return { ...current, [key]: next }
+    })
   }
 
   const addFromCard = (id: string) => {
@@ -412,7 +444,7 @@ export default function MarketplaceScreen({
       title: formData.title.trim(),
       producer: profile?.org_name || `${profile?.first_name ?? ''} ${profile?.last_name ?? ''}`.trim() || 'Productor',
       price: Number(formData.price),
-      unit: formData.unit || 'kg',
+      unit: formData.unit || 'und',
       category_id: formData.category_id || null,
       certified: formData.certified,
       stock: formData.stockNum ? `${formData.stockNum}` : '0',
@@ -439,6 +471,11 @@ export default function MarketplaceScreen({
       }))
       const { error: imgErr } = await supabase.from('images').insert(imageRows)
       if (imgErr) await alertDialog({ title: 'El producto se creó, pero sus imágenes no', message: imgErr.message, tone: 'warning' })
+    }
+
+    if (insertedProduct?.[0]?.id) {
+      const variantsError = await persistProductVariants(insertedProduct[0].id, formData.variants, false, formData.stockNum, formData.variantImagesToDelete)
+      if (variantsError) await alertDialog({ title: 'El producto se creó, pero sus variantes no', message: variantsError, tone: 'warning' })
     }
 
     const activitySaved = await recordActivity({
@@ -468,6 +505,10 @@ export default function MarketplaceScreen({
       const p = parseInt(String(product.stock).replace(/\D/g, ''), 10)
       return !isNaN(p) && p <= 0
     })()
+
+    // Con variantes se elige la combinación en el detalle
+    const withVariants = hasVariants(product)
+    const range = priceRange(product.price, product.variants ?? [])
 
     return (
       <div
@@ -540,8 +581,9 @@ export default function MarketplaceScreen({
               {product.title}
             </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: product.type === 'experiencia' ? '#205134' : '#C8860A', marginBottom: 14 }}>
-              {formatPrice(product.price)}
-              <span style={{ fontSize: 11, color: '#888', fontWeight: 500, marginLeft: 4 }}>/ {product.unit}</span>
+              {withVariants && range.min !== range.max && <span style={{ fontSize: 11, color: '#888', fontWeight: 600, marginRight: 4 }}>Desde</span>}
+              {formatPrice(withVariants ? range.min : product.price)}
+              {!withVariants && <span style={{ fontSize: 11, color: '#888', fontWeight: 500, marginLeft: 4 }}>/ {product.unit}</span>}
             </div>
           </div>
 
@@ -565,6 +607,30 @@ export default function MarketplaceScreen({
               >
                 <span>{product.type === 'experiencia' ? 'Sin cupos' : 'Agotado'}</span>
               </div>
+            ) : withVariants ? (
+              <button
+                type="button"
+                onClick={(event) => { event.stopPropagation(); handleSelectProduct(product.id) }}
+                style={{
+                  width: '100%',
+                  height: 36,
+                  background: '#F5EEE6',
+                  color: '#205134',
+                  border: '1px solid #E8DED0',
+                  borderRadius: 10,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  transition: 'all 0.2s ease',
+                }}
+                className="hover:bg-[#205134] hover:text-white"
+              >
+                Elegir opciones
+              </button>
             ) : (cart[product.id] ?? 0) > 0 && addingProduct?.id !== product.id ? (
               <button
                 type="button"
@@ -909,10 +975,19 @@ export default function MarketplaceScreen({
 
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
                     <span style={{ color: '#E5AE30', fontSize: 20, fontWeight: 800, fontFamily: "'Poppins', sans-serif" }}>
-                      {formatPrice(categoryFeatured.product.price)}
-                      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginLeft: 4 }}>
-                        / {categoryFeatured.product.unit || 'ud'}
-                      </span>
+                      {hasVariants(categoryFeatured.product) ? (
+                        <>
+                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginRight: 4 }}>Desde</span>
+                          {formatPrice(priceRange(categoryFeatured.product.price, categoryFeatured.product.variants ?? []).min)}
+                        </>
+                      ) : (
+                        <>
+                          {formatPrice(categoryFeatured.product.price)}
+                          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', fontWeight: 600, marginLeft: 4 }}>
+                            / {categoryFeatured.product.unit || 'ud'}
+                          </span>
+                        </>
+                      )}
                     </span>
 
                     <span

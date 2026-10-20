@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useRef, lazy, Suspense, type JSX } from 'react'
 import HomeScreen from './screens/HomeScreen'
 import ScreenShell from './components/ScreenShell'
-import type { CartItem } from './lib/catalog'
+import { cartItemKey, type CartItem } from './lib/catalog'
 import { supabase, authRedirectInfo } from './lib/supabase'
 import { MAIN_STORE, cartKey, isMainStore, type StoreId } from './lib/stores'
 import { useStores } from './lib/storesContext'
 import { pathForTab, routeFromPath } from './lib/routes'
+import { legalPageFromPath } from './lib/legal'
 import { AppNavigationContext } from './lib/navigation'
 import type { Tab, UserRole } from './lib/types'
 import { useAuth } from './lib/auth'
@@ -26,6 +27,7 @@ const SetNewPasswordScreen = lazy(() => import('./screens/SetNewPasswordScreen')
 const StoreAdminScreen = lazy(() => import('./screens/StoreAdminScreen'))
 const AboutScreen = lazy(() => import('./screens/AboutScreen'))
 const CompleteProfileScreen = lazy(() => import('./screens/CompleteProfileScreen'))
+const LegalScreen = lazy(() => import('./screens/LegalScreen'))
 
 function ScreenLoader() {
   return (
@@ -61,6 +63,16 @@ export default function App() {
   const { loading: checkingSession } = useAuth()
   const { loading: loadingStores } = useStores()
 
+  // Privacidad y condiciones: públicas, sin esperar sesión ni tiendas
+  const legalPage = legalPageFromPath(window.location.pathname)
+  if (legalPage) {
+    return (
+      <Suspense fallback={<ScreenLoader />}>
+        <LegalScreen page={legalPage} />
+      </Suspense>
+    )
+  }
+
   if (checkingSession || loadingStores) {
     return (
       <div
@@ -81,7 +93,8 @@ export default function App() {
 function AppContent() {
   const { allStores, alliedStores, getStore } = useStores()
   // Sesión y perfil (rol y tienda del usuario) los carga AuthProvider
-  const { session, role: userRole, store: userStore, profileLoadId, needsProfileCompletion, refreshProfile } = useAuth()
+  // userRole es el rol activo: una cuenta con varios roles (p. ej. Comprador + Asociación) usa la app con uno a la vez
+  const { session, role: userRole, store: userStore, profileLoadId, needsProfileCompletion, refreshProfile, setActiveRole } = useAuth()
   // Pantalla y tienda de la URL con la que se abrió la app
   const [initialRoute] = useState(() => routeFromPath(window.location.pathname, allStores))
 
@@ -127,6 +140,19 @@ function AppContent() {
     }
     setShopStore(store)
     setActiveTab('store')
+  }
+
+  /** Cuenta con varios roles: pasa al otro rol y abre su pantalla principal (panel del comprador o del vendedor) */
+  const switchRole = (role: UserRole) => {
+    setFlow('app')
+    setCheckoutOpen(false)
+    setActiveRole(role)
+    if (role === 'comprador') {
+      setPanelStore(viewStore)
+      setActiveTab('profile')
+    } else if (role === 'asociacion' || role === 'turismo') {
+      setActiveTab('admin')
+    }
   }
 
   // Eventos de autenticación que solo afectan la interfaz (los datos los maneja AuthProvider)
@@ -341,7 +367,7 @@ function AppContent() {
   }
 
   return (
-    <AppNavigationContext.Provider value={{ openStore }}>
+    <AppNavigationContext.Provider value={{ openStore, switchRole }}>
     <Suspense fallback={<ScreenLoader />}>
     <div className="min-h-screen w-full" style={{ background: '#F5EEE6' }}>
       <div className="min-h-screen w-full flex flex-col">
@@ -389,7 +415,7 @@ function AppContent() {
               onItemsChange={(newItems) => {
                 setCheckoutItems(newItems)
                 const newCart = newItems.reduce((acc, item) => {
-                  acc[item.product.id] = item.quantity
+                  acc[cartItemKey(item)] = item.quantity
                   return acc
                 }, {} as Record<string, number>)
                 localStorage.setItem(cartKey(viewStore), JSON.stringify(newCart))

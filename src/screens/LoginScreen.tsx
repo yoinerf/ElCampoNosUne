@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase, authRedirectInfo, authRedirectUrl } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 import GoogleSignInButton, { AuthDivider } from '../components/GoogleSignInButton'
+import LegalNotice from '../components/LegalNotice'
 
 interface Props {
   onLogin: () => void
@@ -569,6 +570,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
                 Crear cuenta
               </button>
             </p>
+            <LegalNotice />
           </form>
         </div>
       </div>

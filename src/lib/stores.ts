@@ -40,6 +40,8 @@ export interface StoreSettings {
   name: string
   /** Ruta de la vitrina (/<slug>); null en la tienda principal */
   slug: string | null
+  /** Entidad aliada (menú "Aliados"), p. ej. "Universidad de la Amazonia" */
+  ally_name: string | null
   tagline: string | null
   description: string | null
   payment_methods: StorePaymentMethod[]
@@ -55,6 +57,7 @@ export const FALLBACK_MAIN_STORE: StoreSettings = {
   store: MAIN_STORE,
   name: 'El Campo Nos Une',
   slug: null,
+  ally_name: null,
   tagline: 'Sembrando hoy la cooperación del mañana.',
   description: null,
   payment_methods: ['CashOnDelivery', 'BankTransfer'],

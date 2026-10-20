@@ -1,10 +1,86 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, authRedirectUrl } from '../lib/supabase'
+import { GOOGLE_CLIENT_ID, createNonce, loadGoogleIdentity } from '../lib/googleIdentity'
 
 // Inicio de sesión / registro con Google (Supabase Auth → proveedor Google).
-// Al volver, la sesión la detecta AuthProvider; si la cuenta es nueva se pide
-// completar el perfil (CompleteProfileScreen).
-export default function GoogleSignInButton({ label = 'Continuar con Google', onError }: { label?: string; onError?: (message: string) => void }) {
+// La sesión la detecta AuthProvider; si la cuenta es nueva se pide completar el perfil
+// (CompleteProfileScreen).
+//
+// Con VITE_GOOGLE_CLIENT_ID se usa el botón oficial de Google (ventana desde nuestro dominio +
+// signInWithIdToken). Sin él, o si la librería de Google no carga, se usa el redirect de Supabase.
+
+type Mode = 'signin' | 'signup'
+
+const LABELS: Record<Mode, string> = { signin: 'Continuar con Google', signup: 'Registrarse con Google' }
+const GENERIC_ERROR = 'No pudimos conectar con Google. Intenta de nuevo o usa tu correo y contraseña.'
+
+export default function GoogleSignInButton({ mode = 'signin', onError }: { mode?: Mode; onError?: (message: string) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+  const [status, setStatus] = useState<'loading' | 'ready' | 'fallback'>(GOOGLE_CLIENT_ID ? 'loading' : 'fallback')
+  const [signingIn, setSigningIn] = useState(false)
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return
+    let cancelled = false
+    const setup = async () => {
+      try {
+        const [googleId, nonce] = await Promise.all([loadGoogleIdentity(), createNonce()])
+        const container = containerRef.current
+        if (cancelled || !container) return
+        googleId.initialize({
+          client_id: GOOGLE_CLIENT_ID!,
+          nonce: nonce.hashed,
+          ux_mode: 'popup',
+          itp_support: true,
+          callback: async ({ credential }) => {
+            setSigningIn(true)
+            const { error } = await supabase.auth.signInWithIdToken({ provider: 'google', token: credential, nonce: nonce.raw })
+            setSigningIn(false)
+            if (error) onErrorRef.current?.(GENERIC_ERROR)
+            // Si va bien, AuthProvider y App reaccionan al evento SIGNED_IN
+          },
+        })
+        container.replaceChildren()
+        googleId.renderButton(container, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: mode === 'signup' ? 'signup_with' : 'continue_with',
+          shape: 'rectangular',
+          logo_alignment: 'center',
+          // Google admite entre 200 y 400 px
+          width: Math.min(400, Math.max(200, Math.floor(container.offsetWidth))),
+          locale: 'es',
+        })
+        setStatus('ready')
+      } catch {
+        if (!cancelled) setStatus('fallback')
+      }
+    }
+    setup()
+    return () => {
+      cancelled = true
+    }
+  }, [mode])
+
+  if (status === 'fallback') return <RedirectButton label={LABELS[mode]} onError={onError} />
+
+  return (
+    <div style={{ width: '100%', minHeight: 44, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+      <div ref={containerRef} style={{ width: '100%', display: 'flex', justifyContent: 'center', opacity: signingIn ? 0.5 : 1 }} />
+      {signingIn && (
+        <span style={{ position: 'absolute', fontSize: 13, fontWeight: 600, fontFamily: "'Nunito Sans', sans-serif", color: '#374151' }}>
+          Conectando con Google...
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** Inicio con Google por redirect de Supabase (respaldo si el botón oficial no está disponible) */
+function RedirectButton({ label, onError }: { label: string; onError?: (message: string) => void }) {
   const [loading, setLoading] = useState(false)
 
   const handleClick = async () => {
@@ -17,7 +93,7 @@ export default function GoogleSignInButton({ label = 'Continuar con Google', onE
     // Si todo va bien el navegador sale hacia Google; solo se vuelve aquí si falla
     if (error) {
       setLoading(false)
-      onError?.('No pudimos conectar con Google. Intenta de nuevo o usa tu correo y contraseña.')
+      onError?.(GENERIC_ERROR)
     }
   }
 

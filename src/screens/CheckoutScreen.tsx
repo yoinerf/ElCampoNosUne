@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import type { CartItem } from '../lib/catalog'
+import { cartItemKey, cartItemPrice, type CartItem } from '../lib/catalog'
+import { availableStock, variantLabel } from '../lib/variants'
 import { supabase } from '../lib/supabase'
 import AuthRequiredModal from '../components/AuthRequiredModal'
 import { MAIN_STORE, isMainStore, type StoreId, type StorePaymentMethod } from '../lib/stores'
@@ -112,7 +113,7 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
 
   // Cálculos dinámicos
   const isExperienceOnly = items.length > 0 && items.every((item) => item.product.type === 'experiencia')
-  const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+  const subtotal = items.reduce((sum, item) => sum + cartItemPrice(item) * item.quantity, 0)
   // Envío fijo de la tienda (store_settings.shipping_fee, lo cobra create_store_order).
   // En 0 el envío lo acuerda cada vendedor con el comprador y no se suma al total.
   const shippingFee = items.length > 0 && !isExperienceOnly ? storeConfig.shipping_fee : 0
@@ -123,12 +124,18 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
 
   const formatPrice = (value: number) => `$${value.toLocaleString('es-CO')} COP`
 
-  const updateQuantity = (id: string, newQuantity: number) => {
+  // key: línea del carrito (producto o producto + combinación). No pasa del stock disponible;
+  // create_store_order lo vuelve a validar en la base.
+  const updateQuantity = (key: string, newQuantity: number) => {
     if (newQuantity <= 0) {
-      onItemsChange(items.filter((item) => item.product.id !== id))
-    } else {
-      onItemsChange(items.map((item) => item.product.id === id ? { ...item, quantity: newQuantity } : item))
+      onItemsChange(items.filter((item) => cartItemKey(item) !== key))
+      return
     }
+    onItemsChange(items.map((item) => {
+      if (cartItemKey(item) !== key) return item
+      const limit = availableStock(item.product.stock, item.variant)
+      return { ...item, quantity: limit !== null ? Math.min(newQuantity, Math.max(limit, 1)) : newQuantity }
+    }))
   }
 
   // Avanzar entre pasos o Finalizar
@@ -175,10 +182,12 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
     const { data: order, error } = await supabase.rpc('create_store_order', {
       p_store: store,
       p_payment_method: storeMethod,
-      p_items: items.map(({ product, quantity }) => ({
+      p_items: items.map(({ product, quantity, variant }) => ({
         id: product.id,
         type: isAllied ? 'producto' : product.type || 'producto',
         quantity,
+        // Productos con variantes: la combinación elegida (su stock lo descuenta la base)
+        ...(variant ? { variant_id: variant.id } : {}),
       })),
       p_shipping: addressForm,
       p_shipping_fee: shippingFee,
@@ -345,10 +354,15 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                       </div>
 
                       <div className="flex flex-col gap-4">
-                        {items.map((item) => (
-                          <article key={item.product.id} className="bg-white rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 border border-[#E8DED0]">
+                        {items.map((item) => {
+                          const key = cartItemKey(item)
+                          const unitPrice = cartItemPrice(item)
+                          const limit = availableStock(item.product.stock, item.variant)
+                          const atLimit = limit !== null && item.quantity >= limit
+                          return (
+                          <article key={key} className="bg-white rounded-2xl p-4 flex flex-col sm:flex-row items-center gap-4 sm:gap-6 border border-[#E8DED0]">
                             <img
-                              src={item.product.img}
+                              src={item.variant?.image_url || item.product.img}
                               alt={item.product.title}
                               className="w-20 h-20 shrink-0 object-cover rounded-xl bg-[#F5EEE6] cursor-pointer hover:opacity-80 transition-opacity"
                               onClick={() => onViewProduct?.(item.product.id)}
@@ -364,15 +378,20 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                               >
                                 {item.product.title}
                               </h3>
+                              {item.variant && (
+                                <div className="text-[#205134] text-xs font-bold mt-0.5">
+                                  {variantLabel(item.variant.options, item.product.variantAttributes ?? [])}
+                                </div>
+                              )}
                               <div className="text-[#888] text-xs mt-1">
-                                {formatPrice(item.product.price)}
+                                {formatPrice(unitPrice)}
                               </div>
                             </div>
 
                             <div className="flex items-center gap-4 sm:gap-6 w-full sm:w-auto justify-between sm:justify-end mt-4 sm:mt-0 shrink-0">
                               <div className="flex items-center bg-[#F5EEE6] rounded-full h-9 px-1 w-[104px] shrink-0 justify-between">
                                 <button
-                                  onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                                  onClick={() => updateQuantity(key, item.quantity - 1)}
                                   className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
                                 >
                                   -
@@ -381,19 +400,21 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                                   {item.quantity}
                                 </span>
                                 <button
-                                  onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0]"
+                                  onClick={() => updateQuantity(key, item.quantity + 1)}
+                                  disabled={atLimit}
+                                  title={atLimit ? 'No hay más unidades disponibles' : undefined}
+                                  className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border-none text-[#205134] font-bold text-base cursor-pointer hover:bg-[#E8DED0] disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   +
                                 </button>
                               </div>
 
                               <div className="font-['Poppins'] font-bold text-[#C8860A] text-base w-[135px] shrink-0 text-right" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                                {formatPrice(item.product.price * item.quantity)}
+                                {formatPrice(unitPrice * item.quantity)}
                               </div>
 
                               <button
-                                onClick={() => updateQuantity(item.product.id, 0)}
+                                onClick={() => updateQuantity(key, 0)}
                                 className="w-8 h-8 shrink-0 flex items-center justify-center border-none bg-transparent text-[#D06050] cursor-pointer opacity-70 hover:opacity-100 transition-opacity"
                                 title="Eliminar"
                               >
@@ -401,7 +422,8 @@ export default function CheckoutScreen({ items, onItemsChange, onBack, onRequire
                               </button>
                             </div>
                           </article>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )}

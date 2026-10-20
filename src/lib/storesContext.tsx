@@ -41,6 +41,7 @@ export function StoresProvider({ children }: { children: ReactNode }) {
               ...s,
               name: s.name ?? s.store,
               slug: isMain ? null : s.slug ?? s.store.replace(/_/g, '-'),
+              ally_name: s.ally_name?.trim() || null,
               tagline: s.tagline ?? (isMain ? FALLBACK_MAIN_STORE.tagline : null),
               payment_methods: (s.payment_methods?.length ? s.payment_methods : isMain ? FALLBACK_MAIN_STORE.payment_methods : ['Cash', 'BankTransfer']) as StoreSettings['payment_methods'],
               shipping_fee: Number(s.shipping_fee ?? FALLBACK_MAIN_STORE.shipping_fee),

@@ -131,7 +131,7 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
         {/* Contenido — necesita position relative para quedar por encima de las capas de fondo */}
         <div style={{ position: 'relative', zIndex: 1 }}>
           <p style={{ margin: '0 0 8px', color: '#A8D48A', fontSize: 12, fontWeight: 800, letterSpacing: 1.5, fontFamily: "'Nunito Sans', sans-serif" }}>
-            SAKI AMAZÓNICO
+            SAKI5
           </p>
           <h1 style={{ fontFamily: "'Poppins', sans-serif", fontSize: 30, color: '#F5EEE6', margin: '0 0 14px', fontWeight: 800, lineHeight: 1.25 }}>
             Lo mejor del campo<br />está mas cerca de ti
@@ -180,7 +180,7 @@ export default function AboutScreen({ onNavigate, activeNav, onProfileClick, use
       {/* ══════ 2. ¿QUÉ ES? ══════ */}
       <div style={{ marginBottom: 40 }}>
         <h2 style={{ textAlign: 'center', fontFamily: "'Poppins', sans-serif", fontSize: 22, color: '#205134', margin: '0 0 24px', fontWeight: 800 }}>
-          ¿Qué es El Campo Nos Une?
+          ¿Qué es Saki5?
         </h2>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 14, marginBottom: 20 }}>

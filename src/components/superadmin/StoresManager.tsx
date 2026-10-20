@@ -25,6 +25,7 @@ type StoreForm = {
   store: string
   name: string
   slug: string
+  ally_name: string
   tagline: string
   description: string
   payment_methods: StorePaymentMethod[]
@@ -39,6 +40,7 @@ const toForm = (s: StoreSettings): StoreForm => ({
   store: s.store,
   name: s.name,
   slug: s.slug ?? '',
+  ally_name: s.ally_name ?? '',
   tagline: s.tagline ?? '',
   description: s.description ?? '',
   payment_methods: s.payment_methods,
@@ -53,6 +55,7 @@ const NEW_STORE: StoreForm = {
   store: '',
   name: '',
   slug: '',
+  ally_name: '',
   tagline: '',
   description: '',
   payment_methods: ['BankTransfer', 'Cash'],
@@ -119,6 +122,7 @@ export default function StoresManager() {
     const row = {
       name: form.name.trim(),
       slug: form.store === MAIN_STORE ? null : form.slug,
+      ally_name: form.store === MAIN_STORE ? null : form.ally_name.trim().slice(0, 120) || null,
       tagline: form.tagline.trim() || null,
       description: form.description.trim() || null,
       payment_methods: form.payment_methods,
@@ -227,6 +231,13 @@ function StoreFormFields({ editing, set }: { editing: { form: StoreForm; isNew: 
             <label style={lbl}>Ruta de la vitrina *</label>
             <input style={inp} value={form.slug} placeholder="tienda-licores" onChange={(e) => set({ slug: e.target.value.toLowerCase() })} />
             <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>Se verá en {window.location.origin}/{form.slug || 'ruta'}</div>
+          </div>
+        )}
+        {!isMain && (
+          <div>
+            <label style={lbl}>Entidad aliada</label>
+            <input style={inp} value={form.ally_name} maxLength={120} placeholder="Universidad de la Amazonia" onChange={(e) => set({ ally_name: e.target.value })} />
+            <div style={{ fontSize: 11, color: B.textFaint, marginTop: 4 }}>Se muestra en el menú «Aliados» junto al nombre de la tienda.</div>
           </div>
         )}
       </div>

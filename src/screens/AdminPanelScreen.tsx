@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import logoSrc from '../assets/logo-nofond.png'
 import ExperienceModal, { type ExperienceFormData } from '../components/ExperienceModal'
 import ProductModal, { type ProductFormData } from '../components/ProductModal'
+import { persistProductVariants } from '../lib/variants'
+import { deleteExperienceWithFiles, deleteProductWithFiles } from '../lib/storageCleanup'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import NotificationBell from '../components/NotificationBell'
@@ -10,11 +12,13 @@ import { usePanelSectionRequest } from '../lib/notifications'
 import ProducerDocumentsCard from '../components/ProducerDocumentsCard'
 import CertifiedBadge from '../components/CertifiedBadge'
 import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
-import { confirmGoToDocuments, fetchDocuments, validationState, VALIDATION_STATE, type ValidationState } from '../lib/producerDocuments'
+import { confirmGoToDocuments, fetchDocuments, fetchManualVerifications, validationState, VALIDATION_STATE, type ValidationState } from '../lib/producerDocuments'
 import { alertDialog, confirmDialog } from '../components/ConfirmDialog'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
 import { isMainStore, type StoreId } from '../lib/stores'
 import { useStores } from '../lib/storesContext'
+import { useAuth } from '../lib/auth'
+import { useAppNavigation } from '../lib/navigation'
 import type { Tab, UserRole } from '../lib/types'
 import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
@@ -42,6 +46,8 @@ interface ProductItem {
   capacity?: string
   tags?: string[]
   certified?: boolean
+  /** Inventario por combinación: stock es la suma de las combinaciones */
+  hasVariants?: boolean
 }
 
 interface ActivityItem {
@@ -115,6 +121,8 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   // Productor de una tienda aliada: su panel lleva la marca de su tienda
   const isAllied = !isMainStore(store)
   const { storeName } = useStores()
+  const { roles } = useAuth()
+  const { switchRole } = useAppNavigation()
   const [section, setSection] = useState<AdminSection>('dashboard')
   // Una notificación de pedido nuevo abre la sección de pedidos
   // Notificaciones: pedido nuevo abre Pedidos; revisión de documentos abre Configuración
@@ -186,7 +194,8 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
     setOrderStatuses(statusesData)
     setOrderItems(itemsData)
-    setValidation(validationState(await fetchDocuments([user.id])))
+    const [myDocs, manual] = await Promise.all([fetchDocuments([user.id]), fetchManualVerifications([user.id])])
+    setValidation(validationState(myDocs, manual.has(user.id)))
 
     if (profileData) {
       setProfile(profileData as ProfileData)
@@ -235,6 +244,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
         description: p.description || '',
         img: primaryImageUrl(p.images, 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=600&h=400&fit=crop&auto=format'),
         certified: p.certified ?? undefined,
+        hasVariants: p.has_variants,
       }))
       setProducts(prods)
       const lowStock = prods.filter((p) => { const n = parseInt(p.stock) || 0; return n < 20 }).length
@@ -292,7 +302,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       title: formData.title.trim(),
       producer: orgName,
       price: Number(formData.price),
-      unit: formData.unit || 'uds',
+      unit: formData.unit || 'und',
       category_id: formData.category_id || null,
       certified: formData.certified ?? true,
       stock: `${formData.stockNum || '0'}`,
@@ -326,6 +336,9 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
       const { error: imgErr } = await supabase.from('images').insert(imageRows)
       if (imgErr) await alertDialog({ title: 'El producto se guardó, pero sus imágenes no', message: imgErr.message, tone: 'warning' })
     }
+
+    const variantsError = await persistProductVariants(data[0].id, formData.variants, formData.hadVariants, formData.stockNum, formData.variantImagesToDelete)
+    if (variantsError) await alertDialog({ title: 'El producto se guardó, pero sus variantes no', message: variantsError, tone: 'warning' })
     
     setSaving(false)
     setShowModal(false)
@@ -386,10 +399,11 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
 
   const handleDelete = async (id: string) => {
     if (!(await confirmDialog({ title: '¿Eliminar este elemento?', message: 'Esta acción no se puede deshacer.', confirmText: 'Eliminar', tone: 'danger' }))) return
-    if (isTurismo) {
-      await supabase.from('experiences').delete().eq('id', id)
-    } else {
-      await supabase.from('products').delete().eq('id', id)
+    // Se borra el registro y luego sus fotos del Storage
+    const { error } = isTurismo ? await deleteExperienceWithFiles(id) : await deleteProductWithFiles(id)
+    if (error) {
+      await alertDialog({ title: 'No se pudo eliminar', message: error, tone: 'danger' })
+      return
     }
     setProducts((prev) => prev.filter((p) => p.id !== id))
   }
@@ -447,6 +461,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
   const ExpIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg>
   const InvIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /></svg>
   const RepIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
+  const CartIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="20.5" r="1.3" /><circle cx="18" cy="20.5" r="1.3" /><path d="M2 3h2.6l2.4 11.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.5L21.4 7H5.6" /></svg>
   const CogIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" /></svg>
 
   const orgName = profile.org_name || `${profile.first_name} ${profile.last_name}`.trim() || 'Asociacion'
@@ -488,6 +503,13 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
           {sidebarNav.map((item) => (
             <SidebarItem key={item.id} icon={item.icon} label={item.label} active={section === item.id} onClick={() => { setSection(item.id); setSidebarOpen(false); setPage(1); setSearchVal(''); setCatFilter('Todas') }} />
           ))}
+          {/* La cuenta también es Comprador: pasar a su panel de compras */}
+          {roles.includes('comprador') && (
+            <>
+              <div style={{ height: 1, background: '#EDE4D8', margin: '10px 6px' }} />
+              <SidebarItem icon={<CartIcon />} label="Usar como comprador" active={false} onClick={() => { setSidebarOpen(false); switchRole('comprador') }} />
+            </>
+          )}
         </nav>
 
         <div style={{ padding: '14px 16px', borderTop: '1px solid #EDE4D8' }}>
@@ -671,10 +693,11 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                                   </span>
                                 </td>
                                 <td style={{ padding: '12px 18px', fontSize: 14, fontWeight: 700, color: '#9B4728', fontFamily: "'Poppins', sans-serif", whiteSpace: 'nowrap' }}>
-                                  {formatPrice(p.price)}{p.unit && p.unit !== 'uds' ? ` / ${p.unit}` : ''}
+                                  {formatPrice(p.price)}{p.unit && !['uds', 'und'].includes(p.unit) ? ` / ${p.unit}` : ''}
                                 </td>
                                 <td style={{ padding: '12px 18px', fontSize: 13, color: '#5A5248', whiteSpace: 'nowrap' }}>
                                   {stockNum} {isTurismo ? 'cupos libres' : 'unidades'}
+                                  {p.hasVariants && <div style={{ fontSize: 11, color: '#8A8070' }}>en variantes</div>}
                                 </td>
                                 <td style={{ padding: '12px 18px' }}>
                                   <span style={{ background: none ? '#fac0aaff' : isLow ? '#ffcd2871' : '#EAF3EC', color: none ? '#C4622D' : isLow ? '#D06050' : '#205134', fontSize: 11, fontWeight: 700, padding: '4px 12px', borderRadius: 20 }}>
@@ -763,7 +786,7 @@ export default function AdminPanelScreen({ onNavigate, userRole, store = 'campo'
                         <div key={p.id} style={{ background: '#fff', borderRadius: 20, padding: 18, border: `1px solid ${none ? '#FFCDD2' : isLow ? '#FFE0B2' : '#EDE4D8'}`, boxShadow: '0 4px 16px rgba(32,81,52,0.05)', display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
                           <button
                             type="button"
-                            onClick={() => setStockModal({ product: p, newStock: p.stock })}
+                            onClick={() => (p.hasVariants ? handleOpenEdit(p) : setStockModal({ product: p, newStock: p.stock }))}
                             title={isTurismo ? 'Agregar cupos' : 'Editar stock'}
                             style={{ position: 'absolute', top: 10, right: 10, width: 28, height: 28, borderRadius: 8, border: 'none', background: '#EAF3EC', color: '#205134', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, lineHeight: 1, zIndex: 1 }}
                             className="hover:bg-[#C8E6C9]"

@@ -4,6 +4,7 @@ import {
   fetchOrderTransitions,
   fetchStatusHistory,
   getNextStatuses,
+  orderItemName,
   updateOrderItemStatus,
   type OrderItemRow,
   type OrderStatus,
@@ -93,7 +94,7 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
     if (statusFilter !== 'all' && String(it.status_id) !== statusFilter) return false
     const q = search.trim().toLowerCase()
     if (!q) return true
-    return [it.title, it.order?.customer_name, it.order?.customer_phone, it.order_id].some((v) => v?.toLowerCase().includes(q))
+    return [it.title, it.variant_label, it.order?.customer_name, it.order?.customer_phone, it.order_id].some((v) => v?.toLowerCase().includes(q))
   })
 
   const handleChange = async (item: OrderItemRow, newStatusId: number) => {
@@ -103,11 +104,11 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
     const cancelling = target?.code === 'Cancelled'
     const reopening = current?.code === 'Cancelled'
     const confirmText = cancelling
-      ? `¿Cancelar "${item.title}"? Se devolverán ${item.quantity} unidad(es) al inventario.`
+      ? `¿Cancelar "${orderItemName(item)}"? Se devolverán ${item.quantity} unidad(es) al inventario.`
       : reopening
-        ? `¿Reactivar "${item.title}"? Se descontarán ${item.quantity} unidad(es) del inventario.`
+        ? `¿Reactivar "${orderItemName(item)}"? Se descontarán ${item.quantity} unidad(es) del inventario.`
         : target?.is_final
-          ? `¿Cambiar "${item.title}" a "${target.name}"? Es un estado final.`
+          ? `¿Cambiar "${orderItemName(item)}" a "${target.name}"? Es un estado final.`
           : null
     if (confirmText && !(await confirmDialog({
       title: cancelling ? 'Cancelar pedido' : reopening ? 'Reactivar pedido' : 'Confirmar cambio de estado',
@@ -133,10 +134,10 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
     setSavingId(null)
     setSuccessMsg(
       cancelling
-        ? `"${item.title}" cancelado. Se devolvieron ${item.quantity} unidad(es) al inventario.`
+        ? `"${orderItemName(item)}" cancelado. Se devolvieron ${item.quantity} unidad(es) al inventario.`
         : reopening
-          ? `"${item.title}" reactivado. Se descontaron ${item.quantity} unidad(es) del inventario.`
-          : `"${item.title}" ahora está en "${target?.name}".`
+          ? `"${orderItemName(item)}" reactivado. Se descontaron ${item.quantity} unidad(es) del inventario.`
+          : `"${orderItemName(item)}" ahora está en "${target?.name}".`
     )
   }
 
@@ -214,6 +215,7 @@ export default function OrdersTable({ items, statuses, showSeller = false, allow
                           {it.img && <img src={it.img} alt={it.title} style={{ width: 40, height: 40, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />}
                           <div>
                             <div style={{ fontWeight: 700, color: '#1C3A14' }}>{it.title}</div>
+                            {it.variant_label && <div style={{ fontSize: 12, color: '#205134', fontWeight: 600 }}>{it.variant_label}</div>}
                             <div style={{ fontSize: 12, color: '#8A8070' }}>{it.quantity} × {formatPrice(Number(it.unit_price))}</div>
                           </div>
                         </div>

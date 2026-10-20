@@ -12,6 +12,33 @@ import { TABS, isTab } from './types'
 import { pathForTab, routeFromPath } from './routes'
 import { documentColumns, normalizeDocumentNumber, validateDocument, validateOptionalDocument } from './identity'
 import { DEPARTMENTS, findDepartment, findMunicipality, municipalitiesOf } from './geo'
+import { cartItemKey, cartItemPrice, type Product } from './catalog'
+import { orderItemName } from './orders'
+import {
+  autoSelect,
+  availableStock,
+  duplicateAttributeNames,
+  isMeasureAttribute,
+  cartLineKey,
+  cartesian,
+  draftAttributes,
+  draftFromVariants,
+  findVariant,
+  normalizeVariants,
+  offeredOptions,
+  optionStates,
+  parseCartLineKey,
+  priceRange,
+  selectOption,
+  validateVariantDraft,
+  variantDraftPayload,
+  variantLabel,
+  type ProductVariant,
+  type VariantAttribute,
+} from './variants'
+import { DEFAULT_UNIT, UNITS, formatMeasure, isMeasureAmount, normalizeUnit, parseOptionInput } from './units'
+import { findOrphans, uniquePaths, type StoredFile } from './storageCleanup'
+import { addableRoles, resolveActiveRole, resolveRoles, roleRequirementsError, rolesForUserType, sellerRole } from './roles'
 
 const fakeFile = (type: string, size: number, name = 'archivo') => ({ type, size, name }) as File
 
@@ -181,5 +208,371 @@ describe('types', () => {
     expect(isTab('market')).toBe(true)
     expect(isTab('javascript:alert(1)')).toBe(false)
     expect(isTab(null)).toBe(false)
+  })
+})
+
+describe('roles', () => {
+  it('Asociación y Turismo incluyen siempre el rol Comprador', () => {
+    expect(rolesForUserType('asociacion')).toEqual(['asociacion', 'comprador'])
+    expect(rolesForUserType('turismo')).toEqual(['turismo', 'comprador'])
+    expect(rolesForUserType('comprador')).toEqual(['comprador'])
+    expect(rolesForUserType('admin')).toEqual(['admin'])
+    expect(rolesForUserType(undefined)).toEqual([])
+  })
+
+  it('une los roles de la base con los del rol principal, sin duplicados ni valores inválidos', () => {
+    expect(resolveRoles('asociacion', [{ role: 'comprador' }, { role: 'asociacion' }])).toEqual(['asociacion', 'comprador'])
+    // Sin la tabla profile_roles (migración pendiente) se derivan del rol principal
+    expect(resolveRoles('turismo', null)).toEqual(['turismo', 'comprador'])
+    expect(resolveRoles('comprador', [{ role: 'superusuario' }])).toEqual(['comprador'])
+  })
+
+  it('solo una cuenta que es únicamente Comprador puede agregar Asociación o Turismo', () => {
+    expect(addableRoles(['comprador'])).toEqual(['asociacion', 'turismo'])
+    expect(addableRoles(['asociacion', 'comprador'])).toEqual([])
+    expect(addableRoles(['turismo', 'comprador'])).toEqual([])
+    expect(addableRoles(['admin'])).toEqual([])
+    expect(addableRoles([])).toEqual([])
+  })
+
+  it('identifica el rol de vendedor de la cuenta', () => {
+    expect(sellerRole(['asociacion', 'comprador'])).toBe('asociacion')
+    expect(sellerRole(['turismo', 'comprador'])).toBe('turismo')
+    expect(sellerRole(['comprador'])).toBeUndefined()
+  })
+
+  it('el rol activo guardado solo se usa si la cuenta aún lo tiene', () => {
+    expect(resolveActiveRole('asociacion', ['asociacion', 'comprador'], 'comprador')).toBe('comprador')
+    expect(resolveActiveRole('asociacion', ['asociacion', 'comprador'], null)).toBe('asociacion')
+    // Un rol que la cuenta no tiene (o un valor manipulado) no da acceso
+    expect(resolveActiveRole('comprador', ['comprador'], 'admin')).toBe('comprador')
+    expect(resolveActiveRole('comprador', ['comprador'], 'asociacion')).toBe('comprador')
+  })
+
+  it('exige nombre, documento y ubicación para agregar un rol', () => {
+    const complete = { first_name: 'Ana', document_type: 'CC', document_number: '1234567890', department: 'Caquetá', municipality: 'Florencia' }
+    expect(roleRequirementsError(complete)).toBeNull()
+    expect(roleRequirementsError({ ...complete, first_name: ' ' })).not.toBeNull()
+    expect(roleRequirementsError({ ...complete, document_number: null })).not.toBeNull()
+    expect(roleRequirementsError({ ...complete, municipality: '' })).not.toBeNull()
+  })
+})
+
+describe('verificación del productor', () => {
+  const doc = (doc_type: 'rut' | 'camara_comercio', status: 'pendiente' | 'aprobado' | 'rechazado') =>
+    ({ id: doc_type, producer_id: 'p1', doc_type, status }) as ProducerDocument
+
+  it('la verificación manual del superadmin valida aunque no haya documentos', () => {
+    expect(validationState([], true)).toBe('validado')
+    expect(validationState([doc('rut', 'rechazado')], true)).toBe('validado')
+  })
+
+  it('sin verificación manual siguen siendo obligatorios RUT y Cámara de Comercio', () => {
+    expect(validationState([])).toBe('incompleto')
+    expect(validationState([doc('rut', 'aprobado'), doc('camara_comercio', 'aprobado')])).toBe('validado')
+  })
+})
+
+// ─── Variantes de producto ───────────────────────────────────────────────────
+// Ejemplo: yogur con 4 sabores y 3 presentaciones, cada combinación con su stock
+const yogurAttrs: VariantAttribute[] = [
+  { name: 'Sabor', options: ['Fresa', 'Mora', 'Vainilla', 'Natural'] },
+  { name: 'Presentación', options: ['250 ml', '500 ml', '1 L'] },
+]
+const variant = (id: string, sabor: string, pres: string, stock: number, extra: Partial<ProductVariant> = {}): ProductVariant => ({
+  id,
+  options: { Sabor: sabor, Presentación: pres },
+  stock,
+  price: null,
+  image_url: null,
+  active: true,
+  ...extra,
+})
+const yogurVariants: ProductVariant[] = [
+  variant('f250', 'Fresa', '250 ml', 5),
+  variant('f500', 'Fresa', '500 ml', 3),
+  variant('f1', 'Fresa', '1 L', 0, { price: 12000 }),
+  variant('m250', 'Mora', '250 ml', 0),
+  variant('m500', 'Mora', '500 ml', 0),
+  variant('v1', 'Vainilla', '1 L', 4, { image_url: 'vainilla.jpg' }),
+  // Natural no se ofrece (inactiva)
+  variant('n250', 'Natural', '250 ml', 9, { active: false }),
+]
+
+describe('variantes: selección en el detalle', () => {
+  it('cartesian genera todas las combinaciones en orden', () => {
+    const combos = cartesian(yogurAttrs)
+    expect(combos).toHaveLength(12)
+    expect(combos[0]).toEqual({ Sabor: 'Fresa', Presentación: '250 ml' })
+    expect(combos[11]).toEqual({ Sabor: 'Natural', Presentación: '1 L' })
+    expect(cartesian([])).toEqual([{}])
+  })
+
+  it('optionStates: oculta lo no ofrecido y marca agotado lo que no tiene stock', () => {
+    const sabores = optionStates(yogurAttrs, yogurVariants, {}, 'Sabor')
+    expect(sabores).toEqual({ Fresa: 'available', Mora: 'soldout', Vainilla: 'available', Natural: 'unavailable' })
+    // Con Fresa elegida, 1 L existe pero está agotada y no afecta a las demás
+    const pres = optionStates(yogurAttrs, yogurVariants, { Sabor: 'Fresa' }, 'Presentación')
+    expect(pres).toEqual({ '250 ml': 'available', '500 ml': 'available', '1 L': 'soldout' })
+    // Con 1 L elegido, solo Fresa (agotada) y Vainilla se ofrecen
+    const conLitro = optionStates(yogurAttrs, yogurVariants, { Presentación: '1 L' }, 'Sabor')
+    expect(conLitro).toEqual({ Fresa: 'soldout', Mora: 'unavailable', Vainilla: 'available', Natural: 'unavailable' })
+  })
+
+  it('findVariant exige todos los atributos y solo devuelve combinaciones ofrecidas', () => {
+    expect(findVariant(yogurAttrs, yogurVariants, { Sabor: 'Fresa' })).toBeNull()
+    expect(findVariant(yogurAttrs, yogurVariants, { Sabor: 'Fresa', Presentación: '1 L' })?.id).toBe('f1')
+    expect(findVariant(yogurAttrs, yogurVariants, { Sabor: 'Natural', Presentación: '250 ml' })).toBeNull()
+  })
+
+  it('selectOption no completa solo, permite quitar y descarta lo que deja de existir', () => {
+    // Vainilla solo existe en 1 L, pero no se elige sola
+    expect(selectOption(yogurAttrs, yogurVariants, {}, 'Sabor', 'Vainilla')).toEqual({ Sabor: 'Vainilla' })
+    // Tocar de nuevo la opción elegida la quita
+    expect(selectOption(yogurAttrs, yogurVariants, { Sabor: 'Fresa', Presentación: '250 ml' }, 'Sabor', 'Fresa')).toEqual({
+      Presentación: '250 ml',
+    })
+    // Fresa 250 ml → Vainilla: 250 ml no existe para Vainilla y se descarta
+    expect(selectOption(yogurAttrs, yogurVariants, { Sabor: 'Fresa', Presentación: '250 ml' }, 'Sabor', 'Vainilla')).toEqual({
+      Sabor: 'Vainilla',
+    })
+    // Mora 500 ml → 1 L (no existe para Mora): se descarta el sabor
+    expect(selectOption(yogurAttrs, yogurVariants, { Sabor: 'Mora', Presentación: '500 ml' }, 'Presentación', '1 L')).toEqual({
+      Presentación: '1 L',
+    })
+  })
+
+  it('autoSelect elige los atributos con una sola opción ofrecida', () => {
+    const attrs: VariantAttribute[] = [
+      { name: 'Talla', options: ['S', 'M'] },
+      { name: 'Color', options: ['Rojo'] },
+    ]
+    const vars: ProductVariant[] = [
+      { id: 'a', options: { Talla: 'S', Color: 'Rojo' }, stock: 1, price: null, image_url: null, active: true },
+      { id: 'b', options: { Talla: 'M', Color: 'Rojo' }, stock: 0, price: null, image_url: null, active: true },
+    ]
+    expect(autoSelect(attrs, vars, {})).toEqual({ Color: 'Rojo' })
+  })
+
+  it('precio y etiqueta de la combinación', () => {
+    expect(priceRange(8000, yogurVariants)).toEqual({ min: 8000, max: 12000 })
+    expect(priceRange(8000, [])).toEqual({ min: 8000, max: 8000 })
+    expect(variantLabel({ Presentación: '1 L', Sabor: 'Fresa' }, yogurAttrs)).toBe('Sabor: Fresa · Presentación: 1 L')
+  })
+
+  it('normalizeVariants ordena por posición y lee las opciones de jsonb', () => {
+    const { attributes, variants } = normalizeVariants(
+      [
+        { name: 'Presentación', options: ['1 L'], position: 1 },
+        { name: 'Sabor', options: ['Fresa'], position: 0 },
+      ],
+      [
+        { id: 'b', options: { Sabor: 'Fresa', Presentación: '1 L' }, stock: 2, price: 9000, image_url: null, active: true, position: 1 },
+        { id: 'a', options: ['no es objeto'], stock: 1, price: null, image_url: null, active: true, position: 0 },
+      ]
+    )
+    expect(attributes.map((a) => a.name)).toEqual(['Sabor', 'Presentación'])
+    expect(variants.map((v) => v.id)).toEqual(['a', 'b'])
+    expect(variants[0].options).toEqual({})
+    expect(variants[1].price).toBe(9000)
+  })
+})
+
+describe('variantes: cervezas (el comprador cambia de opinión)', () => {
+  const attrs: VariantAttribute[] = [
+    { name: 'Color', options: ['Negra', 'Roja', 'Dorada'] },
+    { name: 'Presentación', options: ['250 ml', '500 ml'] },
+  ]
+  const beer = (id: string, color: string, pres: string): ProductVariant => ({
+    id,
+    options: { Color: color, Presentación: pres },
+    stock: 5,
+    price: null,
+    image_url: null,
+    active: true,
+  })
+  const vars = [beer('n', 'Negra', '250 ml'), beer('r', 'Roja', '250 ml'), beer('d', 'Dorada', '250 ml'), beer('d5', 'Dorada', '500 ml')]
+
+  it('elegir Negra no fija 250 ml y se puede pasar a Dorada', () => {
+    let sel = selectOption(attrs, vars, {}, 'Color', 'Negra')
+    expect(sel).toEqual({ Color: 'Negra' })
+    sel = selectOption(attrs, vars, sel, 'Color', 'Dorada')
+    expect(sel).toEqual({ Color: 'Dorada' })
+  })
+
+  it('con 500 ml las demás se muestran como no compatibles y al tocarlas se cambia la selección', () => {
+    let sel = selectOption(attrs, vars, {}, 'Presentación', '500 ml')
+    expect(sel).toEqual({ Presentación: '500 ml' })
+    expect(optionStates(attrs, vars, sel, 'Color')).toEqual({ Negra: 'unavailable', Roja: 'unavailable', Dorada: 'available' })
+    // Siguen ofreciéndose (no desaparecen)
+    expect(offeredOptions(attrs, vars, 'Color')).toEqual(['Negra', 'Roja', 'Dorada'])
+    sel = selectOption(attrs, vars, sel, 'Color', 'Negra')
+    expect(sel).toEqual({ Color: 'Negra' })
+    expect(optionStates(attrs, vars, sel, 'Presentación')).toEqual({ '250 ml': 'available', '500 ml': 'unavailable' })
+  })
+})
+
+describe('variantes: carrito', () => {
+  it('la línea del carrito es compatible con los carritos guardados sin variantes', () => {
+    expect(cartLineKey('p1')).toBe('p1')
+    expect(cartLineKey('p1', 'v1')).toBe('p1::v1')
+    expect(parseCartLineKey('p1')).toEqual({ productId: 'p1', variantId: null })
+    expect(parseCartLineKey('p1::v1')).toEqual({ productId: 'p1', variantId: 'v1' })
+  })
+
+  it('availableStock usa el stock de la combinación o el número del stock en texto', () => {
+    expect(availableStock('45 unidades')).toBe(45)
+    expect(availableStock('Disponible')).toBeNull()
+    expect(availableStock('')).toBeNull()
+    expect(availableStock('99', yogurVariants[0])).toBe(5)
+    expect(availableStock('99', yogurVariants[6])).toBe(0) // inactiva
+  })
+
+  it('precio y clave de cada línea', () => {
+    const product = { id: 'yogur', price: 8000 } as Product
+    expect(cartItemPrice({ product, quantity: 1 })).toBe(8000)
+    expect(cartItemPrice({ product, quantity: 1, variant: yogurVariants[2] })).toBe(12000)
+    expect(cartItemKey({ product, quantity: 1, variant: yogurVariants[2] })).toBe('yogur::f1')
+    expect(orderItemName({ title: 'Yogur', variant_label: 'Sabor: Fresa · Presentación: 1 L' })).toBe('Yogur (Sabor: Fresa · Presentación: 1 L)')
+    expect(orderItemName({ title: 'Café', variant_label: null })).toBe('Café')
+  })
+})
+
+describe('variantes: formulario del vendedor', () => {
+  const draftRow = (sabor: string, stock = '1') => ({
+    options: { Sabor: sabor },
+    stock,
+    price: '8000',
+    image_url: null,
+    image_storage_path: null,
+    active: true,
+  })
+
+  it('valida atributos, opciones, stock y precio como la base', () => {
+    const ok = { attributes: [{ name: 'Sabor', options: ['Fresa', 'Mora'] }], rows: [draftRow('Fresa'), draftRow('Mora', '0')] }
+    expect(validateVariantDraft(ok)).toBeNull()
+    expect(validateVariantDraft({ attributes: [], rows: [] })).toBeNull()
+    expect(validateVariantDraft({ ...ok, attributes: [{ name: ' ', options: ['A'] }] })).toMatch(/nombre/)
+    expect(validateVariantDraft({ ...ok, attributes: [{ name: 'Sabor', options: [] }] })).toMatch(/al menos una opción/)
+    expect(validateVariantDraft({ ...ok, attributes: [{ name: 'Sabor', options: ['Fresa', 'fresa'] }] })).toMatch(/repetidas/)
+    expect(
+      validateVariantDraft({
+        ...ok,
+        attributes: [
+          { name: 'Sabor', options: ['A'] },
+          { name: 'sabor', options: ['B'] },
+        ],
+      })
+    ).toMatch(/repetido/)
+    expect(validateVariantDraft({ ...ok, rows: [draftRow('Fresa', '-1'), draftRow('Mora')] })).toMatch(/Inventario inválido/)
+    expect(validateVariantDraft({ ...ok, rows: [draftRow('Fresa', '2.5'), draftRow('Mora')] })).toMatch(/Inventario inválido/)
+    expect(validateVariantDraft({ ...ok, rows: [{ ...draftRow('Fresa'), price: '0' }, draftRow('Mora')] })).toMatch(/Precio inválido/)
+    // Sin precio general: cada variante debe tener el suyo
+    expect(validateVariantDraft({ ...ok, rows: [{ ...draftRow('Fresa'), price: '' }, draftRow('Mora')] })).toMatch(/Escribe el precio de Sabor: Fresa/)
+    expect(validateVariantDraft({ ...ok, rows: [] })).toMatch(/al menos una variante/)
+    expect(validateVariantDraft({ ...ok, rows: [draftRow('Fresa'), { ...draftRow('Mora'), options: {} }] })).toMatch(/Completa «Sabor»/)
+  })
+
+  it('draftAttributes arma los atributos con las variantes agregadas una a una', () => {
+    const row = (options: Record<string, string>) => ({ ...draftRow(''), options })
+    // Fresa solo en 250 ml; Mora en 250 ml y 500 ml
+    const rows = [
+      row({ Sabor: 'Fresa', Presentación: '250 ml' }),
+      row({ Sabor: 'Mora', Presentación: '250 ml' }),
+      row({ Sabor: 'Mora', Presentación: '500 ml' }),
+    ]
+    expect(draftAttributes(['Sabor'], rows)).toEqual([
+      { name: 'Sabor', options: ['Fresa', 'Mora'] },
+      { name: 'Presentación', options: ['250 ml', '500 ml'] },
+    ])
+    // Sin variantes se conserva el nombre del atributo; sin medida no hay «Presentación»
+    expect(draftAttributes(['Sabor'], [])).toEqual([{ name: 'Sabor', options: [] }])
+    expect(draftAttributes(['Color'], [row({ Color: 'Roja' })])).toEqual([{ name: 'Color', options: ['Roja'] }])
+    // Solo medida (queso de 250 g y 500 g)
+    expect(draftAttributes([], [row({ Presentación: '250 g' }), row({ Presentación: '500 g' })])).toEqual([
+      { name: 'Presentación', options: ['250 g', '500 g'] },
+    ])
+  })
+
+  it('draftFromVariants carga solo las variantes guardadas que se ofrecen', () => {
+    const draft = draftFromVariants(yogurAttrs, yogurVariants, { f1: 'u/f1.jpg' })
+    expect(draft.rows).toHaveLength(6) // 7 guardadas, Natural inactiva
+    const f1 = draft.rows.find((r) => r.options.Sabor === 'Fresa' && r.options.Presentación === '1 L')
+    expect(f1).toMatchObject({ stock: '0', price: '12000', active: true, image_storage_path: 'u/f1.jpg' })
+    expect(draft.attributes).toEqual([
+      { name: 'Sabor', options: ['Fresa', 'Mora', 'Vainilla'] },
+      { name: 'Presentación', options: ['250 ml', '500 ml', '1 L'] },
+    ])
+  })
+
+  it('variantDraftPayload arma los argumentos de save_product_variants', () => {
+    expect(variantDraftPayload(null)).toEqual({ p_attributes: [], p_variants: [] })
+    const payload = variantDraftPayload({
+      attributes: [{ name: ' Sabor ', options: [' Fresa ', ''] }],
+      rows: [{ ...draftRow('Fresa', ' 4 '), price: '9500' }],
+    })
+    expect(payload.p_attributes).toEqual([{ name: 'Sabor', options: ['Fresa'] }])
+    expect(payload.p_variants).toEqual([
+      { options: { Sabor: 'Fresa' }, stock: 4, price: 9500, image_url: null, image_storage_path: null, active: true },
+    ])
+  })
+})
+
+describe('unidades de medida', () => {
+  it('normalizeUnit lleva los valores guardados a la lista', () => {
+    expect(normalizeUnit('kg')).toBe('kg')
+    expect(normalizeUnit('uds')).toBe('und')
+    expect(normalizeUnit('l')).toBe('L')
+    expect(normalizeUnit('')).toBe(DEFAULT_UNIT)
+    expect(normalizeUnit('tonelada')).toBe('tonelada') // se conserva si no está en la lista
+    expect(UNITS.map((u) => u.value)).toEqual(expect.arrayContaining(['g', 'kg', 'lb', 'ml', 'L', 'und']))
+  })
+
+  it('formatMeasure y parseOptionInput agregan la unidad solo a cantidades', () => {
+    expect(formatMeasure('250', 'ml')).toBe('250 ml')
+    expect(formatMeasure('1,5', 'L')).toBe('1,5 L')
+    expect(formatMeasure('Fresa', 'ml')).toBe('Fresa')
+    expect(formatMeasure(' 500 ', '')).toBe('500')
+    expect(parseOptionInput('250, 500; 1,5', 'ml')).toEqual(['250 ml', '500 ml', '1,5 ml'])
+    expect(parseOptionInput('Fresa, Mora,', '')).toEqual(['Fresa', 'Mora'])
+  })
+
+  it('isMeasureAmount acepta solo cantidades positivas', () => {
+    expect(isMeasureAmount('250')).toBe(true)
+    expect(isMeasureAmount(' 1,5 ')).toBe(true)
+    expect(isMeasureAmount('0.5')).toBe(true)
+    expect(isMeasureAmount('0')).toBe(false)
+    expect(isMeasureAmount('250ml')).toBe(false)
+    expect(isMeasureAmount('')).toBe(false)
+  })
+
+  it('la medida es un atributo aparte y no se repiten nombres', () => {
+    expect(isMeasureAttribute(' presentación ')).toBe(true)
+    expect(isMeasureAttribute('Sabor')).toBe(false)
+    const dups = duplicateAttributeNames([
+      { name: 'Color', options: ['Roja'] },
+      { name: 'color ', options: ['Negra'] },
+      { name: 'Sabor', options: [] },
+      { name: '', options: [] },
+    ])
+    expect([...dups]).toEqual(['color'])
+  })
+})
+
+describe('limpieza del Storage', () => {
+  it('uniquePaths quita vacíos y repetidos', () => {
+    expect(uniquePaths(['a/1.jpg', null, '', ' a/1.jpg ', undefined, 'b/2.png'])).toEqual(['a/1.jpg', 'b/2.png'])
+  })
+
+  it('findOrphans deja los archivos en uso y los subidos hace poco', () => {
+    const now = new Date('2026-10-20T12:00:00Z')
+    const files: StoredFile[] = [
+      { bucket: 'product-images', path: 'u1/en-uso.jpg', createdAt: '2026-10-01T00:00:00Z' },
+      { bucket: 'product-images', path: 'u1/viejo.jpg', createdAt: '2026-10-01T00:00:00Z' },
+      { bucket: 'product-images', path: 'u1/reciente.jpg', createdAt: '2026-10-20T06:00:00Z' },
+      { bucket: 'experience-images', path: 'u2/sin-fecha.jpg', createdAt: null },
+    ]
+    const orphans = findOrphans(files, new Set(['u1/en-uso.jpg']), now, 24)
+    expect(orphans.map((o) => o.path)).toEqual(['u1/viejo.jpg'])
   })
 })

@@ -57,6 +57,7 @@ interface Producer {
   document_type: string | null
   document_number: string | null
   user_type: string
+  manually_verified_at: string | null
   created_at: string
 }
 
@@ -164,7 +165,7 @@ export default function StoreAdminScreen({ store, onNavigate }: Props) {
       supabase.from('profiles').select('first_name, last_name').eq('id', user?.id ?? '').maybeSingle(),
       supabase
         .from('profiles')
-        .select('id, first_name, last_name, org_name, email, phone, department, municipality, document_type, document_number, user_type, created_at')
+        .select('id, first_name, last_name, org_name, email, phone, department, municipality, document_type, document_number, user_type, created_at, manually_verified_at')
         .eq('store', store)
         .in('user_type', ['asociacion', 'turismo'])
         .order('created_at', { ascending: false }),
@@ -185,7 +186,10 @@ export default function StoreAdminScreen({ store, onNavigate }: Props) {
 
   const docsOf = (producerId: string) => documents.filter((d) => d.producer_id === producerId)
   // Verificado = RUT y Cámara de Comercio aprobados
-  const isCertified = (producerId: string) => validationState(docsOf(producerId)) === 'validado'
+  // Verificado manualmente por un superadmin: cuenta como validado aunque no tenga documentos
+  const isManual = (producerId: string) => !!producers.find((p) => p.id === producerId)?.manually_verified_at
+  const stateOf = (producerId: string) => validationState(docsOf(producerId), isManual(producerId))
+  const isCertified = (producerId: string) => stateOf(producerId) === 'validado'
   const q = search.trim().toLowerCase()
   const matches = (p: Producer) => !q || [producerName(p), p.first_name, p.last_name, p.email, p.phone].some((v) => v?.toLowerCase().includes(q))
 
@@ -299,7 +303,7 @@ export default function StoreAdminScreen({ store, onNavigate }: Props) {
   }
 
   // ─── Resumen ──────────────────────────────────────────────────────────────
-  const states = producers.map((p) => validationState(docsOf(p.id)))
+  const states = producers.map((p) => stateOf(p.id))
   const pendingProducers = producers.filter((p) => docsOf(p.id).some((d) => d.status === 'pendiente'))
   const stats = [
     { emoji: '👥', value: producers.length, label: 'Productores', bg: C.greenSoft, color: C.green },
@@ -481,7 +485,7 @@ export default function StoreAdminScreen({ store, onNavigate }: Props) {
                           {producers.filter(matches).length === 0 ? (
                             <tr><td colSpan={5} style={{ padding: 36, textAlign: 'center', color: C.muted, fontSize: 14 }}>No hay productores en esta tienda.</td></tr>
                           ) : producers.filter(matches).map((p) => {
-                            const vs = VALIDATION_STATE[validationState(docsOf(p.id))]
+                            const vs = VALIDATION_STATE[stateOf(p.id)]
                             return (
                               <tr key={p.id} style={{ borderBottom: '1px solid #F3ECE2' }} className="hover:bg-[#FDFAF6]">
                                 <td style={td}>
@@ -527,7 +531,7 @@ export default function StoreAdminScreen({ store, onNavigate }: Props) {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                       {reviewList.map((p) => {
                         const docs = docsOf(p.id)
-                        const vs = VALIDATION_STATE[validationState(docs)]
+                        const vs = VALIDATION_STATE[stateOf(p.id)]
                         return (
                           <div key={p.id} style={card}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>

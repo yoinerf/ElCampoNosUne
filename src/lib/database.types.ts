@@ -491,6 +491,8 @@ export type Database = {
           total: number
           unit_price: number
           updated_at: string
+          variant_id: string | null
+          variant_label: string | null
         }
         Insert: {
           created_at?: string
@@ -508,6 +510,8 @@ export type Database = {
           total: number
           unit_price: number
           updated_at?: string
+          variant_id?: string | null
+          variant_label?: string | null
         }
         Update: {
           created_at?: string
@@ -525,6 +529,8 @@ export type Database = {
           total?: number
           unit_price?: number
           updated_at?: string
+          variant_id?: string | null
+          variant_label?: string | null
         }
         Relationships: [
           {
@@ -567,6 +573,13 @@ export type Database = {
             columns: ["status_id"]
             isOneToOne: false
             referencedRelation: "order_statuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_variant_id_fkey"
+            columns: ["variant_id"]
+            isOneToOne: false
+            referencedRelation: "product_variants"
             referencedColumns: ["id"]
           },
         ]
@@ -855,6 +868,91 @@ export type Database = {
           },
         ]
       }
+      product_variant_attributes: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          options: string[]
+          position: number
+          product_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          options: string[]
+          position?: number
+          product_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          options?: string[]
+          position?: number
+          product_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variant_attributes_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_variants: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          image_storage_path: string | null
+          image_url: string | null
+          options: Json
+          position: number
+          price: number | null
+          product_id: string
+          stock: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          image_storage_path?: string | null
+          image_url?: string | null
+          options: Json
+          position?: number
+          price?: number | null
+          product_id: string
+          stock?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          image_storage_path?: string | null
+          image_url?: string | null
+          options?: Json
+          position?: number
+          price?: number | null
+          product_id?: string
+          stock?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_variants_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           category_id: string | null
@@ -862,6 +960,7 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           description: string | null
+          has_variants: boolean
           id: string
           outstanding: boolean | null
           price: number
@@ -880,6 +979,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          has_variants?: boolean
           id?: string
           outstanding?: boolean | null
           price: number
@@ -898,6 +998,7 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          has_variants?: boolean
           id?: string
           outstanding?: boolean | null
           price?: number
@@ -941,6 +1042,32 @@ export type Database = {
           },
         ]
       }
+      profile_roles: {
+        Row: {
+          created_at: string
+          profile_id: string
+          role: string
+        }
+        Insert: {
+          created_at?: string
+          profile_id: string
+          role: string
+        }
+        Update: {
+          created_at?: string
+          profile_id?: string
+          role?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profile_roles_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           address: string | null
@@ -954,6 +1081,8 @@ export type Database = {
           first_name: string
           id: string
           last_name: string
+          manually_verified_at: string | null
+          manually_verified_by: string | null
           municipality: string | null
           org_name: string | null
           phone: string | null
@@ -972,6 +1101,8 @@ export type Database = {
           first_name: string
           id: string
           last_name: string
+          manually_verified_at?: string | null
+          manually_verified_by?: string | null
           municipality?: string | null
           org_name?: string | null
           phone?: string | null
@@ -990,6 +1121,8 @@ export type Database = {
           first_name?: string
           id?: string
           last_name?: string
+          manually_verified_at?: string | null
+          manually_verified_by?: string | null
           municipality?: string | null
           org_name?: string | null
           phone?: string | null
@@ -1067,6 +1200,7 @@ export type Database = {
       }
       store_settings: {
         Row: {
+          ally_name: string | null
           active: boolean
           description: string | null
           name: string
@@ -1081,6 +1215,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          ally_name?: string | null
           active?: boolean
           description?: string | null
           name: string
@@ -1095,6 +1230,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          ally_name?: string | null
           active?: boolean
           description?: string | null
           name?: string
@@ -1269,6 +1405,10 @@ export type Database = {
       }
     }
     Functions: {
+      add_my_role: {
+        Args: { p_org_name?: string; p_role: string }
+        Returns: undefined
+      }
       can_store_admin_manage: { Args: { p_user: string }; Returns: boolean }
       cancel_unpaid_store_orders: { Args: never; Returns: number }
       complete_my_profile: {
@@ -1299,13 +1439,26 @@ export type Database = {
       }
       current_store_admin_store: { Args: never; Returns: string }
       get_user_role: { Args: { p_user_id: string }; Returns: string }
+      has_role: { Args: { p_role: string }; Returns: boolean }
+      set_producer_manual_verification: {
+        Args: { p_producer: string; p_verified: boolean }
+        Returns: undefined
+      }
       is_admin: { Args: never; Returns: boolean }
       is_order_customer: { Args: { p_order_id: string }; Returns: boolean }
       is_order_seller: { Args: { p_order_id: string }; Returns: boolean }
       is_producer_validated: { Args: { p_user: string }; Returns: boolean }
+      product_variant_label: {
+        Args: { p_options: Json; p_product_id: string }
+        Returns: string
+      }
       recalc_order_from_items: {
         Args: { p_order_id: string }
         Returns: undefined
+      }
+      save_product_variants: {
+        Args: { p_attributes: Json; p_product_id: string; p_variants: Json }
+        Returns: Json
       }
       review_producer_document: {
         Args: { p_approve: boolean; p_document_id: string; p_reason?: string }

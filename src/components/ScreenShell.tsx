@@ -1,9 +1,11 @@
-import { useState, useEffect, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useState, useEffect, type CSSProperties, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { clearPromoSession } from '../lib/promoSession'
 import { MAIN_STORE, isMainStore, type StoreId } from '../lib/stores'
 import { useStores } from '../lib/storesContext'
 import { useAppNavigation } from '../lib/navigation'
+import { useAuth } from '../lib/auth'
+import { ROLE_LABELS, sellerRole } from '../lib/roles'
 import NotificationBell from './NotificationBell'
 import logoSrc from '../assets/logo-nofond.png'
 import { isTab, type Tab, type UserRole } from '../lib/types'
@@ -61,7 +63,11 @@ export default function ScreenShell({
   store = MAIN_STORE,
 }: ScreenShellProps) {
   const { alliedStores, getStore } = useStores()
-  const { openStore } = useAppNavigation()
+  const { openStore, switchRole } = useAppNavigation()
+  // Cuenta con varios roles: acceso al panel del otro rol
+  const { roles } = useAuth()
+  const otherSellerRole = userRole === 'comprador' ? sellerRole(roles) : undefined
+  const canSwitchToBuyer = (userRole === 'asociacion' || userRole === 'turismo') && roles.includes('comprador')
   const isAllied = !isMainStore(store)
   const storeConfig = getStore(store)
   const isSeller = userRole === 'asociacion' || userRole === 'turismo'
@@ -90,16 +96,24 @@ export default function ScreenShell({
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
 
-  // Menú de la tienda principal: una entrada por cada tienda aliada activa (store_settings)
-  const navItems: NavItem[] = (isPanelUser || isAllied) ? [] : [
+  // Menú de la tienda principal. Las tiendas aliadas activas (store_settings) van dentro del
+  // desplegable fijo "Aliados", que se muestra después de Experiencias.
+  const showMainNav = !isPanelUser && !isAllied
+  const navItems: NavItem[] = showMainNav ? [
     { id: 'home', label: 'Inicio' },
     { id: 'market', label: 'Productos' },
     { id: 'tourism', label: 'Experiencias' },
-    ...alliedStores.map((s): NavItem => ({ id: 'store', label: s.name, store: s.store })),
     { id: 'about', label: 'Nosotros' },
-  ]
+  ] : []
+  const alliesIndex = navItems.findIndex((item) => item.id === 'about')
+  const [isAlliesOpen, setIsAlliesOpen] = useState(false)
   const isActiveItem = (item: NavItem) => activeNav === item.id && (!item.store || item.store === store)
   const goTo = (item: NavItem) => (item.store ? openStore(item.store) : onNavigate?.(item.id))
+  const goToAlly = (allyStore: StoreId) => {
+    setIsAlliesOpen(false)
+    setIsMenuOpen(false)
+    openStore(allyStore)
+  }
   const handleProfileClick = () => {
     if (onProfileClick) {
       onProfileClick()
@@ -174,11 +188,86 @@ export default function ScreenShell({
               gap: 8,
             }}
           >
-            {navItems.map((item) => {
+            {navItems.map((item, index) => {
               const isActive = isActiveItem(item)
               return (
+                <Fragment key={item.store ?? item.id}>
+                {index === alliesIndex && (
+                  <div style={{ position: 'relative' }}>
+                    <button
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-expanded={isAlliesOpen}
+                      onClick={() => setIsAlliesOpen(!isAlliesOpen)}
+                      style={{
+                        position: 'relative',
+                        background: isAlliesOpen ? '#EAF3EC' : 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '8px 16px',
+                        fontSize: 15,
+                        fontFamily: "'Nunito Sans', sans-serif",
+                        fontWeight: activeNav === 'store' ? 700 : 600,
+                        color: activeNav === 'store' || isAlliesOpen ? '#205134' : '#5A5248',
+                        borderRadius: 10,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        transition: 'all 180ms ease',
+                      }}
+                    >
+                      Aliados
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: isAlliesOpen ? 'rotate(180deg)' : 'none', transition: 'transform 180ms ease' }}>
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                      {activeNav === 'store' && (
+                        <span style={{ position: 'absolute', bottom: -2, left: 16, right: 16, height: 3, borderRadius: 3, background: '#9B4728' }} />
+                      )}
+                    </button>
+                    {isAlliesOpen && (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 90 }} onClick={() => setIsAlliesOpen(false)} />
+                        <div
+                          role="menu"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginTop: 10,
+                            background: '#fff',
+                            borderRadius: 16,
+                            boxShadow: '0 8px 30px rgba(32,81,52,0.12)',
+                            border: '1px solid #EDE4D8',
+                            padding: 8,
+                            minWidth: 260,
+                            zIndex: 100,
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                          }}
+                        >
+                          {alliedStores.length === 0 ? (
+                            <div style={{ padding: '10px 14px', fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>Pronto tendremos nuevos aliados.</div>
+                          ) : alliedStores.map((s) => (
+                            <button
+                              key={s.store}
+                              type="button"
+                              role="menuitem"
+                              onClick={() => goToAlly(s.store)}
+                              style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 10, fontFamily: "'Nunito Sans', sans-serif" }}
+                              className="hover:bg-[#F5EEE6]"
+                            >
+                              {s.ally_name && <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8070' }}>{s.ally_name}</div>}
+                              <div style={{ fontSize: 14, fontWeight: 700, color: '#205134' }}>{s.name}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
                 <button
-                  key={item.store ?? item.id}
                   type="button"
                   onClick={() => goTo(item)}
                   style={{
@@ -210,6 +299,7 @@ export default function ScreenShell({
                     />
                   )}
                 </button>
+                </Fragment>
               )
             })}
           </nav>
@@ -314,6 +404,29 @@ export default function ScreenShell({
                     Admin
                   </button>
                 )}
+                {otherSellerRole && (
+                  <button
+                    type="button"
+                    onClick={() => switchRole(otherSellerRole)}
+                    title={`Ir a tu panel de ${ROLE_LABELS[otherSellerRole]}`}
+                    style={{
+                      background: '#1C3A14',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 10,
+                      padding: '8px 14px',
+                      fontSize: 13,
+                      fontWeight: 700,
+                      fontFamily: "'Nunito Sans', sans-serif",
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      transition: 'background 0.2s',
+                    }}
+                    className="hidden sm:block hover:bg-[#2A6542]"
+                  >
+                    Panel {ROLE_LABELS[otherSellerRole]}
+                  </button>
+                )}
                 <NotificationBell onOpen={(tab) => (tab === 'profile' ? handleProfileClick() : isTab(tab) && onNavigate?.(tab))} />
                 <div style={{ position: 'relative' }}>
                   <button
@@ -415,6 +528,27 @@ export default function ScreenShell({
                         >
                           {userRole === 'comprador' ? 'Mi panel' : 'Mi Perfil'}
                         </button>
+                        {(otherSellerRole || canSwitchToBuyer) && (
+                          <button
+                            onClick={() => { setIsProfileMenuOpen(false); switchRole(otherSellerRole ?? 'comprador'); }}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: '10px 14px',
+                              background: 'transparent',
+                              border: 'none',
+                              cursor: 'pointer',
+                              borderRadius: 8,
+                              fontSize: 14,
+                              fontWeight: 600,
+                              fontFamily: "'Nunito Sans', sans-serif",
+                              color: '#205134',
+                            }}
+                            className="hover:bg-[#F5EEE6]"
+                          >
+                            {otherSellerRole ? `Panel de ${ROLE_LABELS[otherSellerRole]}` : 'Usar como comprador'}
+                          </button>
+                        )}
                         <div style={{ height: 1, background: '#EDE4D8', margin: '4px 0' }} />
                         <button
                           onClick={async () => {
@@ -554,11 +688,29 @@ export default function ScreenShell({
                 <span>Panel Super Admin</span>
               </button>
             )}
-            {navItems.map((item) => {
+            {navItems.map((item, index) => {
               const isActive = isActiveItem(item)
               return (
+                <Fragment key={item.store ?? item.id}>
+                {index === alliesIndex && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '4px 0' }}>
+                    <div style={{ padding: '8px 16px 4px', fontSize: 12, fontWeight: 800, letterSpacing: 0.5, textTransform: 'uppercase', color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>Aliados</div>
+                    {alliedStores.length === 0 ? (
+                      <div style={{ padding: '6px 24px', fontSize: 13, color: '#8A8070', fontFamily: "'Nunito Sans', sans-serif" }}>Pronto tendremos nuevos aliados.</div>
+                    ) : alliedStores.map((s) => (
+                      <button
+                        key={s.store}
+                        type="button"
+                        onClick={() => goToAlly(s.store)}
+                        style={{ background: activeNav === 'store' && store === s.store ? '#EAF3EC' : 'transparent', border: 'none', textAlign: 'left', padding: '10px 16px 10px 28px', borderRadius: 12, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif" }}
+                      >
+                        {s.ally_name && <div style={{ fontSize: 12, fontWeight: 700, color: '#8A8070' }}>{s.ally_name}</div>}
+                        <div style={{ fontSize: 15, fontWeight: 700, color: '#205134' }}>{s.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <button
-                  key={item.store ?? item.id}
                   type="button"
                   onClick={() => { goTo(item); setIsMenuOpen(false); }}
                   style={{
@@ -576,6 +728,7 @@ export default function ScreenShell({
                 >
                   {item.label}
                 </button>
+                </Fragment>
               )
             })}
           </div>

@@ -11,6 +11,8 @@ import {
 } from '../lib/dateColombia'
 import logoSrc from '../assets/logo-nofond.png'
 import ProductModal, { type ProductFormData, type ProductInitialData } from '../components/ProductModal'
+import { persistProductVariants } from '../lib/variants'
+import { deleteExperienceWithFiles, deleteProductWithFiles, listOrphanImages, removeOrphanImages } from '../lib/storageCleanup'
 import ExperienceModal, { type ExperienceFormData, type ExperienceInitialData } from '../components/ExperienceModal'
 import OrdersTable, { OrderStatusSummary } from '../components/OrdersTable'
 import { fetchOrderItems, fetchOrderStatuses, summarizeStatusesByItem, type OrderItemRow, type OrderStatus } from '../lib/orders'
@@ -23,7 +25,8 @@ import { usePanelSectionRequest } from '../lib/notifications'
 import CertifiedBadge from '../components/CertifiedBadge'
 import { onlyPhoneDigits, phoneInputProps } from '../lib/phone'
 import { generateTempPassword } from '../components/TempPasswordModal'
-import { fetchDocuments, validationState } from '../lib/producerDocuments'
+import { fetchDocuments, setManualVerification, validationState } from '../lib/producerDocuments'
+import { confirmDialog } from '../components/ConfirmDialog'
 import { useStores } from '../lib/storesContext'
 import { uploadPublicImage } from '../lib/imageUpload'
 import { primaryImageUrl } from '../lib/catalog'
@@ -54,6 +57,8 @@ interface UserRow {
   document_type?: string | null
   document_number?: string | null
   email?: string
+  // Verificado manualmente por el superadmin (sin RUT ni Cámara de Comercio)
+  manually_verified_at?: string | null
   phone?: string | null
   created_at: string
 }
@@ -165,6 +170,45 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
+  // Archivos del Storage que ya no usa ningún producto, variante ni experiencia
+  const [cleaningStorage, setCleaningStorage] = useState(false)
+  const handleCleanOrphanImages = async () => {
+    setCleaningStorage(true)
+    try {
+      const orphans = await listOrphanImages()
+      if (orphans.length === 0) {
+        showToast('✅ No hay imágenes sin uso en el Storage')
+        return
+      }
+      const confirmed = await confirmDialog({
+        title: 'Limpiar imágenes sin uso',
+        message: `Hay ${orphans.length} archivo(s) que no usa ningún producto, variante ni experiencia (subidos hace más de 24 horas). ¿Borrarlos del Storage? No se puede deshacer.`,
+        confirmText: 'Borrar archivos',
+        tone: 'danger',
+      })
+      if (!confirmed) return
+      const removed = await removeOrphanImages(orphans)
+      showToast(`🧹 Se borraron ${removed} archivo(s) sin uso`)
+    } catch (e) {
+      showToast('❌ No se pudo limpiar el Storage: ' + (e instanceof Error ? e.message : String(e)))
+    } finally {
+      setCleaningStorage(false)
+    }
+  }
+
+  // Verificación manual del productor: puede publicar sin cargar RUT ni Cámara de Comercio
+  const toggleManualVerification = async (u: UserRow, verified: boolean) => {
+    const name = u.org_name?.trim() || `${u.first_name} ${u.last_name}`.trim()
+    const confirmed = await confirmDialog(verified
+      ? { title: `¿Verificar a ${name}?`, message: 'Quedará verificado y podrá publicar sin cargar el RUT ni la Cámara de Comercio.', confirmText: 'Verificar' }
+      : { title: `¿Quitar la verificación de ${name}?`, message: 'Para volver a publicar necesitará el RUT y la Cámara de Comercio aprobados.', confirmText: 'Quitar verificación', tone: 'danger' })
+    if (!confirmed) return
+    const { error } = await setManualVerification(u.id, verified)
+    if (error) return showToast('❌ ' + error.message)
+    showToast(verified ? '✅ Productor verificado' : '✅ Verificación retirada')
+    loadAll(true)
+  }
+
   // silent: recarga sin mostrar el esqueleto de carga (ej. tras cambiar el estado de un pedido)
   const loadAll = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -181,7 +225,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         itemsData,
         ticketsData,
       ] = await Promise.all([
-        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('id, first_name, last_name, org_name, user_type, store, department, municipality, document_type, document_number, email, phone, created_at, manually_verified_at').order('created_at', { ascending: false }),
         supabase.from('products').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('experiences').select('*, images(*)').order('created_at', { ascending: false }),
         supabase.from('advertisements').select('*').order('created_at', { ascending: false }),
@@ -200,7 +244,8 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       setUsers((usersData || []) as UserRow[])
       const sellerIds = ((usersData || []) as UserRow[]).filter(u => u.user_type === 'asociacion' || u.user_type === 'turismo').map(u => u.id)
       fetchDocuments(sellerIds).then((docs) => {
-        setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id)) === 'validado')))
+        const manualIds = new Set(((usersData || []) as UserRow[]).filter(u => u.manually_verified_at).map(u => u.id))
+        setCertifiedIds(new Set(sellerIds.filter((id) => validationState(docs.filter((d) => d.producer_id === id), manualIds.has(id)) === 'validado')))
       })
 
       const userMap = new Map((usersData || []).map((u) => [u.id, u]))
@@ -268,8 +313,14 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     if (!confirmDelete) return
     const { type, id } = confirmDelete
     let error: { message: string } | null = null
-    if (type === 'product') ({ error } = await supabase.from('products').delete().eq('id', id))
-    else if (type === 'experience') ({ error } = await supabase.from('experiences').delete().eq('id', id))
+    // Productos y experiencias: se borra el registro y luego sus fotos del Storage
+    if (type === 'product') {
+      const result = await deleteProductWithFiles(id)
+      if (result.error) error = { message: result.error }
+    } else if (type === 'experience') {
+      const result = await deleteExperienceWithFiles(id)
+      if (result.error) error = { message: result.error }
+    }
     else if (type === 'user') {
       // Edge Function: borra el usuario de Auth y su perfil (cascade)
       const result = await adminDeleteUser(id)
@@ -365,7 +416,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
     const payload: TableInsert<'products'> = {
       title: formData.title.trim(),
       price: Number(formData.price),
-      unit: formData.unit || 'uds',
+      unit: formData.unit || 'und',
       category_id: formData.category_id || null,
       certified: formData.certified ?? true,
       stock: `${formData.stockNum || '0'}`,
@@ -374,6 +425,7 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
       producer_id: targetProducerId,
     }
 
+    let savedId = productModal.editId
     if (productModal.editId) {
       await supabase.from('products').update(payload).eq('id', productModal.editId)
       if (formData.uploadedImages && formData.uploadedImages.length > 0) {
@@ -397,13 +449,15 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
         showToast('❌ Error creando producto: ' + prodErr.message)
         return
       }
+      savedId = newProd?.id ?? null
       if (newProd && formData.uploadedImages?.length > 0) {
         const rows = formData.uploadedImages.map((img) => ({ product_id: newProd.id, experience_id: null, storage_path: img.storagePath, image_url: img.imageUrl, is_primary: img.isPrimary, sort_order: img.sortOrder }))
         await supabase.from('images').insert(rows)
       }
     }
+    const variantsError = savedId ? await persistProductVariants(savedId, formData.variants, formData.hadVariants, formData.stockNum, formData.variantImagesToDelete) : null
     setProductModal({ open: false, editId: null })
-    showToast('✅ Producto guardado correctamente')
+    showToast(variantsError ? '⚠️ Producto guardado, pero sus variantes no: ' + variantsError : '✅ Producto guardado correctamente')
     loadAll()
   }
 
@@ -948,6 +1002,17 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                 {I.plus} <span className="hidden sm:inline">Nuevo Usuario</span>
               </button>
             )}
+            {(section === 'products' || section === 'experiences') && (
+              <button
+                type="button"
+                onClick={handleCleanOrphanImages}
+                disabled={cleaningStorage}
+                style={{ ...btnPrimary, background: '#FAF8F5', color: B.text, border: `1px solid ${B.borderStrong}`, opacity: cleaningStorage ? 0.6 : 1 }}
+                title="Borra del Storage las fotos que ya no usa ningún producto ni experiencia"
+              >
+                🧹 <span className="hidden sm:inline">{cleaningStorage ? 'Revisando…' : 'Limpiar imágenes sin uso'}</span>
+              </button>
+            )}
             {section === 'products' && (
               <button type="button" onClick={() => setProductModal({ open: true, editId: null })} style={btnPrimary}>
                 {I.plus} <span className="hidden sm:inline">Nuevo Producto</span>
@@ -1121,6 +1186,13 @@ export default function SuperAdminScreen({ onNavigate }: Props) {
                                   <TD>
                                     <div style={{ display: 'flex', gap: 6 }}>
                                       <button type="button" style={btnEdit} onClick={() => setUserEditModal({ ...u })}>✏️ Editar</button>
+                                      {(u.user_type === 'asociacion' || u.user_type === 'turismo') && (
+                                        u.manually_verified_at ? (
+                                          <button type="button" style={btnEdit} title="Verificado manualmente: quitar la verificación" onClick={() => toggleManualVerification(u, false)}>✖ Quitar verificación</button>
+                                        ) : !certifiedIds.has(u.id) && (
+                                          <button type="button" style={btnEdit} title="Verificar al productor sin exigir RUT ni Cámara de Comercio" onClick={() => toggleManualVerification(u, true)}>✓ Verificar</button>
+                                        )
+                                      )}
                                       <button type="button" style={btnEdit} title="Asignar contraseña temporal" onClick={() => setTempPasswordUser({ id: u.id, name: `${u.first_name} ${u.last_name}`.trim(), email: u.email })}>🔑</button>
                                       <button type="button" style={btnDanger} onClick={() => setConfirmDelete({ type: 'user', id: u.id, name: `${u.first_name} ${u.last_name}` })}>{I.trash}</button>
                                     </div>

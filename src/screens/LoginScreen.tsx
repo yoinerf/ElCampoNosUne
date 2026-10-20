@@ -197,7 +197,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               color: 'rgba(255, 255, 255, 0.88)',
             }}
           >
-            EL CAMPO NOS UNE
+            SAKI5
           </p>
         </div>
       </div>

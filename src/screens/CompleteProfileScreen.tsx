@@ -4,6 +4,7 @@ import { clearPromoSession } from '../lib/promoSession'
 import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
 import DocumentFields from '../components/DocumentFields'
 import LocationFields from '../components/LocationFields'
+import LegalNotice from '../components/LegalNotice'
 import logoSrc from '../assets/logo-nofond.png'
 
 // Primera vez con Google (o cuenta sin perfil): no hubo formulario de registro, así que se piden los datos
@@ -149,6 +150,7 @@ export default function CompleteProfileScreen({ onDone }: { onDone: () => void }
         <button type="button" onClick={signOut} style={{ width: '100%', background: 'none', border: 'none', color: '#6B7280', fontSize: 13, fontWeight: 600, marginTop: 12, cursor: 'pointer', fontFamily: "'Nunito Sans', sans-serif", textDecoration: 'underline' }}>
           Cerrar sesión
         </button>
+        <LegalNotice action="guardar tus datos" />
       </form>
     </div>
   )

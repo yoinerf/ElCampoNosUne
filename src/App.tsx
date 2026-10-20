@@ -6,6 +6,7 @@ import { supabase, authRedirectInfo } from './lib/supabase'
 import { MAIN_STORE, cartKey, isMainStore, type StoreId } from './lib/stores'
 import { useStores } from './lib/storesContext'
 import { pathForTab, routeFromPath } from './lib/routes'
+import { legalPageFromPath } from './lib/legal'
 import { AppNavigationContext } from './lib/navigation'
 import type { Tab, UserRole } from './lib/types'
 import { useAuth } from './lib/auth'
@@ -26,6 +27,7 @@ const SetNewPasswordScreen = lazy(() => import('./screens/SetNewPasswordScreen')
 const StoreAdminScreen = lazy(() => import('./screens/StoreAdminScreen'))
 const AboutScreen = lazy(() => import('./screens/AboutScreen'))
 const CompleteProfileScreen = lazy(() => import('./screens/CompleteProfileScreen'))
+const LegalScreen = lazy(() => import('./screens/LegalScreen'))
 
 function ScreenLoader() {
   return (
@@ -60,6 +62,16 @@ const getVisibleTabs = (role: UserRole | undefined, store: StoreId, hasAlliedSto
 export default function App() {
   const { loading: checkingSession } = useAuth()
   const { loading: loadingStores } = useStores()
+
+  // Privacidad y condiciones: públicas, sin esperar sesión ni tiendas
+  const legalPage = legalPageFromPath(window.location.pathname)
+  if (legalPage) {
+    return (
+      <Suspense fallback={<ScreenLoader />}>
+        <LegalScreen page={legalPage} />
+      </Suspense>
+    )
+  }
 
   if (checkingSession || loadingStores) {
     return (

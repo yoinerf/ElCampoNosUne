@@ -77,7 +77,6 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [reservingExperienceId, setReservingExperienceId] = useState<string | null>(null)
   const [submitMessage, setSubmitMessage] = useState('')
   const [reservationModalOpen, setReservationModalOpen] = useState(false)
   const [detailGuests, setDetailGuests] = useState(1)
@@ -295,57 +294,6 @@ export default function TourismScreen({ onRequireAuth, onNavigate, activeNav, on
     setDetailGuests(guests)
     setDetailDate(date)
     setReservationModalOpen(true)
-  }
-
-  const handleReserveExperience = async (exp: Experience) => {
-    if (reservingExperienceId === exp.id) return false
-
-    setReservingExperienceId(exp.id)
-    setSubmitMessage('')
-
-    const { data: userData } = await supabase.auth.getUser()
-    const user = userData.user
-
-    if (!user) {
-      setSubmitMessage('Debes iniciar sesión para reservar una experiencia')
-      setReservingExperienceId(null)
-      return false
-    }
-
-    const { error } = await supabase.from('reservations').insert([
-      {
-        user_id: user.id,
-        experience_id: exp.id,
-        quantity: 1,
-        status: 'pendiente',
-      },
-    ])
-
-    if (error) {
-      setSubmitMessage(error.message)
-      setReservingExperienceId(null)
-      return false
-    }
-
-    const activitySaved = await recordActivity({
-      userId: user.id,
-      userRoleValue: 'comprador',
-      type: 'reservation',
-      title: 'Reserva creada',
-      description: `Reservaste ${exp.title}`,
-      entityType: 'experiences',
-      entityId: exp.id,
-      metadata: { experience_title: exp.title, price: exp.price },
-    })
-
-    const confirmationMessage = activitySaved
-      ? `Reserva creada para ${exp.title}`
-      : `Reserva creada para ${exp.title}, pero no se pudo registrar la actividad.`
-
-    setSubmitMessage(confirmationMessage)
-    setReservingExperienceId(null)
-    setSelected(null)
-    return activitySaved
   }
 
   // Validación documental antes de abrir el formulario (la BD también lo bloquea al guardar)

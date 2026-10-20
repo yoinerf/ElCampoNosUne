@@ -2,7 +2,9 @@ import { useEffect } from 'react'
 import { supabase } from './supabase'
 
 // Notificaciones de la campanita. Las crean triggers en la BD
-// (ver Instructions/migration_notifications.sql); el cliente solo las lee y las marca como leídas.
+// (ver Instructions/migration_notifications.sql). El cliente las lee y las borra cuando el
+// usuario las abre o las marca como vistas, para no acumular registros.
+// Como respaldo, un job diario borra las de más de 60 días.
 export interface NotificationRow {
   id: string
   user_id: string
@@ -35,16 +37,11 @@ export async function fetchNotifications(userId: string, limit = 20): Promise<No
   return (data ?? []) as NotificationRow[]
 }
 
-export async function markNotificationRead(id: string) {
-  return supabase.from('user_notifications').update({ read_at: new Date().toISOString() }).eq('id', id)
-}
-
-export async function markAllNotificationsRead(userId: string) {
-  return supabase
-    .from('user_notifications')
-    .update({ read_at: new Date().toISOString() })
-    .eq('user_id', userId)
-    .is('read_at', null)
+/** Borra notificaciones ya vistas (RLS: solo las del propio usuario) */
+export async function deleteNotifications(ids: string[]) {
+  if (ids.length === 0) return
+  const { error } = await supabase.from('user_notifications').delete().in('id', ids)
+  if (error) console.error('Error borrando notificaciones:', error.message)
 }
 
 // Avisa en tiempo real cuando llega una notificación nueva para el usuario

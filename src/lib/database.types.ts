@@ -143,24 +143,6 @@ export type Database = {
         }
         Relationships: []
       }
-      departments: {
-        Row: {
-          dane_code: string
-          id: number
-          name: string
-        }
-        Insert: {
-          dane_code: string
-          id?: number
-          name: string
-        }
-        Update: {
-          dane_code?: string
-          id?: number
-          name?: string
-        }
-        Relationships: []
-      }
       experiences: {
         Row: {
           capacity: string | null
@@ -334,63 +316,6 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      notifications: {
-        Row: {
-          color: string | null
-          created_at: string | null
-          entity_id: string | null
-          entity_type: string | null
-          icon: string | null
-          id: string
-          metadata: Json | null
-          text: string
-          type: string | null
-          user_id: string | null
-          user_role: string | null
-        }
-        Insert: {
-          color?: string | null
-          created_at?: string | null
-          entity_id?: string | null
-          entity_type?: string | null
-          icon?: string | null
-          id?: string
-          metadata?: Json | null
-          text: string
-          type?: string | null
-          user_id?: string | null
-          user_role?: string | null
-        }
-        Update: {
-          color?: string | null
-          created_at?: string | null
-          entity_id?: string | null
-          entity_type?: string | null
-          icon?: string | null
-          id?: string
-          metadata?: Json | null
-          text?: string
-          type?: string | null
-          user_id?: string | null
-          user_role?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "notifications_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "notifications_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "public_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1139,65 +1064,6 @@ export type Database = {
           },
         ]
       }
-      reservations: {
-        Row: {
-          created_at: string | null
-          experience_id: string | null
-          id: string
-          product_id: string | null
-          quantity: number | null
-          status: string | null
-          user_id: string | null
-        }
-        Insert: {
-          created_at?: string | null
-          experience_id?: string | null
-          id?: string
-          product_id?: string | null
-          quantity?: number | null
-          status?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          created_at?: string | null
-          experience_id?: string | null
-          id?: string
-          product_id?: string | null
-          quantity?: number | null
-          status?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "reservations_experience_id_fkey"
-            columns: ["experience_id"]
-            isOneToOne: false
-            referencedRelation: "experiences"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reservations_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reservations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "reservations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "public_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       store_settings: {
         Row: {
           ally_name: string | null
@@ -1405,6 +1271,11 @@ export type Database = {
       }
     }
     Functions: {
+      admin_delete_order: {
+        Args: { p_order_id: string; p_restock?: boolean }
+        Returns: Json
+      }
+      admin_delete_store: { Args: { p_store: string }; Returns: Json }
       add_my_role: {
         Args: { p_org_name?: string; p_role: string }
         Returns: undefined
@@ -1422,10 +1293,6 @@ export type Database = {
           p_user_type: string
         }
         Returns: undefined
-      }
-      create_cash_on_delivery_order: {
-        Args: { p_items: Json; p_shipping?: Json; p_shipping_fee?: number }
-        Returns: Json
       }
       create_store_order: {
         Args: {

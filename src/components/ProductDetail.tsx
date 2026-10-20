@@ -2,7 +2,19 @@ import React, { useRef, useState, useEffect } from 'react'
 import FavoriteButton from './FavoriteButton'
 import { supabase } from '../lib/supabase'
 import { isMainStore, type StoreId } from '../lib/stores'
-import type { Product } from '../lib/catalog'
+import { hasVariants, type Product } from '../lib/catalog'
+import {
+  autoSelect,
+  availableStock,
+  cartLineKey,
+  findVariant,
+  offeredOptions,
+  optionStates,
+  priceRange,
+  selectOption,
+  variantPrice,
+  type VariantOptions,
+} from '../lib/variants'
 import type { Database } from '../lib/database.types'
 
 // Reseña con el nombre público del autor (vista public_profiles)
@@ -16,8 +28,9 @@ interface ProductDetailProps {
   cart: Record<string, number>
   formatPrice: (n: number) => string
   onBack: () => void
-  onAddToCart: (id: string) => void
-  onRemoveFromCart: (id: string) => void
+  /** key: id del producto o línea de la combinación elegida (cartLineKey) */
+  onAddToCart: (key: string) => void
+  onRemoveFromCart: (key: string) => void
   onCheckout: () => void
   related: Product[]
   onSelectRelated: (id: string) => void
@@ -52,6 +65,33 @@ export default function ProductDetail({
   })()
   const [activeTab, setActiveTab] = useState<'descripcion' | 'origen' | 'impacto' | 'resenas'>('descripcion')
   const [mainImg, setMainImg] = useState(product.img)
+
+  // Variantes: el comprador elige una combinación antes de agregar al carrito
+  const attributes = product.variantAttributes ?? []
+  const variants = product.variants ?? []
+  const withVariants = hasVariants(product)
+  // Selección del producto que se está viendo (al cambiar de producto empieza de nuevo)
+  const [picked, setPicked] = useState<{ productId: string; selection: VariantOptions } | null>(null)
+  const selection = picked?.productId === product.id ? picked.selection : autoSelect(attributes, variants, {})
+  const selectedVariant = withVariants ? findVariant(attributes, variants, selection) : null
+  const needsSelection = withVariants && !selectedVariant
+  const variantSoldOut = !!selectedVariant && selectedVariant.stock <= 0
+  // Línea del carrito de lo que se está viendo y cuántas unidades se pueden llevar
+  const lineKey = cartLineKey(product.id, selectedVariant?.id)
+  const inCart = cart[lineKey] ?? 0
+  const lineLimit = availableStock(product.stock, selectedVariant)
+  const maxReached = lineLimit !== null && inCart >= lineLimit
+  const range = priceRange(product.price, variants)
+  const displayPrice = selectedVariant ? variantPrice(product.price, selectedVariant) : withVariants ? range.min : product.price
+
+  const handleSelectOption = (attributeName: string, value: string) => {
+    const next = selectOption(attributes, variants, selection, attributeName, value)
+    setPicked({ productId: product.id, selection: next })
+    const variant = findVariant(attributes, variants, next)
+    if (variant?.image_url) setMainImg(variant.image_url)
+    // Al quitar la selección vuelve la foto del producto si se estaba viendo la de una variante
+    else if (variants.some((v) => v.image_url === mainImg)) setMainImg(product.img)
+  }
   const carouselRef = useRef<HTMLDivElement>(null)
 
   const scrollCarousel = (direction: 'left' | 'right') => {
@@ -237,13 +277,17 @@ export default function ProductDetail({
 
               {/* Precio */}
               <div style={{ marginBottom: 12, display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                {withVariants && !selectedVariant && range.min !== range.max && (
+                  <span className="text-xs sm:text-sm text-[#7A6E62] font-semibold">Desde</span>
+                )}
                 <span
                   className={`font-['Poppins'] text-2xl sm:text-3xl font-extrabold tracking-tight ${isExperience ? 'text-[#205134]' : 'text-[#C8860A]'
                     }`}
                 >
-                  {formatPrice(product.price)}
+                  {formatPrice(displayPrice)}
                 </span>
-                <span className="text-xs sm:text-sm text-[#7A6E62] font-semibold">/ {product.unit}</span>
+                {/* Con variantes la medida va en cada una (250 ml, 1 lb): no hay unidad general */}
+                {!withVariants && <span className="text-xs sm:text-sm text-[#7A6E62] font-semibold">/ {product.unit}</span>}
               </div>
 
               {/* Descripción */}
@@ -253,24 +297,83 @@ export default function ProductDetail({
                   : 'Producto del campo colombiano, seleccionado directamente de productores y comunidades locales que trabajan con prácticas sostenibles.')}
               </p>
 
+              {/* Selector de variantes: se elige y se quita tocando la opción. Las que no combinan con lo
+                  elegido se ven punteadas y al tocarlas cambian la selección; sin stock = Agotado */}
+              {withVariants && !isOutOfStock && (
+                <div style={{ marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {attributes.map((attribute) => {
+                    const states = optionStates(attributes, variants, selection, attribute.name)
+                    const offered = offeredOptions(attributes, variants, attribute.name)
+                    return (
+                      <div key={attribute.name}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#1C3A14', marginBottom: 6 }}>
+                          {attribute.name}
+                          {selection[attribute.name] && <span style={{ fontWeight: 600, color: '#7A6E62' }}>: {selection[attribute.name]}</span>}
+                        </div>
+                        <div role="group" aria-label={attribute.name} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {offered.map((option) => {
+                            const selected = selection[attribute.name] === option
+                            const soldOut = states[option] === 'soldout'
+                            // No existe con lo elegido en los otros atributos: al tocarla se cambia la selección
+                            const incompatible = !selected && states[option] === 'unavailable'
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => handleSelectOption(attribute.name, option)}
+                                title={selected ? 'Toca de nuevo para quitar' : incompatible ? 'No disponible con lo elegido: tócala para cambiar' : soldOut ? 'Agotado' : undefined}
+                                style={{
+                                  padding: '7px 14px',
+                                  borderRadius: 12,
+                                  border: selected ? '2px solid #205134' : incompatible ? '1.5px dashed #B8AC9C' : '1.5px solid #E8E2D9',
+                                  background: selected ? '#EAF3EC' : soldOut || incompatible ? '#FAF7F3' : '#fff',
+                                  color: soldOut || incompatible ? '#9B8B7A' : '#205134',
+                                  opacity: incompatible ? 0.55 : 1,
+                                  textDecoration: soldOut ? 'line-through' : 'none',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  fontFamily: "'Nunito Sans', sans-serif",
+                                }}
+                              >
+                                {option}
+                                {soldOut && <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: '#9B4728', textDecoration: 'none', display: 'inline-block' }}>Agotado</span>}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {Object.keys(selection).length > 0 && (
+                    <span style={{ fontSize: 11, color: '#9B8B7A' }}>Toca una opción elegida para quitarla.</span>
+                  )}
+                </div>
+              )}
+
               <span
                 style={{
                   display: 'inline-flex',
                   alignItems: 'center',
                   alignSelf: 'flex-start',
                   gap: 6,
-                  background: isOutOfStock ? '#FFF3EB' : '#F0F7EC',
-                  border: isOutOfStock ? '1px solid #F3D2C4' : '1px solid #C8E0BC',
+                  background: isOutOfStock || variantSoldOut ? '#FFF3EB' : '#F0F7EC',
+                  border: isOutOfStock || variantSoldOut ? '1px solid #F3D2C4' : '1px solid #C8E0BC',
                   borderRadius: 20,
                   padding: '6px 14px',
                   fontSize: 13,
-                  color: isOutOfStock ? '#9B4728' : '#205134',
+                  color: isOutOfStock || variantSoldOut ? '#9B4728' : '#205134',
                   fontWeight: 600,
                   marginBottom: '1.25rem',
                 }}
               >
                 {isOutOfStock
                   ? (isExperience ? 'Sin cupos disponibles' : '0 unidades disponibles')
+                  : withVariants
+                    ? (selectedVariant
+                      ? (variantSoldOut ? 'Agotado' : <><strong>{selectedVariant.stock}</strong> unidades disponibles.</>)
+                      : 'Elige una opción para ver la disponibilidad')
                   : (!isNaN(Number(product.stock)) && product.stock !== ''
                     ? <><strong>{product.stock}</strong> {isExperience ? 'cupos disponibles.' : 'unidades disponibles.'}</>
                     : product.stock)}
@@ -319,7 +422,42 @@ export default function ProductDetail({
                 <div style={{ padding: '14px 18px', background: '#F5EEE6', borderRadius: 14, color: '#205134', fontSize: 14, fontWeight: 700, textAlign: 'center', marginBottom: 16, border: '1px solid #EDE4D8' }}>
                   Vista previa de producto (Modo asociación / productor)
                 </div>
-              ) : cart[product.id] && !isExperience ? (
+              ) : !isExperience && needsSelection ? (
+                <button
+                  type="button"
+                  disabled
+                  style={{
+                    width: '100%',
+                    height: 52,
+                    borderRadius: 14,
+                    border: 'none',
+                    background: '#C8D6CC',
+                    color: '#fff',
+                    fontSize: 15,
+                    fontWeight: 800,
+                    cursor: 'not-allowed',
+                    marginBottom: 16,
+                  }}
+                >
+                  Elige {attributes.filter((a) => !selection[a.name]).map((a) => a.name.toLowerCase()).join(' y ') || 'una opción'}
+                </button>
+              ) : !isExperience && variantSoldOut ? (
+                <div
+                  style={{
+                    padding: '14px 18px',
+                    background: '#FFF3EB',
+                    borderRadius: 14,
+                    color: '#9B4728',
+                    fontSize: 14,
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    marginBottom: 16,
+                    border: '1px solid #F3D2C4',
+                  }}
+                >
+                  🚫 Esta opción está agotada. Elige otra.
+                </div>
+              ) : inCart && !isExperience ? (
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
                   <div
                     style={{
@@ -333,18 +471,20 @@ export default function ProductDetail({
                   >
                     <button
                       type="button"
-                      onClick={() => onRemoveFromCart(product.id)}
+                      onClick={() => onRemoveFromCart(lineKey)}
                       style={{ width: 48, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 22, fontWeight: 800, cursor: 'pointer' }}
                     >
                       −
                     </button>
                     <span style={{ width: 48, textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#205134' }}>
-                      {cart[product.id]}
+                      {inCart}
                     </span>
                     <button
                       type="button"
-                      onClick={() => onAddToCart(product.id)}
-                      style={{ width: 48, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 22, fontWeight: 800, cursor: 'pointer' }}
+                      onClick={() => onAddToCart(lineKey)}
+                      disabled={maxReached}
+                      title={maxReached ? 'No hay más unidades disponibles' : undefined}
+                      style={{ width: 48, height: '100%', border: 'none', background: '#eee9e913', color: '#205134', fontSize: 22, fontWeight: 800, cursor: maxReached ? 'not-allowed' : 'pointer', opacity: maxReached ? 0.4 : 1 }}
                     >
                       +
                     </button>
@@ -375,7 +515,7 @@ export default function ProductDetail({
               ) : !isExperience ? (
                 <button
                   type="button"
-                  onClick={() => onAddToCart(product.id)}
+                  onClick={() => onAddToCart(lineKey)}
                   style={{
                     width: '100%',
                     height: 52,
@@ -885,7 +1025,7 @@ export default function ProductDetail({
                           {rel.title}
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 800, color: '#9B4728', marginBottom: 10 }}>
-                          {formatPrice(rel.price)}
+                          {formatPrice(hasVariants(rel) ? priceRange(rel.price, rel.variants ?? []).min : rel.price)}
                         </div>
                         {!isProducer && (
                           isRelOutOfStock ? (
@@ -904,6 +1044,24 @@ export default function ProductDetail({
                             >
                               {rel.type === 'experiencia' ? 'Sin cupos' : 'Agotado'}
                             </div>
+                          ) : hasVariants(rel) ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onSelectRelated(rel.id) }}
+                              style={{
+                                width: '100%',
+                                padding: '8px',
+                                borderRadius: 10,
+                                border: '1.5px solid #E8E2D9',
+                                background: '#fff',
+                                color: '#205134',
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Elegir opciones
+                            </button>
                           ) : (cart[rel.id] ?? 0) > 0 && addingProduct?.id !== rel.id ? (
                             <button
                               type="button"

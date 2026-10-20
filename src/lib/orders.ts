@@ -18,6 +18,9 @@ export interface OrderItemRow {
   seller_id: string | null
   title: string
   img: string | null
+  // Combinación comprada (productos con variantes): "Sabor: Fresa · Presentación: 1 L"
+  variant_id?: string | null
+  variant_label?: string | null
   quantity: number
   unit_price: number
   total: number
@@ -37,6 +40,11 @@ export interface OrderItemRow {
     created_at: string
   } | null
   seller?: { org_name: string | null; first_name: string | null; last_name: string | null } | null
+}
+
+/** Nombre del ítem con su combinación: "Yogur (Sabor: Fresa · Presentación: 1 L)" */
+export function orderItemName(item: { title: string; variant_label?: string | null }) {
+  return item.variant_label ? `${item.title} (${item.variant_label})` : item.title
 }
 
 // Colores de las insignias por código de estado (tabla order_statuses)

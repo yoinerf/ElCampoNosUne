@@ -10,6 +10,8 @@ export interface BuyerOrderItem {
   id: string
   title: string
   img: string | null
+  /** Combinación comprada (productos con variantes) */
+  variant_label?: string | null
   quantity: number
   unit_price: number
   total: number
@@ -40,7 +42,7 @@ export interface BuyerOrder {
 export async function fetchMyOrders(userId: string): Promise<BuyerOrder[]> {
   const { data, error } = await supabase
     .from('orders')
-    .select('*, items:order_items(id, title, img, quantity, unit_price, total, status_id, product_id, experience_id, created_at)')
+    .select('*, items:order_items(id, title, img, variant_label, quantity, unit_price, total, status_id, product_id, experience_id, created_at)')
     .eq('customer_id', userId)
     .order('created_at', { ascending: false })
   if (error) console.error('Error cargando pedidos:', error.message)

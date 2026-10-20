@@ -4,6 +4,7 @@ import {
   REQUIRED_DOCS,
   VALIDATION_STATE,
   fetchDocuments,
+  fetchManualVerifications,
   getDocumentUrl,
   uploadProducerDocument,
   validationState,
@@ -29,10 +30,14 @@ export default function ProducerDocumentsCard({ userId, style, onValidationChang
   const [message, setMessage] = useState<{ type: 'ok' | 'error'; text: string } | null>(null)
   const inputs = useRef<Partial<Record<DocType, HTMLInputElement | null>>>({})
 
+  // Verificado manualmente por un superadmin: no necesita los documentos
+  const [manuallyVerified, setManuallyVerified] = useState(false)
+
   const load = async () => {
-    const list = await fetchDocuments([userId])
+    const [list, manual] = await Promise.all([fetchDocuments([userId]), fetchManualVerifications([userId])])
     setDocs(list)
-    onValidationChange?.(validationState(list))
+    setManuallyVerified(manual.has(userId))
+    onValidationChange?.(validationState(list, manual.has(userId)))
   }
 
   useEffect(() => { if (userId) load() }, [userId])
@@ -68,8 +73,8 @@ export default function ProducerDocumentsCard({ userId, style, onValidationChang
     else setMessage({ type: 'error', text: 'No se pudo abrir el documento.' })
   }
 
-  const state = validationState(docs)
-  const vs = VALIDATION_STATE[state]
+  const state = validationState(docs, manuallyVerified)
+  const vs = manuallyVerified ? { ...VALIDATION_STATE.validado, label: 'Verificado por el administrador' } : VALIDATION_STATE[state]
 
   return (
     <div style={{ background: '#fff', border: '1px solid #EDE4D8', borderRadius: 24, padding: 28, fontFamily: "'Nunito Sans', sans-serif", ...style }}>

@@ -1,6 +1,11 @@
-import { useEffect, useState } from 'react'
-import ScreenShell from '../components/ScreenShell'
+import { useEffect, useState, type ReactNode } from 'react'
 import { StatusBadge } from '../components/OrdersTable'
+import NotificationBell from '../components/NotificationBell'
+import AccountRolesCard from '../components/AccountRolesCard'
+import logoSrc from '../assets/logo-nofond.png'
+import { clearPromoSession } from '../lib/promoSession'
+import { useAuth } from '../lib/auth'
+import { ROLE_LABELS, roleRequirementsError, sellerRole } from '../lib/roles'
 import ChangePasswordCard from '../components/ChangePasswordCard'
 import { supabase } from '../lib/supabase'
 import { fetchOrderStatuses, fetchStatusHistory, type OrderStatus, type StatusHistoryRow } from '../lib/orders'
@@ -29,12 +34,12 @@ import {
 import { MAIN_STORE, isMainStore, type StoreId } from '../lib/stores'
 import { useStores } from '../lib/storesContext'
 import { useAppNavigation } from '../lib/navigation'
-import type { Tab, UserRole } from '../lib/types'
+import { isTab, type Tab, type UserRole } from '../lib/types'
 import LocationFields from '../components/LocationFields'
 import DocumentFields from '../components/DocumentFields'
 import { normalizeDocumentNumber, validateDocument } from '../lib/identity'
 
-type BuyerSection = 'overview' | 'orders' | 'payments' | 'reviews' | 'favorites' | 'tickets' | 'profile'
+type BuyerSection = 'overview' | 'orders' | 'payments' | 'reviews' | 'favorites' | 'tickets' | 'profile' | 'roles'
 
 interface BuyerPanelScreenProps {
   onNavigate: (tab: Tab) => void
@@ -131,6 +136,49 @@ function EmptyState({ emoji, text, action }: { emoji: string; text: string; acti
   )
 }
 
+// ─── Menú lateral (mismo patrón que el panel de Asociación / Turismo) ─────────
+const Icon = ({ children }: { children: ReactNode }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+)
+const ICONS: Record<string, ReactNode> = {
+  overview: <Icon><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></Icon>,
+  orders: <Icon><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></Icon>,
+  payments: <Icon><rect x="1" y="4" width="22" height="16" rx="2" /><line x1="1" y1="10" x2="23" y2="10" /></Icon>,
+  reviews: <Icon><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></Icon>,
+  favorites: <Icon><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 000-7.78z" /></Icon>,
+  tickets: <Icon><circle cx="12" cy="12" r="10" /><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3" /><line x1="12" y1="17" x2="12.01" y2="17" /></Icon>,
+  profile: <Icon><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" /><circle cx="12" cy="7" r="4" /></Icon>,
+  roles: <Icon><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="20" y1="8" x2="20" y2="14" /><line x1="23" y1="11" x2="17" y2="11" /></Icon>,
+  seller: <Icon><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z" /><line x1="3" y1="6" x2="21" y2="6" /><path d="M16 10a4 4 0 01-8 0" /></Icon>,
+  market: <Icon><circle cx="9" cy="20.5" r="1.3" /><circle cx="18" cy="20.5" r="1.3" /><path d="M2 3h2.6l2.4 11.4a2 2 0 0 0 2 1.6h8.6a2 2 0 0 0 2-1.5L21.4 7H5.6" /></Icon>,
+}
+
+function SidebarItem({ icon, label, active = false, badge, onClick }: { icon: ReactNode; label: string; active?: boolean; badge?: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12,
+        border: 'none', background: active ? C.greenSoft : 'transparent', cursor: 'pointer',
+        width: '100%', textAlign: 'left', color: active ? C.green : C.text,
+        fontFamily: C.body, fontSize: 14, fontWeight: active ? 700 : 600,
+        transition: 'all 180ms ease',
+      }}
+      className={active ? undefined : 'hover:bg-[#F5EEE6]'}
+    >
+      <span style={{ opacity: active ? 1 : 0.6, display: 'flex' }}>{icon}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+      {!!badge && <span style={{ background: active ? '#fff' : C.greenSoft, color: C.green, borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 800 }}>{badge}</span>}
+    </button>
+  )
+}
+
+function SidebarGroup({ title }: { title: string }) {
+  return <div style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: 'uppercase', letterSpacing: 0.6, padding: '14px 14px 4px' }}>{title}</div>
+}
+
 function Pill({ label, bg, color }: { label: string; bg: string; color: string }) {
   return <span style={{ background: bg, color, fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 20, whiteSpace: 'nowrap', display: 'inline-block' }}>{label}</span>
 }
@@ -195,10 +243,16 @@ function OrderTracker({ status }: { status?: OrderStatus }) {
   )
 }
 
-export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick, userRole, onViewProduct, store = 'campo' }: BuyerPanelScreenProps) {
+export default function BuyerPanelScreen({ onNavigate, onViewProduct, store = 'campo' }: BuyerPanelScreenProps) {
   const isAllied = !isMainStore(store)
-  const { storeName } = useStores()
-  const { openStore } = useAppNavigation()
+  const { storeName, getStore } = useStores()
+  const { openStore, switchRole } = useAppNavigation()
+  const { roles } = useAuth()
+  const seller = sellerRole(roles)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  // Datos obligatorios guardados (para agregar un rol); se recalcula al cargar y al guardar "Mis datos"
+  const [savedRequirementsError, setSavedRequirementsError] = useState<string | null>(null)
+  const [orgName, setOrgName] = useState('')
   // Volver a comprar en la tienda desde la que se abrió el panel
   const goShopping = () => openStore(store)
   const [section, setSection] = useState<BuyerSection>('overview')
@@ -261,6 +315,8 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
         document_type: profileData.document_type ?? '',
         document_number: profileData.document_number ?? '',
       })
+      setOrgName(profileData.org_name ?? '')
+      setSavedRequirementsError(roleRequirementsError(profileData))
     }
     setLoading(false)
   }
@@ -418,19 +474,35 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
     }).eq('id', userId)
     setSavingProfile(false)
     if (error) { showToast('error', `No se pudieron guardar tus datos: ${error.message}`); return }
+    setSavedRequirementsError(roleRequirementsError(profile))
     showToast('ok', 'Tus datos se actualizaron correctamente.')
   }
 
   // ─── Navegación del panel ─────────────────────────────────────────────────
-  const tabs: { id: BuyerSection; label: string; badge?: number }[] = [
-    { id: 'overview', label: '🏠 Resumen' },
-    { id: 'orders', label: '📦 Mis pedidos', badge: activeOrders.length },
-    { id: 'payments', label: '💳 Pagos' },
-    { id: 'reviews', label: '⭐ Reseñas', badge: pendingReviews.length },
-    { id: 'favorites', label: '❤️ Favoritos', badge: favorites.length },
-    { id: 'tickets', label: '🛟 Solicitudes', badge: openTickets.length },
-    { id: 'profile', label: '👤 Mis datos' },
+  const sections: { id: BuyerSection; label: string; badge?: number }[] = [
+    { id: 'overview', label: 'Resumen' },
+    { id: 'orders', label: 'Mis pedidos', badge: activeOrders.length },
+    { id: 'payments', label: 'Pagos' },
+    { id: 'reviews', label: 'Reseñas', badge: pendingReviews.length },
+    { id: 'favorites', label: 'Favoritos', badge: favorites.length },
+    { id: 'tickets', label: 'Solicitudes', badge: openTickets.length },
+    { id: 'profile', label: 'Mis datos' },
+    { id: 'roles', label: 'Mis roles' },
   ]
+  const sectionLabel = sections.find((s) => s.id === section)?.label ?? 'Mi panel'
+
+  const goToSection = (s: BuyerSection) => {
+    setSection(s)
+    setSidebarOpen(false)
+    window.scrollTo({ top: 0 })
+  }
+
+  const signOut = async () => {
+    clearPromoSession()
+    await supabase.auth.signOut()
+    const slug = getStore(store).slug
+    window.location.href = isAllied && slug ? `/${slug}` : '/'
+  }
 
   const renderOrderCard = (o: BuyerOrder) => {
     const status = statusById.get(o.status_id)
@@ -467,6 +539,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
                 {it.img && <img src={it.img} alt={it.title} style={{ width: 48, height: 48, borderRadius: 10, objectFit: 'cover', flexShrink: 0 }} />}
                 <div style={{ flex: '1 1 160px', minWidth: 0 }}>
                   <div style={{ fontWeight: 700, color: C.dark, fontSize: 14 }}>{it.title}</div>
+                  {it.variant_label && <div style={{ fontSize: 12, color: C.green, fontWeight: 600 }}>{it.variant_label}</div>}
                   <div style={{ fontSize: 12, color: C.muted }}>{it.quantity} × {formatPrice(it.unit_price)}</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -529,9 +602,95 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
   }
 
   return (
-    <ScreenShell activeNav={activeNav ?? 'profile'} onNavigate={onNavigate} onProfileClick={onProfileClick} userRole={userRole} contentStyle={{ paddingBottom: 32 }} store={store}>
-      <div style={{ maxWidth: 1100, margin: '0 auto', width: '100%', fontFamily: C.body }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#F5EEE6', fontFamily: C.body }}>
+
+      {sidebarOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 30, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }} onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* SIDEBAR */}
+      <aside
+        className={sidebarOpen ? '!flex' : 'hidden md:flex'}
+        aria-label="Menú del comprador"
+        style={{ width: 240, flexShrink: 0, background: C.bg, borderRight: `1px solid ${C.border}`, flexDirection: 'column', position: 'fixed', top: 0, left: 0, bottom: 0, zIndex: 40, boxShadow: '2px 0 16px rgba(32,81,52,0.06)' }}
+      >
+        <button
+          type="button"
+          onClick={() => (isAllied ? openStore(store) : onNavigate('home'))}
+          aria-label="Ir al inicio"
+          style={{ padding: '24px 20px 16px', display: 'flex', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer' }}
+        >
+          {isAllied ? (
+            <span style={{ fontFamily: C.display, fontSize: 22, fontWeight: 800, color: C.green, textAlign: 'center', lineHeight: 1.2, padding: '20px 0' }}>{storeName(store)}</span>
+          ) : (
+            <img src={logoSrc} alt="El Campo Nos Une" style={{ height: 90, width: 'auto', display: 'block' }} />
+          )}
+        </button>
+
+        <nav style={{ flex: 1, padding: '8px 12px 16px', display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto' }}>
+          <SidebarGroup title="Mi cuenta" />
+          {sections.map((s) => (
+            <SidebarItem key={s.id} icon={ICONS[s.id]} label={s.label} badge={s.badge} active={section === s.id} onClick={() => goToSection(s.id)} />
+          ))}
+
+          {seller && (
+            <>
+              <SidebarGroup title="Mis roles" />
+              <SidebarItem icon={ICONS.seller} label={`Panel de ${ROLE_LABELS[seller]}`} onClick={() => { setSidebarOpen(false); switchRole(seller) }} />
+            </>
+          )}
+        </nav>
+
+        <div style={{ padding: '14px 16px', borderTop: `1px solid ${C.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.greenSoft, color: C.green, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, fontWeight: 800, fontFamily: C.display }}>
+              {(profile.first_name[0] || '?').toUpperCase()}{(profile.last_name[0] || '').toUpperCase()}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {`${profile.first_name} ${profile.last_name}`.trim() || 'Comprador'}
+              </div>
+              <div style={{ fontSize: 11, color: C.muted }}>{roles.length ? roles.map((r) => ROLE_LABELS[r]).join(' · ') : ROLE_LABELS.comprador}</div>
+            </div>
+            <button type="button" onClick={signOut} title="Cerrar sesión" aria-label="Cerrar sesión" style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.orange, padding: 4 }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      {/* MAIN */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100vh', minWidth: 0 }} className="md:ml-[240px]">
+        <header className="px-4 md:px-6" style={{ position: 'sticky', top: 0, zIndex: 20, background: C.bg, borderBottom: `1px solid ${C.border}`, height: 64, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, boxShadow: '0 2px 10px rgba(32,81,52,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0 }}>
+            <button className="flex md:hidden items-center justify-center" type="button" aria-label="Abrir menú" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(!sidebarOpen)} style={{ width: 38, height: 38, flexShrink: 0, borderRadius: 10, border: 'none', background: C.greenSoft, cursor: 'pointer', color: C.green }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{ margin: 0, fontFamily: C.display, fontSize: 20, fontWeight: 700, color: C.dark, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sectionLabel}</h1>
+              <p className="hidden sm:block" style={{ margin: 0, fontSize: 12, color: C.muted, fontWeight: 600 }}>Mi panel de comprador</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <button type="button" onClick={goShopping} style={{ height: 38, minWidth: 38, padding: '0 12px', borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: C.dark, fontWeight: 700, fontSize: 14 }} className="hover:bg-[#F5EEE6]" title="Seguir comprando">
+              {ICONS.market}
+              <span className="hidden sm:inline">Seguir comprando</span>
+            </button>
+            <NotificationBell
+              onOpen={(tab) => { if (tab !== 'profile' && isTab(tab)) onNavigate(tab) }}
+              buttonStyle={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${C.border}`, background: '#fff' }}
+            />
+          </div>
+        </header>
+
+        <main className="p-4 md:p-6" style={{ flex: 1, boxSizing: 'border-box', minWidth: 0, paddingBottom: 32 }}>
+      <div style={{ maxWidth: 1100, margin: '0 auto', width: '100%' }}>
         {/* Encabezado */}
+        {section === 'overview' && (
         <div style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', background: C.greenSoft, color: C.green, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, fontFamily: C.display, flexShrink: 0 }}>
             {(profile.first_name[0] || '?').toUpperCase()}{(profile.last_name[0] || '').toUpperCase()}
@@ -543,23 +702,7 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
             <div style={{ fontSize: 13, color: C.muted }}>{email}{profile.municipality ? ` · 📍 ${profile.municipality}` : ''}</div>
           </div>
         </div>
-
-        {/* Pestañas */}
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 6, marginBottom: 16 }}>
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setSection(t.id)}
-              style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 12, border: `1px solid ${section === t.id ? C.green : C.border}`, background: section === t.id ? C.green : '#fff', color: section === t.id ? '#fff' : C.text, fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: C.body }}
-            >
-              {t.label}
-              {!!t.badge && (
-                <span style={{ background: section === t.id ? '#fff' : C.greenSoft, color: C.green, borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 800 }}>{t.badge}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        )}
 
         {toast && (
           <div style={{ background: toast.type === 'ok' ? C.greenSoft : '#FDEDED', color: toast.type === 'ok' ? C.green : '#C53030', border: `1px solid ${toast.type === 'ok' ? '#C8E6C9' : '#F5C2C2'}`, padding: '10px 14px', borderRadius: 12, marginBottom: 14, fontSize: 13, fontWeight: 700 }}>
@@ -927,9 +1070,20 @@ export default function BuyerPanelScreen({ onNavigate, activeNav, onProfileClick
               <ChangePasswordCard />
               </div>
             )}
+
+            {/* ═══ MIS ROLES ═══ */}
+            {section === 'roles' && (
+              <AccountRolesCard
+                requirementsError={savedRequirementsError}
+                onCompleteData={() => goToSection('profile')}
+                initialOrgName={orgName}
+              />
+            )}
           </>
         )}
       </div>
-    </ScreenShell>
+        </main>
+      </div>
+    </div>
   )
 }

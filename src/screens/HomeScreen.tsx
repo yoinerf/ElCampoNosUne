@@ -108,13 +108,15 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
           .select('first_name, user_type')
           .eq('id', user.id)
           .single()
+        // Rol activo (una Asociación o Turismo que entra como Comprador ve el inicio del comprador)
+        const activeRole = (propUserRole ?? profile?.user_type) as 'asociacion' | 'turismo' | 'comprador' | undefined
         if (profile) {
           setFirstName(profile.first_name)
-          setUserRole((profile.user_type as 'asociacion' | 'turismo' | 'comprador') ?? null)
+          setUserRole(activeRole ?? null)
         }
 
         if (profile) {
-          const role = profile.user_type as 'asociacion' | 'turismo' | 'comprador'
+          const role = activeRole
 
           if (role !== 'comprador') {
             // Publicados y ventas del vendedor (antes se leían sus propias reservas como si fueran ventas)
@@ -300,7 +302,7 @@ export default function HomeScreen({ onNavigate, activeNav, onProfileClick, user
     }
 
     loadData()
-  }, [])
+  }, [propUserRole])
 
   const greeting = getColombianGreeting()
 

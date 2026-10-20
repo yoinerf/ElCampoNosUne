@@ -1,5 +1,6 @@
 // Tipos del catálogo (productos y carrito) compartidos por marketplace, checkout y App
 import type { Database } from './database.types'
+import { cartLineKey, variantPrice, type ProductVariant, type VariantAttribute } from './variants'
 
 /** Fila de public.images (embebida en products/experiences con images(*)) */
 export type ImageRow = Database['public']['Tables']['images']['Row']
@@ -33,11 +34,31 @@ export interface Product {
   images?: ImageRow[]
   stock: string
   outstanding?: boolean
+  /** Atributos y combinaciones (vacíos si el producto no tiene variantes) */
+  variantAttributes?: VariantAttribute[]
+  variants?: ProductVariant[]
 }
 
 export interface CartItem {
   product: Product
   quantity: number
+  /** Combinación elegida (productos con variantes) */
+  variant?: ProductVariant | null
+}
+
+/** Clave de la línea en el carrito guardado */
+export function cartItemKey(item: CartItem) {
+  return cartLineKey(item.product.id, item.variant?.id)
+}
+
+/** Precio unitario de la línea: el de la combinación o el del producto */
+export function cartItemPrice(item: CartItem) {
+  return variantPrice(item.product.price, item.variant)
+}
+
+/** Productos con variantes: hay que elegir combinación antes de comprar */
+export function hasVariants(product: Pick<Product, 'variants'>) {
+  return (product.variants?.length ?? 0) > 0
 }
 
 /** Imagen principal de un producto/experiencia, o la de respaldo */

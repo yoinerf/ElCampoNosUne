@@ -197,7 +197,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
               color: 'rgba(255, 255, 255, 0.88)',
             }}
           >
-            EL CAMPO NOS UNE
+            SAKI5
           </p>
         </div>
       </div>
@@ -257,7 +257,7 @@ export default function LoginScreen({ onLogin, onRegister, onBackToStore, onBack
           <div style={{ marginBottom: 18, textAlign: 'center' }}>
             <img
               src={logoSrc}
-              alt="El Campo Nos Une"
+              alt="SAKI5"
               style={{
                 height: 120,
                 width: 'auto',

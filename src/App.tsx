@@ -80,7 +80,7 @@ export default function App() {
         style={{ background: '#F5EEE6', color: '#205134', fontFamily: "'Nunito Sans', sans-serif" }}
       >
         <div style={{ textAlign: 'center' }}>
-          <img src={logoImg} alt="El Campo Nos Une" style={{ height: 60, margin: '0 auto 16px', display: 'block' }} />
+          <img src={logoImg} alt="SAKI5" style={{ height: 60, margin: '0 auto 16px', display: 'block' }} />
           <p style={{ fontSize: 15, fontWeight: 600 }}>Cargando...</p>
         </div>
       </div>

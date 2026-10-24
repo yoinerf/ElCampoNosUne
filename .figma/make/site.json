@@ -1,7 +1,12 @@
 {
-  "description": "Connects rural producers and community tourism services with customers through an intuitive platform that supports small and medium enterprises.",
-  "robots": {
-    "index": false
+  "title": "SAKI5",
+  "description": "Conectamos productores campesinos y turismo comunitario con quienes buscan lo nuestro.",
+  "language": "es",
+  "icons": {
+    "icon": "/favicon-32.png"
+  },
+  "openGraph": {
+    "image": "https://www.saki5.com/og-image.png"
   },
   "accessibility": {
     "addBypassLinks": false,
